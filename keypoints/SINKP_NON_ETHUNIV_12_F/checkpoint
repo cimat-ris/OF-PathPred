@@ -1,0 +1,3 @@
+model_checkpoint_path: "model.ckpt-88400"
+all_model_checkpoint_paths: "../SINKP_NON_ETHUNIV_12/model.ckpt-88400"
+all_model_checkpoint_paths: "model.ckpt-88400"

@@ -1,0 +1,3 @@
+model_checkpoint_path: "model_best.ckpt-29400"
+all_model_checkpoint_paths: "model_best.ckpt-21900"
+all_model_checkpoint_paths: "model_best.ckpt-29400"
