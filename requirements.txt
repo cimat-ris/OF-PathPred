@@ -1,0 +1,5 @@
+tensorflow==1.14
+notebook==6.0
+tqdm==4.45.0
+matplotlib==3.2.1
+gast==0.2.2
