@@ -9,130 +9,122 @@ class Model(object):
     def __init__(self, config):
         self.scope = config.modelname
         self.config = config
-        
-        self.global_step = tf.get_variable('global_step', shape=[],dtype='int32',
-                                       initializer=tf.constant_initializer(0),trainable=False)
-        
+        self.global_step = tf.Variable(initial_value=0,name='global_step', shape=[],dtype='int32',trainable=False)
+
         # get all the dimension here
         # Tensor dimensions, so pylint: disable=g-bad-name
-        N = self.N = config.batch_size
+        N  = self.N  = config.batch_size
         KP = self.KP = config.kp_size ####
         self.P = P = 2  # traj coordinate dimension
         #MNP = self.MNP = config.maxNumPed
         T1 = config.obs_len
         # las dimensiones de un frame
         # all the inputs
-        
+
         # the trajactory sequence,
         # in training, it is the obs+pred combined,
         # in testing, only obs is fed and the rest is zeros
         # [N,T1,2] # T1 is the obs_len
         # mask is used for variable length input extension
-        self.traj_obs_gt = tf.placeholder('float', [N, None, P], name='traj_obs_gt')
-        
-        self.traj_obs_gt_mask = tf.placeholder('bool', [N, None], name='traj_obs_gt_mask')
-        
+        self.traj_obs_gt      = tf.compat.v1.placeholder('float', [N, None, P], name='traj_obs_gt')
+        self.traj_obs_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name='traj_obs_gt_mask')
+
         #[N,T2,2]
-        self.traj_pred_gt = tf.placeholder('float', [N, None, P], name = 'traj_pred_gt')
-        
-        self.traj_pred_gt_mask = tf.placeholder('bool', [N, None], name = 'traj_pred_gt_mask')
-        
+        self.traj_pred_gt      = tf.compat.v1.placeholder('float', [N, None, P], name = 'traj_pred_gt')
+        self.traj_pred_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name = 'traj_pred_gt_mask')
+
         #info keypoints
-        self.obs_kp = tf.placeholder('float', [N, None, KP, 2], name = 'obs_kp') 
-        
+        self.obs_kp = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
+
         #info social
 
         # grid data de cada una de las secuencias
-        self.obs_flujo = tf.placeholder('float',[N, None,64],name='obsf_flujo')
-        
+        self.obs_flujo = tf.compat.v1.placeholder('float',[N, None,64],name='obsf_flujo')
         #used for drop out switch
-        self.is_train = tf.placeholder('bool', [], name = 'is_train')
-        
+        self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
+
         self.loss = None
         self.build_forward()
         self.build_loss()
-    
-    
+
+
     def build_forward(self):
         """Build the forward model graph."""
         config = self.config
         # Tensor dimensions, so pylint: disable=g-bad-name
-        N = self.N
+        N  = self.N
         KP = self.KP ####
-        
+
         # add dropout
         keep_prob = tf.cond(self.is_train,
                         lambda: tf.constant(config.keep_prob),
                         lambda: tf.constant(1.0))
         # ------------------------- encoder ------------------------
         # trayectoria encoder
-        enc_cell_traj = tf.nn.rnn_cell.LSTMCell(
+        enc_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(
             config.enc_hidden_size, state_is_tuple=True, name='enc_traj')
-        
-        enc_cell_traj = tf.nn.rnn_cell.DropoutWrapper(enc_cell_traj, keep_prob)
-        
+        enc_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_traj, keep_prob)
+
         # person pose encoder
         if config.add_kp:
-            enc_cell_kp = tf.nn.rnn_cell.LSTMCell(config.enc_hidden_size, state_is_tuple=True, name='enc_kp')
-            
-            enc_cell_kp = tf.nn.rnn_cell.DropoutWrapper(enc_cell_kp, keep_prob)  
-            
+            enc_cell_kp = tf.compat.v1.nn.rnn_cell.LSTMCell(config.enc_hidden_size, state_is_tuple=True, name='enc_kp')
+            enc_cell_kp = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_kp, keep_prob)
+
         #parte social encoder
         if config.add_social:
-            enc_cell_soc = tf.nn.rnn_cell.LSTMCell(
+            enc_cell_soc = tf.compat.v1.nn.rnn_cell.LSTMCell(
                 config.enc_hidden_size,state_is_tuple = True,name='enc_social')
-            
-            enc_cell_soc = tf.nn.rnn_cell.DropoutWrapper(enc_cell_soc,keep_prob)
-        
+            enc_cell_soc = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_soc,keep_prob)
+
         # ------------------------ decoder
         if config.multi_decoder:
-            dec_cell_traj = [tf.nn.rnn_cell.LSTMCell(
+            dec_cell_traj = [tf.compat.v1.nn.rnn_cell.LSTMCell(
                 config.dec_hidden_size, state_is_tuple=True, name='dec_traj_%s' % i)
                              for i in range(len(config.traj_cats))]
-            dec_cell_traj = [tf.nn.rnn_cell.DropoutWrapper(one, keep_prob) for one in dec_cell_traj]
+            dec_cell_traj = [tf.compat.v1.nn.rnn_cell.DropoutWrapper(one, keep_prob) for one in dec_cell_traj]
         else:
-            dec_cell_traj = tf.nn.rnn_cell.LSTMCell(config.dec_hidden_size, state_is_tuple=True, name='dec_traj')
-            dec_cell_traj = tf.nn.rnn_cell.DropoutWrapper(dec_cell_traj, keep_prob)
-        
+            dec_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(config.dec_hidden_size, state_is_tuple=True, name='dec_traj')
+            dec_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(dec_cell_traj, keep_prob)
+
         # ----------------------------------------------------------
         # the obs part is the same for training and testing
         # obs_out is only used in training
         # encoder, decoder
         # top_scope is used for variable inside
         # encode and decode if want to share variable across
-        with tf.variable_scope('person_pred') as top_scope:
+        with tf.compat.v1.variable_scope('person_pred') as top_scope:
             # [N,T1,h_dim]
             # xy encoder
-            
+
             obs_length = tf.reduce_sum(tf.cast(self.traj_obs_gt_mask, 'int32'), 1)
-            
+
             traj_xy_emb_enc = linear(self.traj_obs_gt,
                                output_size=config.emb_size,
                                activation=config.activation_func,
                                add_bias=True,
                                scope='enc_xy_emb')
-            traj_obs_enc_h, traj_obs_enc_last_state = tf.nn.dynamic_rnn(
+            traj_obs_enc_h, traj_obs_enc_last_state = tf.compat.v1.nn.dynamic_rnn(
                 enc_cell_traj, traj_xy_emb_enc, sequence_length = obs_length,
                 dtype='float', scope='encoder_traj')
-            
+
             #print("hola1------------")
             #print(traj_obs_enc_h)
             enc_h_list = [traj_obs_enc_h]
-            
+
             enc_last_state_list = [traj_obs_enc_last_state]
-            
+
             # person pose
             if config.add_kp:
                 obs_kp = tf.reshape(self.obs_kp, [N, -1, KP*2])
                 obs_kp = linear(obs_kp, output_size=config.emb_size, add_bias=True,
                                 activation=config.activation_func, scope='kp_emb')
-                
+
                 kp_obs_enc_h, kp_obs_enc_last_state = tf.nn.dynamic_rnn(
                     enc_cell_kp, obs_kp, sequence_length=obs_length, dtype='float',
                     scope='encoder_kp')
                 #print(kp_obs_enc_h)
                 enc_h_list.append(kp_obs_enc_h)
-                
+
                 enc_last_state_list.append(kp_obs_enc_last_state)
             #aqui se agrego la parte de la interaccion social
             if config.add_social:
@@ -144,33 +136,33 @@ class Model(object):
 
                 enc_h_list.append(soc_obs_enc_h)
                 enc_last_state_list.append(soc_obs_enc_last_state)
-            
+
             #----------------------------------------------------------termina parte social
             # line 340 - 354
             # pack all observed hidden states
             #[batch,m,obs,h_dim]
             obs_enc_h = tf.stack(enc_h_list, axis=1)
             obs_enc_last_state = concat_states(enc_last_state_list, axis=1)
-            
+
             # -------------------------------------------------- xy decoder
             traj_obs_last = self.traj_obs_gt[:, -1]
             pred_length = tf.reduce_sum(
                 tf.cast(self.traj_pred_gt_mask, 'int32'), 1)  # N
-            
+
             if config.multi_decoder:
                 # [N, num_traj_cat] # each is num_traj_cat classification
                 self.traj_class_logits = self.traj_class_head(
                     obs_enc_h, obs_enc_last_state, scope='traj_class_predict')
-                
+
                 # [N]
                 traj_class = tf.argmax(self.traj_class_logits, axis=1)
-                
+
                 traj_class_gated = tf.cond(
                     self.is_train,
                     lambda: self.traj_class_gt,
                     lambda: traj_class,
                 )
-                
+
                 traj_pred_outs = [
                     self.decoder(
                         traj_obs_last,
@@ -182,17 +174,17 @@ class Model(object):
                         scope='decoder_%s' % traj_cat)
                     for _, traj_cat in config.traj_cats
                 ]
-                
+
                 # [N, num_decoder, T, 2]
                 self.traj_pred_outs = tf.stack(traj_pred_outs, axis=1)
-                
+
                 # [N, 2]
                 indices = tf.stack(
                     [tf.range(N), tf.to_int32(traj_class_gated)], axis=1)
-                
+
                 # [N, T, 2]
                 traj_pred_out = tf.gather_nd(self.traj_pred_outs, indices)
-                
+
             else:
                 traj_pred_out = self.decoder(traj_obs_last, traj_obs_enc_last_state,
                                              obs_enc_h, pred_length, dec_cell_traj,
@@ -206,10 +198,10 @@ class Model(object):
         # Tensor dimensions, so pylint: disable=g-bad-name
         N = self.N
         P = self.P
-        
-        with tf.variable_scope(scope):
+
+        with tf.compat.v1.variable_scope(scope):
             # this is only used for training
-            with tf.name_scope('prepare_pred_gt_training'):
+            with tf.compat.v1.name_scope('prepare_pred_gt_training'):
                 # these input only used during training
                 time_1st_traj_pred = tf.transpose(
                     self.traj_pred_gt, perm=[1, 0, 2])  # [N,T2,W] -> [T2,N,W]
@@ -217,24 +209,24 @@ class Model(object):
                 traj_pred_gt = tf.TensorArray(size= T2, dtype='float')
                 traj_pred_gt = traj_pred_gt.unstack(
                     time_1st_traj_pred)  # [T2] , [N,W]
-                
+
             # all None for first call
-            with tf.name_scope('decoder_rnn'):
+            with tf.compat.v1.name_scope('decoder_rnn'):
                 def decoder_loop_fn(time, cell_output, cell_state, loop_state):
                     """RNN loop function for the decoder."""
                     emit_output = cell_output  # == None for time==0
-                    
+
                     elements_finished = time >= pred_length
                     finished = tf.reduce_all(elements_finished)
-                    
+
                     # h_{t-1}
-                    with tf.name_scope('prepare_next_cell_state'):
+                    with tf.compat.v1.name_scope('prepare_next_cell_state'):
                         if cell_output is None:
                             next_cell_state = enc_last_state
                         else:
                             next_cell_state = cell_state
                     # x_t
-                    with tf.name_scope('prepare_next_input'):
+                    with tf.compat.v1.name_scope('prepare_next_input'):
                         if cell_output is None:  # first time
                             next_input_xy = first_input  # the last observed x,y as input
                         else:
@@ -257,50 +249,50 @@ class Model(object):
                         xy_emb = linear(next_input_xy, output_size=config.emb_size,
                             activation=config.activation_func, add_bias=True,
                             scope='xy_emb_dec')
-                        
+
                         next_input = xy_emb
-                        with tf.name_scope('attend_enc'):
+                        with tf.compat.v1.name_scope('attend_enc'):
                             # [N,h_dim]
                             attended_encode_states = focal_attention(
                                 next_cell_state.h, enc_h, use_sigmoid=False,
                                 scope='decoder_attend_encoders')
-                            
+
                             next_input = tf.concat(
                                 [xy_emb, attended_encode_states], axis=1)
                     return elements_finished, next_input, next_cell_state,emit_output, None  # next_loop_state
-                
-                decoder_out_ta, _, _ = tf.nn.raw_rnn(
+
+                decoder_out_ta, _, _ = tf.compat.v1.nn.raw_rnn(
                     rnn_cell, decoder_loop_fn, scope='decoder_rnn')
-            with tf.name_scope('reconstruct_output'):
-                
+            with tf.compat.v1.name_scope('reconstruct_output'):
+
                 decoder_out_h = decoder_out_ta.stack()  # [T2,N,h_dim]
                 # [N,T2,h_dim]
                 decoder_out_h = tf.transpose(decoder_out_h, perm=[1, 0, 2])
             # recompute the output;
             # if use loop_state to save the output, will 10x slower
-            
+
             # use the same hidden2xy for different decoder
             decoder_out = self.hidden2xy(
                 decoder_out_h, scope=top_scope, additional_scope='hidden2xy')
         return decoder_out
-    
+
     def hidden2xy(self, lstm_h, return_scope=False, scope='hidden2xy',additional_scope=None):
         """Hiddent states to xy coordinates."""
         # Tensor dimensions, so pylint: disable=g-bad-name
         P = self.P
-        
-        with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as this_scope:
+
+        with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE) as this_scope:
             if additional_scope is not None:
                 return self.hidden2xy(lstm_h, return_scope=return_scope,
                                       scope=additional_scope, additional_scope=None)
-            
+
             out_xy = linear(lstm_h, output_size=P, activation=tf.identity,
                             add_bias=False, scope='out_xy_mlp2')
-            
+
             if return_scope:
                 return out_xy, this_scope
             return out_xy
-    
+
     def build_loss(self):
         """Model loss."""
         config = self.config
@@ -311,15 +303,15 @@ class Model(object):
         traj_pred_out = self.traj_pred_out
         traj_pred_gt = self.traj_pred_gt
         diff = traj_pred_out - traj_pred_gt
-        
+
         xyloss = tf.pow(diff, 2)  # [N,T2,2]
         xyloss = tf.reduce_mean(xyloss)
         self.xyloss = xyloss
-        
+
         losses.append(xyloss)
         #self.loss = tf.add_n(losses, name='total_losses')
         self.loss = self.xyloss
-    
+
     def get_feed_dict(self, data, is_train):
         """Givng a batch of data, construct the feed dict."""
         # get the cap for each kind of step first
@@ -329,33 +321,33 @@ class Model(object):
         P = self.P
         KP = self.KP ####
         #MNP = self.MNP
-        
+
         T_in = config.obs_len
         T_pred = config.pred_len
-        
+
         feed_dict = {}
-        
+
         #initial all the placeholder
         traj_obs_gt = np.zeros([N, T_in, P], dtype='float')
         traj_obs_gt_mask = np.zeros([N, T_in], dtype='bool')
-        
+
         #link the feed_dict
         feed_dict[self.traj_obs_gt] = traj_obs_gt
         feed_dict[self.traj_obs_gt_mask] = traj_obs_gt_mask
-        
+
         #for getting pred length during test time
         traj_pred_gt_mask = np.zeros([N, T_pred], dtype='bool')
         feed_dict[self.traj_pred_gt_mask] = traj_pred_gt_mask
-        
+
         #this is needed since it is in tf.conf?
         traj_pred_gt = np.zeros([N, T_pred, P], dtype='float')
         feed_dict[self.traj_pred_gt] = traj_pred_gt  # all zero when testing,
-        
+
         feed_dict[self.is_train] = is_train
         #encoder features
         # ------------------------------------- xy input
-        
-        assert len(data['obs_traj_rel']) == N 
+
+        assert len(data['obs_traj_rel']) == N
         for i, (obs_data, pred_data) in enumerate(zip(data['obs_traj_rel'],
                                                   data['pred_traj_rel'])):
             for j, xy in enumerate(obs_data):
@@ -364,14 +356,14 @@ class Model(object):
             for j in range(config.pred_len):
                 # used in testing to get the preiction length
                 traj_pred_gt_mask[i, j] = True
-                
+
         # ------------------------------------------------------
         if config.add_social:
             #assert len(data['obs_person_rel'])== N
             obs_flujo = np.zeros((N, T_in, 64),dtype ='float')
             feed_dict[self.obs_flujo] = obs_flujo
-            
-            #each batch       
+
+            #each batch
             # agregamos el vector de flujo
             #for i, flujo_seq in enumerate(obs_flujo):
             #    for j, flujo_paso in enumerate(flujo_seq):
@@ -380,7 +372,7 @@ class Model(object):
             for i, flujo_seq in enumerate(data['obs_flujo']):
                 for j , flujo_paso in enumerate(flujo_seq):
                     obs_flujo[i,j,:] = flujo_paso
-            
+
         # -----------------------------------------------------------
         # person pose input
         if config.add_kp:
@@ -449,7 +441,7 @@ def flatten(tensor, keep):
 
 def softmax(logits, scope=None):
     """a flatten and reconstruct version of softmax."""
-    with tf.name_scope(scope or 'softmax'):
+    with tf.compat.v1.name_scope(scope or 'softmax'):
         flat_logits = flatten(logits, 1)
         flat_out = tf.nn.softmax(flat_logits)
         out = reconstruct(flat_out, logits, 1)
@@ -457,8 +449,8 @@ def softmax(logits, scope=None):
 
 def softsel(target, logits, use_sigmoid=False, scope=None):
     """Apply attention weights."""
-    
-    with tf.variable_scope(scope or 'softsel'):  # no new variable tho
+
+    with tf.compat.v1.variable_scope(scope or 'softsel'):  # no new variable tho
         if use_sigmoid:
             a = tf.nn.sigmoid(logits)
         else:
@@ -468,17 +460,17 @@ def softsel(target, logits, use_sigmoid=False, scope=None):
         # second last dim
         return tf.reduce_sum(tf.expand_dims(a, -1)*target, target_rank-2)
 
-    
+
 def linear(x, output_size, scope, add_bias=False, wd=None, return_scope=False,
            reuse=None, activation=tf.identity, keep=1, additional_scope=None):
-    
+
     """Fully-connected layer."""
-    with tf.variable_scope(scope or 'xy_emb', reuse=tf.AUTO_REUSE) as this_scope:
+    with tf.compat.v1.variable_scope(scope or 'xy_emb', reuse=tf.compat.v1.AUTO_REUSE) as this_scope:
         if additional_scope is not None:
             return linear(x, output_size, scope=additional_scope, add_bias=add_bias,
                           wd=wd, return_scope=return_scope, reuse=reuse,
                           activation=activation, keep=keep, additional_scope=None)
-        
+
         # since the input here is not two rank,
         # we flat the input while keeping the last dims
         # keeping the last one dim # [N,M,JX,JQ,2d] => [N*M*JX*JQ,2d]
@@ -488,13 +480,13 @@ def linear(x, output_size, scope, add_bias=False, wd=None, return_scope=False,
         # need to be get_shape()[k].value
         if not isinstance(output_size, int):
             output_size = output_size.value
-            
+
         def init(shape, dtype, partition_info):
             dtype = dtype
             partition_info = partition_info
-            return tf.truncated_normal(shape, stddev=0.1)
+            return tf.random.truncated_normal(shape, stddev=0.1)
         # Common weight tensor name, so pylint: disable=g-bad-name
-        W = tf.get_variable('W', dtype='float', initializer=init,
+        W = tf.compat.v1.get_variable('W', dtype='float', initializer=init,
                             shape=[flat_x.get_shape()[-1].value, output_size])
         flat_out = tf.matmul(flat_x, W)
         if add_bias:
@@ -503,11 +495,11 @@ def linear(x, output_size, scope, add_bias=False, wd=None, return_scope=False,
                 dtype = dtype
                 partition_info = partition_info
                 return tf.constant(bias_start, shape=shape)
-            
-            bias = tf.get_variable('b', dtype='float', initializer=init_b,
+
+            bias = tf.compat.v1.get_variable('b', dtype='float', initializer=init_b,
                                    shape=[output_size])
             flat_out += bias
-        
+
         flat_out = activation(flat_out)
         out = reconstruct(flat_out, x, keep)
         if return_scope:
@@ -526,24 +518,24 @@ def focal_attention(query, context, use_sigmoid=False, scope=None):
     Tensor
     """
     #print("*** focal attention ***")
-    with tf.variable_scope(scope or 'attention', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope(scope or 'attention', reuse=tf.compat.v1.AUTO_REUSE):
         # Tensor dimensions, so pylint: disable=g-bad-name
         _, d = query.get_shape().as_list()
         _, K, _, d2 = context.get_shape().as_list()
         assert d == d2
-        
+
         T = tf.shape(context)[2]
-        
+
         # [N,d] -> [N,K,T,d]
         query_aug = tf.tile(tf.expand_dims(tf.expand_dims(query, 1), 1), [1, K, T, 1])
         # cosine simi
         query_aug_norm = tf.nn.l2_normalize(query_aug, -1)
         context_norm = tf.nn.l2_normalize(context, -1)
         # [N, K, T]
-        
+
         a_logits = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
         a_logits_maxed = tf.reduce_max(a_logits, 2)  # [N,K]
-        
+
         attended_context = softsel(softsel(context, a_logits,
                                            use_sigmoid=use_sigmoid), a_logits_maxed,
                                    use_sigmoid=use_sigmoid)
@@ -551,7 +543,7 @@ def focal_attention(query, context, use_sigmoid=False, scope=None):
 
 def concat_states(state_tuples, axis):
     """Concat LSTM states."""
-    return tf.nn.rnn_cell.LSTMStateTuple(c=tf.concat([s.c for s in state_tuples],
+    return tf.compat.v1.nn.rnn_cell.LSTMStateTuple(c=tf.concat([s.c for s in state_tuples],
                                                    axis=axis),
                                        h=tf.concat([s.h for s in state_tuples],
                                                    axis=axis))

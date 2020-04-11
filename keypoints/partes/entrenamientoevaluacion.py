@@ -8,20 +8,20 @@ class Trainer(object):
     def __init__(self, model, config):
         self.config = config
         self.model = model  # this is a Model instance
-        self.global_step = model.global_step 
+        self.global_step = model.global_step
         self.learning_rate = config.init_lr
-        
+
         if config.learning_rate_decay is not None:
             decay_steps = int(config.train_num_examples /
                         config.batch_size * config.num_epoch_per_decay)
-            
-            self.learning_rate = tf.train.exponential_decay(
+
+            self.learning_rate = tf.compat.v1.train.exponential_decay(
                 config.init_lr,
                 self.global_step,
-                decay_steps,  # decay every k samples used in training
+                decay_steps,  # decay every k samples used in trainingf
                 config.learning_rate_decay,
                 staircase=True)
-        
+
         if config.optimizer == 'momentum':
             opt_emb = tf.train.MomentumOptimizer(
                 self.learning_rate*config.emb_lr, momentum=0.9)
@@ -30,11 +30,11 @@ class Trainer(object):
             opt_emb = tf.train.AdadeltaOptimizer(self.learning_rate*config.emb_lr)
             #opt_rest = tf.train.AdadeltaOptimizer(self.learning_rate)
         elif config.optimizer == 'adam':
-            opt_emb = tf.train.AdamOptimizer(self.learning_rate*config.emb_lr)
+            opt_emb = tf.compat.v1.train.AdamOptimizer(self.learning_rate*config.emb_lr)
             #opt_rest = tf.train.AdamOptimizer(self.learning_rate)
         else:
             raise Exception('Optimizer not implemented')
-        
+
         # losses
         #self.xyloss = model.xyloss
         self.loss = model.loss  # get the loss funcion
@@ -42,7 +42,7 @@ class Trainer(object):
         self.train_op = opt_emb.minimize(self.loss) #### Diferente
     def get_lr(self):
         return self.learning_rate
-    
+
     def step(self, sess, batch):
         """One training step."""
         config = self.config
@@ -65,7 +65,7 @@ class Tester(object):
         if config.multi_decoder:
             self.traj_class_logits = self.model.traj_class_logits
             self.traj_outs = self.model.traj_pred_outs
-    
+
     def step(self,batch,sess):
         """One inferencing step."""
         config = self.config
@@ -101,29 +101,29 @@ def evaluate(dataset, tester,sess,arguments):
     Returns:
     Evaluation results.
     """
-    
+
     config = tester.config
     #sess = tester.sess
-    
+
     l2dis = []
     num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
     traj_class_correct = []
-    traj_obs = []    
+    traj_obs = []
     traj_ver = []
     traj_pred = []
     for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
-      
+
         pred_out = tester.step(batch,sess)
         this_actual_batch_size = batch["original_batch_size"]
         d = []
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             if i >= this_actual_batch_size:
                 break
-            
+
             this_pred_out = pred_out[i][:, :2] #[pred,2]
 
             this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-            
+
             assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
             diff = pred_traj_gt - this_pred_out_abs
             traj_obs.append(obs_traj_gt)
@@ -132,7 +132,7 @@ def evaluate(dataset, tester,sess,arguments):
             diff = diff**2
             diff = np.sqrt(np.sum(diff, axis=1))
             d.append(diff)
-            
+
         l2dis += d
     ade = [t for o in l2dis for t in o] # average displacement
     fde = [o[-1] for o in l2dis] # final displacement
@@ -158,7 +158,7 @@ def evaluate_new(dataset, tester,sess):
   l2dis = []
   num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
   traj_class_correct = []
-  
+
   cont=0
   predic=[]
   prom=0.0
@@ -170,20 +170,20 @@ def evaluate_new(dataset, tester,sess):
     cont +=1
     #print(cont)
     #print(pred_out)
-    
-    
+
+
     this_actual_batch_size = batch["original_batch_size"]
     d = []
-    
-    
+
+
     for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
       if i >= this_actual_batch_size:
         break
-      #print("iterador") 
+      #print("iterador")
       #print(i)
       this_pred_out = pred_out[i][:, :2]
       this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-     
+
       assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
 
       diff = pred_traj_gt - this_pred_out_abs
@@ -196,18 +196,18 @@ def evaluate_new(dataset, tester,sess):
       #print(np.mean(diff))
       predic.append(this_pred_out_abs)
       d.append(diff)
-      prom += np.mean(diff)  
+      prom += np.mean(diff)
       error_prom.append(np.mean(diff))
-        
+
     l2dis += d
-  
+
 
   ade = [t for o in l2dis for t in o] # average displacement
   fde = [o[-1] for o in l2dis] # final displacement
- 
-  
+
+
   p = { "ade": np.mean(ade), "fde": np.mean(fde),"error_prom":prom/len(error_prom)}
-  
+
   #print(p)
 
   return p,predic
