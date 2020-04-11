@@ -2,11 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 
-def vector_ortonormal(vec_dir):
+def vector_normal(vec_dir):
     """
-      Funcion para calcular el vector normal
-      Recibe: un vector de la forma (x,y)
-      Retorna: el vector normal del recibido
+    Computes the normal vector.
+    Input: a vector (v_x,v_y)
+    Output: a vector normal to the input vector
     """
     return np.array([vec_dir[1],-vec_dir[0]])
 
@@ -14,10 +14,8 @@ def vectores_direccion(data):
     """
      Esta funcion recibe una matriz [obs_len,2]
      el cual es la trayectoria del observador
-
-     Recibe: La matriz data [obs_len, 2]
-
-     Retorna: Un matriz direcciones de la forma [obs_len, 2]
+     Input: La matriz data [obs_len, 2]
+     Retorna:A [obs_len, 2] matrix of local directions (difference to the anterior)
     """
     pasos = len(data)
     direcciones = np.zeros((pasos,2),dtype='float')
@@ -28,6 +26,7 @@ def vectores_direccion(data):
             if((data[0][0]!=data[1][0]) or (data[0][1]!=data[1][1]) ):
                 direcciones[i] = np.array([data[1][0]-(data[0][0]), data[1][1]-(data[0][1])])
             else:
+                # TODO: Slow and I do not understand well what it does
                 for j in range(i,pasos-1):
                     if( (data[j][0]!=data[j+1][0]) or (data[j][1]!=data[j+1][1]) ):
                         direcciones[i] = np.array([data[j+1][0]-(data[j][0]), data[j+1][1]-(data[j][1])])
@@ -53,22 +52,19 @@ def vectores_direccion(data):
 
     return direcciones
 
-def in_recta(Point_eval, vec_dir, Point_in_recta):
-    """ Funcion para verificar si el punto esta en la recta """
-    # Positivo es lado derecho
-    # Negativo es lado izquierdo
-    # Cero si esta en la recta
-    return np.sum(Point_eval*vector_ortonormal(vec_dir)) - np.sum(Point_in_recta*vector_ortonormal(vec_dir))
+def in_line(Point_eval, vec_dir, Point_on_line):
+    """ Function to evaluate where a point is with respect to a straight line"""
+    # Positive: right side of the line
+    # Negative: left side of the line
+    # Zero: on the line
+    return np.sum(Point_eval*vector_normal(vec_dir)) - np.sum(Point_on_line*vector_normal(vec_dir))
 
-def in_cono(Point_eval,vec_dir1,vec_dir2,Point_in_recta):
-    """ Funcion para verificar si el punto esta en la seccion del cono """
-    # 1 si  pertenece al cono
-    # 0 si no pertenece al cono
-
-    # Evaluamos si esta en la recta
-    resp1 = in_recta(Point_eval,vec_dir1,Point_in_recta)
-    resp2 = in_recta(Point_eval,vec_dir2,Point_in_recta)
-    if resp1>0 and resp2<0:
+def in_cone(Point_eval,vec_dir1,vec_dir2,Point_in_recta):
+    """ FuFunction to evaluate where a point is inside or outside of a cone"""
+    # 1 if inside thecone
+    # 0 if outside
+    # We evaluate the relative position with the two lines forming the cone
+    if in_line(Point_eval,vec_dir1,Point_in_recta)>0 and in_line(Point_eval,vec_dir2,Point_in_recta)<0:
         return 1
     return 0
 
@@ -76,7 +72,7 @@ def grafica_vec(ind,i,PPi,vec_dir,list_vect_new=[],Points=[],factor=10000):
     """ Funcion para graficar y visualizar los vectores y puntos"""
 
     # Graficamos el vector direccion y el normal
-    vec_norm = vector_ortonormal(vec_dir)
+    vec_norm = vector_normal(vec_dir)
     plt.plot([PPi[0],PPi[0]+vec_dir[0]*factor],[PPi[1],PPi[1]+vec_dir[1]*factor])
     plt.plot([PPi[0]-vec_norm[0]*factor,PPi[0]+vec_norm[0]*factor],[PPi[1]-vec_norm[1]*factor,PPi[1]+vec_norm[1]*factor])
     plt.axis([-1, 17, -1, 14])
@@ -97,10 +93,7 @@ def get_partition_cono(vec_dir,theta0,thetaf,num_part):
     """ Funcion para particionar el cono """
 
     # Calculamos el vector normal de vec_dir
-    vec_norm = vector_ortonormal(vec_dir)
-    #print("vector normal")
-    #print(vec_norm)
-
+    vec_norm = vector_normal(vec_dir)
     list_vect_new = []
     for theta_i in np.linspace(theta0,thetaf,num_part+1):
         theta2 = theta_i
@@ -173,7 +166,7 @@ def get_vector_cono_flujo( PPi, vect_dir_PPi , p_veci, vel_p_veci, list_vect_new
     for i in range(tam):
         coord = p_veci[i]
         for k in range(len(vec_flujo)):
-            if in_cono(coord,list_vect_new[k],list_vect_new[k+1],PPi):
+            if in_cone(coord,list_vect_new[k],list_vect_new[k+1],PPi):
 
                 if(vec_flujo[k]!=0):
                             #distancia con el existente
@@ -276,93 +269,103 @@ def calcular_vel_vec(i, sequence_veci, limites):
                         for j in range(len(data)-2,0,-1):
                                 if((data[j][0]!=data[j-1][0]) or (data[j][1]!=data[j-1][1]) ):
                                     direcciones[i]=np.array([data[j][0]-(data[j-1][0]), data[j][1]-(data[j-1][1])])
-
-
-
 """
 
-
-def vector_secuencia_vecinos(sequence_veci, Id, obs_traj,ind):
+"""
+     Receives:
+            neighbors: tensor of shape [obs_len, mnp, 3] (sequence of positions of all the neighbors)
+            idx vector of length t (batches of ids of each trajectory) [t]
+            obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
+     Returns:
+            The tensor of optical flow values [t, obs_len, 64]
+"""
+def compute_opticalflow(neighbors, Id, obs_traj,ind):
 
     # Direction vectors
     direcciones = vectores_direccion(obs_traj)
 
-    sl  = sequence_veci.shape[0]
-    mnp = sequence_veci.shape[1]
+    # Sequence length
+    sequence_length  = neighbors.shape[0]
+    # Maximum number of neigbors
+    mnp              = neighbors.shape[1]
 
-    sequence_vec_flujo = np.zeros((sl,64), dtype='float')
+    # Output
+    optical_flow = np.zeros((sequence_length,64), dtype='float')
 
-    for i in range(sl): #Longitud de la secuencia
+    for i in range(sequence_length):
 
-        # frame es de [mnp,3]
-        frame = sequence_veci[i,:,:]
+        # Current frame is [mnp,3]
+        frame = neighbors[i,:,:]
 
-        # saco los vecinos previos o los posteriores
+        # Extract next/previous frames
         if(i==0):
-            frame_pos = sequence_veci[i+1,:,:]
+            frame_pos = neighbors[i+1,:,:]
         else:
-            frame_ant = sequence_veci[i-1,:,:]
+            frame_ant = neighbors[i-1,:,:]
 
-        # saco toda la informacion de YO(PPi)
+        # Extract the trajectory of interest (Id)
         person_sec = frame[frame[:,0]== Id,:][0]
-
+        # Current position in the trajectory of interest
         x_current, y_current = obs_traj[i][0], obs_traj[i][1]
 
-        p_veci = []
+        p_veci     = []
         vel_p_veci = []
 
-        for otherpedindex in range(mnp):
+        # Scan the other pedestrians
+        for other_ped_index in range(mnp):
 
             # modifique
-            if((frame[otherpedindex, 0] == person_sec[0]) or frame[otherpedindex, 0]==0 ):
+            if((frame[other_ped_index, 0] == person_sec[0]) or frame[other_ped_index, 0]==0 ):
                 # Yo(PPi) no puede pertenecer a su propio mapa y los que no tienen informacion
                 continue
 
-            # posible vecino
-            other_x = frame[otherpedindex, 1]
-            other_y = frame[otherpedindex, 2]
+            # Position of th possible neighbor
+            other_x = frame[other_ped_index, 1]
+            other_y = frame[other_ped_index, 2]
 
+            # Beginning of the trajectory
             if(i==0):
-                #calcular_vel_vec(i, sequence_veci,otherpedindex, limites)
-                other_x_pos = frame_pos[otherpedindex,1]
-                other_y_pos = frame_pos[otherpedindex,2]
-
+                other_x_pos = frame_pos[other_ped_index,1]
+                other_y_pos = frame_pos[other_ped_index,2]
+                # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
                 if(other_x_pos==0.0 and other_y_pos==0.0):
                     vel_other=[0,0]
                 else:
                     vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
-
+            # Inside the sequence
             else:
-                other_x_ant = frame_ant[otherpedindex,1]
-                other_y_ant = frame_ant[otherpedindex,2]
-
+                other_x_ant = frame_ant[other_ped_index,1]
+                other_y_ant = frame_ant[other_ped_index,2]
                 if(other_x_ant==0.0 and other_y_ant==0.0):
                     vel_other=[0,0]
                 else:
                     vel_other = [other_x-other_x_ant, other_y-other_y_ant]
 
-            # vectores de los posibles vecinos con su respectiva velocidad
+            # Keep the set of velocities
             vel_p_veci.append(vel_other)
+            # Keep the set of positions
             p_veci.append([other_x,other_y])
-        #print(p_veci)
-        sequence_vec_flujo[i,:] = llenado_vector_flujo(p_veci, vel_p_veci, obs_traj[i], direcciones[i],ind, i)
-    return sequence_vec_flujo
+        # Evaluate the flow from the sets of neigbors
+        optical_flow[i,:] = llenado_vector_flujo(p_veci, vel_p_veci, obs_traj[i], direcciones[i],ind, i)
+    return optical_flow
 
-def batch_vecinos(batch_vec, idx, obs_traj, parameters):
+# Main function for optical flow computation
+def compute_opticalflow_batch(neighbors_batch, idx, obs_traj, obs_len):
     """
      Receives:
-            batch_vec tensor of shape [t, obs_len, mnp, 3]
-            idx vector of length t (ids of each trajectory)
-            obs_traj is a tensor of shape [t, obs_len, 2]
+            neighbors_batch: tensor of shape [t, obs_len, mnp, 3] (batch of positions of all the neighbors)
+            idx vector of length t (batches of ids of each trajectory) [t]
+            obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
      Returns:
-            Una matriz con el vector de flujo optico [t, obs_len, 64]
+            The tensor of optical flow values [t, obs_len, 64]
     """
     # Length of the batch
-    t = len(batch_vec)
-
-    vec_flow = np.zeros((t,parameters.obs_len,64))
-    for ind, sub_batch_vec in enumerate(batch_vec):
+    t = len(neighbors_batch)
+    # Scan the neighbors_batch tensor
+    vec_flow = np.zeros((t,obs_len,64))
+    for batch_idx, neighbors_descriptor in enumerate(neighbors_batch):
         # Person id
-        person_id = idx[ind]
-        vec_flow[ind,:,:] = vector_secuencia_vecinos(sub_batch_vec, person_id, obs_traj[ind],ind)
+        person_id = idx[batch_idx]
+        # Compute the optical flow along this trajectory, given the positions of the neighbors
+        vec_flow[batch_idx,:,:] =  compute_opticalflow(neighbors_descriptor, person_id, obs_traj[batch_idx],batch_idx)
     return vec_flow
