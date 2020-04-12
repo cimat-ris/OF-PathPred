@@ -6,7 +6,7 @@ def vector_normal(vec_dir):
     """
     Computes the normal vector.
     Input: a vector (v_x,v_y)
-    Output: a vector normal to the input vector
+    Output: a vector normal to the input vector. Rotated from the original one by -pi/2
     """
     return np.array([vec_dir[1],-vec_dir[0]])
 
@@ -89,30 +89,29 @@ def grafica_vec(ind,i,PPi,vec_dir,list_vect_new=[],Points=[],factor=10000):
     plt.savefig(name)
     plt.show()
 
-def get_partition_cono(vec_dir,theta0,thetaf,num_part):
-    """ Funcion para particionar el cono """
 
-    # Calculamos el vector normal de vec_dir
-    vec_norm = vector_normal(vec_dir)
+"""
+     Receives:
+            current_direction: current direction of the person of interest
+            theta0: initial value of the angle (in radians)
+            thetaf: final value of the angle (in radians)
+            num_rays: number of rays
+     Returns:
+            A vector of directions partitioning the cone
+"""
+def get_partition_cone(current_direction,theta0,thetaf,num_rays):
+    """ Function to partition the cone """
+
+    # Normal to the current orientation: rotated from the direction by -PI/2
+    vec_norm = vector_normal(current_direction)
     list_vect_new = []
-    for theta_i in np.linspace(theta0,thetaf,num_part+1):
-        theta2 = theta_i
-        theta1 = 90-theta2
-        # Calculamos el angulo entre las rectas
-        cos1 = np.cos( theta1*np.pi/180.0)
-        cos2 = np.cos( theta2*np.pi/180.0)
-        # Calculamos la norma del vector
-        norma1 = np.linalg.norm(vec_norm)
-        norma2 = np.linalg.norm(vec_dir)
-
-        # Calculamos la constante
-        c1 = norma1*cos1
-        c2 = norma2*cos2
-
-        # Calculamos el nuevo vector
-        vec_new =   c1*vec_dir - c2*vec_norm
+    # Norm of the direction vector
+    norm = np.linalg.norm(current_direction)
+    # Fills the vector above with
+    for theta_i in np.linspace(theta0,thetaf,num_rays+1):
+        # Rotated vector
+        vec_new =   norm*(np.sin(theta_i)*current_direction - np.cos(theta_i)*vec_norm)
         list_vect_new.append(vec_new)
-
     return list_vect_new
 
 
@@ -194,18 +193,25 @@ def get_vector_cono_flujo( PPi, vect_dir_PPi , p_veci, vel_p_veci, list_vect_new
                     vecinos.append(coord)
     return vec_flujo,vecinos
 
-
-def llenado_vector_flujo(p_veci, vel_p_veci,  PPi, vec_dir,ind,i):
-    theta0 = 5
-    thetaf = 175
+"""
+     Receives:
+            neighbors_positions: list of positions (x2) of all the neighbors
+            neighbors_velocities: list of velocities (x2) of all the neighbors
+            current_position: current position of the person of interest
+            current_direction: current direction of the person of interest
+     Returns:
+            The optical flow vector (dim. 64)
+"""
+def fill_optical_flow(neighbors_positions, neighbors_velocities,  current_position, current_direction):
+    # TODO: define the parameters as parameters of a class
+    # Visibility cone
+    theta0   = 5*np.pi/180.0
+    thetaf   = 175*np.pi/180.0
     num_part = 64
-    # obtenemos los rayos
-    list_vect_new = get_partition_cono( vec_dir, theta0, thetaf, num_part)
-
-    vector_flujo, vecinos = get_vector_cono_flujo(PPi, vec_dir,p_veci,vel_p_veci, list_vect_new)
-    # aqui graficamos
-    #grafica_vec(ind,i,PPi,vec_dir, list_vect_new, p_veci,  factor=100000)
-    return vector_flujo
+    # Filter
+    list_vect_new = get_partition_cone( current_direction, theta0, thetaf, num_part)
+    optical_flow, vecinos = get_vector_cono_flujo(current_position,current_direction,neighbors_positions,neighbors_velocities, list_vect_new)
+    return optical_flow
 """
 def calcular_vel_vec(i, sequence_veci, limites):
     #vecino en la posiciion actual
@@ -346,7 +352,7 @@ def compute_opticalflow(neighbors, Id, obs_traj,ind):
             # Keep the set of positions
             p_veci.append([other_x,other_y])
         # Evaluate the flow from the sets of neigbors
-        optical_flow[i,:] = llenado_vector_flujo(p_veci, vel_p_veci, obs_traj[i], direcciones[i],ind, i)
+        optical_flow[i,:] = fill_optical_flow(p_veci, vel_p_veci, obs_traj[i], direcciones[i])
     return optical_flow
 
 # Main function for optical flow computation
