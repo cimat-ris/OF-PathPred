@@ -68,25 +68,47 @@ def in_cone(Point_eval,vec_dir1,vec_dir2,Point_in_recta):
         return 1
     return 0
 
-def grafica_vec(ind,i,PPi,vec_dir,list_vect_new=[],Points=[],factor=10000):
+
+def plot_flow(trajectory,neighbors_trajectory,optical_flow):
     """ Funcion para graficar y visualizar los vectores y puntos"""
+    theta0   = 5*np.pi/180.0
+    thetaf   = 175*np.pi/180.0
+    plt.subplots(4,3,figsize=(15,15))
+    for seq_pos in range(1,7):
+        plt.subplot(4,3,seq_pos+3*((seq_pos-1)//3))
+        current_position  = trajectory[seq_pos]
+        current_direction = (trajectory[seq_pos]-trajectory[seq_pos-1])/np.linalg.norm(0.0001+trajectory[seq_pos]-trajectory[seq_pos-1])
+        # Whole trajectory
+        plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='black')
+        # Direction and normal
+        vec_norm = vector_normal(current_direction)
+        plt.arrow(current_position[0],current_position[1],current_direction[0],current_direction[1],color='blue',linewidth=2)
+        plt.arrow(current_position[0],current_position[1],-vec_norm[0],-vec_norm[1],color='red',linewidth=2)
+        plt.arrow(current_position[0],current_position[1],+vec_norm[0],+vec_norm[1],color='red',linewidth=2)
+        # Plot the neighbors
+        for neighbor in neighbors_trajectory[seq_pos]:
+            if neighbor[0]>0:
+                plt.plot(neighbor[1],neighbor[2],color='green',marker='o')
+                for neighbor_prev in neighbors_trajectory[seq_pos-1]:
+                    if neighbor_prev[0]==neighbor[0]:
+                        plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
+        plt.axis('equal')
 
-    # Graficamos el vector direccion y el normal
-    vec_norm = vector_normal(vec_dir)
-    plt.plot([PPi[0],PPi[0]+vec_dir[0]*factor],[PPi[1],PPi[1]+vec_dir[1]*factor])
-    plt.plot([PPi[0]-vec_norm[0]*factor,PPi[0]+vec_norm[0]*factor],[PPi[1]-vec_norm[1]*factor,PPi[1]+vec_norm[1]*factor])
-    plt.axis([-1, 17, -1, 14])
-
+        # PLot the optical flow
+        plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
+        thetas = np.linspace(theta0,thetaf,65)[:-1]
+        plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
+        plt.plot(thetas,np.zeros_like(thetas))
     # Graficamos los nuevos vectores de particion
-    for vec_new in list_vect_new:
-        plt.plot([PPi[0],PPi[0]+vec_new[0]*factor],[PPi[1],PPi[1]+vec_new[1]*factor],'--')
+    #for vec_new in list_vect_new:
+    #    plt.plot([current_position[0],current_position[0]+vec_new[0]*factor],[current_position[1],current_position[1]+vec_new[1]*factor],'--')
 
     # Graficamos los puntos que queramos
-    for vec in Points:
-        plt.plot(vec[0], vec[1],'ro') # Test
-    name= 'mapa_zara02'+ str(int(ind))+'_'+str(int(i))+'.jpg'
+    #for vec in Points:
+    #    plt.plot(vec[0], vec[1],'ro') # Test
+    #name= 'mapa_zara02'+ str(int(ind))+'_'+str(int(i))+'.jpg'
     #plt.savefig("trayectorias.jpg")
-    plt.savefig(name)
+    #plt.savefig(name)
     plt.show()
 
 
@@ -198,8 +220,8 @@ def fill_optical_flow(neighbors_positions, neighbors_velocities,current_position
     num_part = 64
     # List of rays
     list_vect_new = get_partition_cone( current_direction, theta0, thetaf, num_part)
-    optical_flow, vecinos = get_flow_in_cone(current_position,current_direction,neighbors_positions,neighbors_velocities, list_vect_new)
-    return optical_flow
+    optical_flow, neighbors = get_flow_in_cone(current_position,current_direction,neighbors_positions,neighbors_velocities, list_vect_new)
+    return optical_flow, neighbors
 """
 def calcular_vel_vec(i, sequence_veci, limites):
     #vecino en la posiciion actual
@@ -273,7 +295,7 @@ def calcular_vel_vec(i, sequence_veci, limites):
      Returns:
             The tensor of optical flow values [t, obs_len, 64]
 """
-def compute_opticalflow(neighbors, Id, obs_traj,ind):
+def compute_opticalflow(neighbors, Id, obs_traj):
 
     # Direction vectors
     direcciones = vectores_direccion(obs_traj)
@@ -340,7 +362,7 @@ def compute_opticalflow(neighbors, Id, obs_traj,ind):
             # Keep the set of positions
             p_veci.append([other_x,other_y])
         # Evaluate the flow from the sets of neigbors
-        optical_flow[i,:] = fill_optical_flow(p_veci, vel_p_veci, obs_traj[i], direcciones[i])
+        optical_flow[i,:],__ = fill_optical_flow(p_veci, vel_p_veci, obs_traj[i], direcciones[i])
     return optical_flow
 
 # Main function for optical flow computation
@@ -361,5 +383,5 @@ def compute_opticalflow_batch(neighbors_batch, idx, obs_traj, obs_len):
         # Person id
         person_id = idx[batch_idx]
         # Compute the optical flow along this trajectory, given the positions of the neighbors
-        vec_flow[batch_idx,:,:] =  compute_opticalflow(neighbors_descriptor, person_id, obs_traj[batch_idx],batch_idx)
+        vec_flow[batch_idx,:,:] =  compute_opticalflow(neighbors_descriptor, person_id, obs_traj[batch_idx])
     return vec_flow
