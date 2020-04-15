@@ -19,3 +19,9 @@ If tensorflow 1.15.2 is not available through the command above, upgrade pip:
 ```Python
 python3 -m pip install --upgrade pip setuptools
 ```
+Then, you can open notebook:
+```Python
+.venv/bin/jupyter-notebook
+```
+
+and open the notebook located at ./keypoints/train_and_evaluate.ipynb
