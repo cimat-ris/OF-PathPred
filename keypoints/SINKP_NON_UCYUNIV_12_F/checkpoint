@@ -1,3 +1,0 @@
-model_checkpoint_path: "model.ckpt-43800"
-all_model_checkpoint_paths: "../SINKP_NON_UCYUNIV_12/model.ckpt-43800"
-all_model_checkpoint_paths: "model.ckpt-43800"
