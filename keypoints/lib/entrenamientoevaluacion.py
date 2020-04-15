@@ -40,6 +40,7 @@ class Trainer(object):
         self.loss = model.loss  # get the loss funcion
         #self.grid_data = model.grid_data  # get the vector_ID value
         self.train_op = opt_emb.minimize(self.loss) #### Diferente
+
     def get_lr(self):
         return self.learning_rate
 

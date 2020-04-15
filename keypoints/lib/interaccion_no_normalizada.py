@@ -52,336 +52,209 @@ def vectores_direccion(data):
 
     return direcciones
 
-def in_line(Point_eval, vec_dir, Point_on_line):
-    """ Function to evaluate where a point is with respect to a straight line"""
-    # Positive: right side of the line
-    # Negative: left side of the line
-    # Zero: on the line
-    return np.sum(Point_eval*vector_normal(vec_dir)) - np.sum(Point_on_line*vector_normal(vec_dir))
-
-def in_cone(Point_eval,vec_dir1,vec_dir2,Point_in_recta):
-    """ FuFunction to evaluate where a point is inside or outside of a cone"""
-    # 1 if inside thecone
-    # 0 if outside
-    # We evaluate the relative position with the two lines forming the cone
-    if in_line(Point_eval,vec_dir1,Point_in_recta)>0 and in_line(Point_eval,vec_dir2,Point_in_recta)<0:
-        return 1
-    return 0
+# Main class for computing the optical flow
+class OpticalFlowSimulator(object):
+    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64):
+        self.theta0    = theta0
+        self.thetaf    = thetaf
+        self.delta     = (thetaf-theta0)/num_rays
+        self.num_rays  = num_rays
 
 
-def plot_flow(trajectory,neighbors_trajectory,optical_flow):
-    """ Funcion para graficar y visualizar los vectores y puntos"""
-    theta0   = 5*np.pi/180.0
-    thetaf   = 175*np.pi/180.0
-    plt.subplots(4,3,figsize=(15,15))
-    for seq_pos in range(1,7):
-        plt.subplot(4,3,seq_pos+3*((seq_pos-1)//3))
-        current_position  = trajectory[seq_pos]
-        current_direction = (trajectory[seq_pos]-trajectory[seq_pos-1])/np.linalg.norm(0.0001+trajectory[seq_pos]-trajectory[seq_pos-1])
-        # Whole trajectory
-        plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='black')
-        # Direction and normal
-        vec_norm = vector_normal(current_direction)
-        plt.arrow(current_position[0],current_position[1],current_direction[0],current_direction[1],color='blue',linewidth=2)
-        plt.arrow(current_position[0],current_position[1],-vec_norm[0],-vec_norm[1],color='red',linewidth=2)
-        plt.arrow(current_position[0],current_position[1],+vec_norm[0],+vec_norm[1],color='red',linewidth=2)
-        # Plot the neighbors
-        for neighbor in neighbors_trajectory[seq_pos]:
-            if neighbor[0]>0:
-                plt.plot(neighbor[1],neighbor[2],color='green',marker='o')
-                for neighbor_prev in neighbors_trajectory[seq_pos-1]:
-                    if neighbor_prev[0]==neighbor[0]:
-                        plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
-        plt.axis('equal')
+    def plot_flow(self,trajectory,neighbors_trajectory,optical_flow):
+        """ Funcion para graficar y visualizar los vectores y puntos"""
+        plt.subplots(4,3,figsize=(15,15))
+        for seq_pos in range(1,7):
+            plt.subplot(4,3,seq_pos+3*((seq_pos-1)//3))
+            current_position  = trajectory[seq_pos]
+            current_direction = (trajectory[seq_pos]-trajectory[seq_pos-1])/np.linalg.norm(0.0001+trajectory[seq_pos]-trajectory[seq_pos-1])
+            # Whole trajectory
+            plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='black')
+            # Direction and normal
+            vec_norm = vector_normal(current_direction)
+            plt.arrow(current_position[0],current_position[1],current_direction[0],current_direction[1],color='blue',linewidth=2)
+            plt.arrow(current_position[0],current_position[1],-vec_norm[0],-vec_norm[1],color='red',linewidth=2)
+            plt.arrow(current_position[0],current_position[1],+vec_norm[0],+vec_norm[1],color='red',linewidth=2)
+            # Plot the neighbors
+            for neighbor in neighbors_trajectory[seq_pos]:
+                if neighbor[0]>0:
+                    plt.plot(neighbor[1],neighbor[2],color='green',marker='o')
+                    for neighbor_prev in neighbors_trajectory[seq_pos-1]:
+                        if neighbor_prev[0]==neighbor[0]:
+                            plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
+            plt.axis('equal')
 
-        # PLot the optical flow
-        plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
-        thetas = np.linspace(theta0,thetaf,65)[:-1]
-        plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
-        plt.plot(thetas,np.zeros_like(thetas))
-    # Graficamos los nuevos vectores de particion
-    #for vec_new in list_vect_new:
-    #    plt.plot([current_position[0],current_position[0]+vec_new[0]*factor],[current_position[1],current_position[1]+vec_new[1]*factor],'--')
-
-    # Graficamos los puntos que queramos
-    #for vec in Points:
-    #    plt.plot(vec[0], vec[1],'ro') # Test
-    #name= 'mapa_zara02'+ str(int(ind))+'_'+str(int(i))+'.jpg'
-    #plt.savefig("trayectorias.jpg")
-    #plt.savefig(name)
-    plt.show()
+            # Plot the optical flow
+            plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
+            thetas = np.linspace(self.theta0,self.thetaf,65)[:-1]
+            plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
+            plt.plot(thetas,np.zeros_like(thetas))
+        plt.show()
 
 
-"""
-     Receives:
-            current_direction: current direction of the person of interest
-            theta0: initial value of the angle (in radians)
-            thetaf: final value of the angle (in radians)
-            num_rays: number of rays
-     Returns:
-            A vector of directions partitioning the cone
-"""
-def get_partition_cone(current_direction,theta0,thetaf,num_rays):
-    """ Function to partition the cone """
-
-    # Normal to the current orientation: rotated from the direction by -PI/2
-    vec_norm = vector_normal(current_direction)
-    list_vect_new = []
-    # Norm of the direction vector
-    norm = np.linalg.norm(current_direction)
-    # Fills the vector above with
-    for theta_i in np.linspace(theta0,thetaf,num_rays+1):
-        # Rotated vector
-        vec_new =   norm*(np.sin(theta_i)*current_direction - np.cos(theta_i)*vec_norm)
-        list_vect_new.append(vec_new)
-    return list_vect_new
-
-"""
-     Receives:
+    """
+    Receives:
             current_position: current position of the person of interest
             neighbor_position: position (x2) of the neighbor
             current_direction: current direction of the person of interest
             neighbors_velocity: velocity (x2) of all the neighbor
-     Returns:
-            The horizontal component of the optical flow generated by the neighbor (dim. 1)
-"""
-def optical_flow_contribution(current_position, neighbor_position , current_direction, neighbor_velocity):
-    """ Function that computes the optical flow generated by a neighbor con respecto a PPi"""
+    Returns:
+        The horizontal component of the optical flow generated by the neighbor (dim. 1)
+    """
+    def optical_flow_contribution(self,current_position, neighbor_position , current_direction, neighbor_velocity):
+        """ Function that computes the optical flow generated by a neighbor con respecto a PPi"""
+        # Relative position (world frame)
+        relative_position_w = [neighbor_position[0]-current_position[0],neighbor_position[1]-current_position[1]]
+        # Angle corresponding to the current direction
+        theta = math.atan2(current_direction[1], current_direction[0])
+        # TODO: this matrix is the same for all the neighbors, so it could be computed once
+        # Rotation matrix
+        mr = np.array( [[math.cos(theta),-math.sin(theta)],[math.sin(theta),math.cos(theta)]])
 
-    # Relative position (world frame)
-    relative_position_w = [neighbor_position[0]-current_position[0],neighbor_position[1]-current_position[1]]
+        # Transforms the relative position of the neighbor in the rotated frame
+        relative_position_l = np.array( [mr[0,0]*relative_position_w[0]+mr[0,1]*relative_position_w[1],mr[1,0]*relative_position_w[0]+mr[1,1]*relative_position_w[1]])
 
-    # Angle corresponding to the current direction
-    theta = math.atan2(current_direction[1], current_direction[0])
+        # Process in the same way to express the relative velocity in the rotated frame
+        delta_vel   = neighbor_velocity-current_direction
+        delta_vel_l = np.array([mr[0,0]*delta_vel[0]+mr[0,1]*delta_vel[1],mr[1,0]*delta_vel[0]+mr[1,1]*delta_vel[1]])
 
-    # TODO: this matrix is the same for all the neighbors, so it could be computed once
-    # Rotation matrix
-    mr = np.array( [[math.cos(theta),-math.sin(theta)],[math.sin(theta),math.cos(theta)]])
-
-    # Transforms the relative position of the neighbor in the rotated frame
-    relative_position_l = np.array( [mr[0,0]*relative_position_w[0]+mr[0,1]*relative_position_w[1],mr[1,0]*relative_position_w[0]+mr[1,1]*relative_position_w[1]])
-
-    # Process in the same way to express the relative velocity in the rotated frame
-    delta_vel   = neighbor_velocity-current_direction
-    delta_vel_l = np.array([mr[0,0]*delta_vel[0]+mr[0,1]*delta_vel[1],mr[1,0]*delta_vel[0]+mr[1,1]*delta_vel[1]])
-
-    x = relative_position_l[1]/relative_position_l[0]
-    return (delta_vel_l[1]-x*delta_vel_l[0])*relative_position_l[0]
+        x = relative_position_l[1]/relative_position_l[0]
+        return (delta_vel_l[1]-x*delta_vel_l[0])*relative_position_l[0]
 
 
-"""
-     Receives:
-            current_position: current position of the person of interest
-            current_direction: current direction of the person of interest
-            neighbors_positions: list of positions (x2) of all the neighbors
-            neighbors_velocities: list of velocities (x2) of all the neighbors
-            list_rays: list of rays along the cone
-     Returns:
-            An optical flow vector
-"""
-def get_flow_in_cone(current_position, current_direction,neighbors_positions,neighbors_velocities,list_rays):
-    # nlen is 64
-    nlen = len(list_rays)-1
-    # Closest distances
-    vec_coord = [[]]*nlen
-    closest_squared_distances = np.Inf*np.ones(nlen)
-    # Output: the optical flow
-    flow = np.zeros(nlen)
-    tam  = len(neighbors_positions)
-    visible_neighbors = np.Inf*np.ones((nlen,2))
-    # Scan the neighbors
-    for neighbor_position,neighbor_velocity in zip(neighbors_positions,neighbors_velocities):
-        # TODO: should determine directly the angle to avoid this loop
-        for k in range(nlen):
-            if in_cone(neighbor_position,list_rays[k],list_rays[k+1],current_position):
+    """
+         Receives:
+                current_position: current position of the person of interest
+                current_direction: current direction of the person of interest
+                neighbors_positions: list of positions (x2) of all the neighbors
+                neighbors_velocities: list of velocities (x2) of all the neighbors
+        Returns:
+                An optical flow vector
+    """
+    def get_flow_in_cone(self,current_position, current_direction,neighbors_positions,neighbors_velocities):
+        nlen = self.num_rays
+        # Closest distances
+        vec_coord = [[]]*nlen
+        closest_squared_distances = np.Inf*np.ones(nlen)
+        # Output: the optical flow
+        flow = np.zeros(nlen)
+        tam  = len(neighbors_positions)
+        visible_neighbors = np.Inf*np.ones((nlen,2))
+
+        # Scan the neighbors
+        for neighbor_position,neighbor_velocity in zip(neighbors_positions,neighbors_velocities):
+            k = int(32-(math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0]))/self.delta)
+            if k>=0 and k<self.num_rays:
                 d =(current_position[0]-neighbor_position[0])**2+(current_position[1]-neighbor_position[1])**2
                 # Distance to this neighbor
                 if(d<closest_squared_distances[k]):
-                                u = optical_flow_contribution(current_position,neighbor_position,current_direction, neighbor_velocity)
-                                flow[k]                      = u
-                                closest_squared_distances[k] = k
-                                visible_neighbors[k,:]       = neighbor_position
-    return flow,visible_neighbors
+                    u = self.optical_flow_contribution(current_position,neighbor_position,current_direction, neighbor_velocity)
+                    flow[k]                      = u
+                    closest_squared_distances[k] = d
+                    visible_neighbors[k,:]       = neighbor_position
+                    # Update JBH: To make the vector less sparse, I duplicate the entry in the neighboring cell
+                    if k<self.num_rays-1 and d<closest_squared_distances[k+1]:
+                        flow[k+1]                      = u
+                        closest_squared_distances[k+1] = d
+                        visible_neighbors[k+1,:]       = neighbor_position
 
-"""
-     Receives:
-            neighbors_positions: list of positions (x2) of all the neighbors
-            neighbors_velocities: list of velocities (x2) of all the neighbors
-            current_position: current position of the person of interest
-            current_direction: current direction of the person of interest
-     Returns:
-            The optical flow vector (dim. 64)
-"""
-def fill_optical_flow(neighbors_positions, neighbors_velocities,current_position, current_direction):
-    # TODO: define the parameters as parameters of a class
-    # Visibility cone
-    theta0   = 5*np.pi/180.0
-    thetaf   = 175*np.pi/180.0
-    num_part = 64
-    # List of rays
-    list_vect_new = get_partition_cone( current_direction, theta0, thetaf, num_part)
-    optical_flow, neighbors = get_flow_in_cone(current_position,current_direction,neighbors_positions,neighbors_velocities, list_vect_new)
-    return optical_flow, neighbors
-"""
-def calcular_vel_vec(i, sequence_veci, limites):
-    #vecino en la posiciion actual
-    frame = sequence_veci[i,:,:]
+        return flow,visible_neighbors
 
-    other_x = (frame[otherpedindex, 1]-(min_x))/((max_x-(min_x))*1.0)
-    other_y = (frame[otherpedindex, 2]-(min_y))/((max_x-(min_x))*1.0)
-
-    if(i==0):
-        frame_pos = sequence_veci[i+1,:,:]
-        other_x_pos = frame_pos[otherpedindex,1]
-        other_y_pos = frame_pos[otherpedindex,2]
-
-        if(other_x_pos!=0 or other_y_pos!=0):
-            other_x_pos = (other_x_pos-(min_x))/((max_x-(min_x))*1.0)
-            other_y_pos = (other_y_pos-(min_y))/((max_x-(min_x))*1.0)
-            vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
-            return vel_other
-        else:
-            for j in range(i+2,len(data)-1):
-                frame_pos = sequence_veci[j,:,:]
-                other_x_pos = frame_pos[otherpedindex,1]
-                other_y_pos = frame_pos[otherpedindex,2]
-
-                if(other_x_pos!=0 or other_y_pos!=0):
-                    other_x_pos = (other_x_pos-(min_x))/((max_x-(min_x))*1.0)
-                    other_y_pos = (other_y_pos-(min_y))/((max_x-(min_x))*1.0)
-                    vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
-                    return vel_other
-    else:
-        frame_ant = sequence_veci[i-1,:,:]
-        other_x_ant = frame_ant[otherpedindex,1]
-        other_y_ant = frame_ant[otherpedindex,2]
-
-        if((other_x_ant!=0) or (other_y_ant!=0)):
-            other_x_ant = (other_x_ant-(min_x))/ ((max_x-(min_x))*1.0)
-            other_y_ant = (other_y_ant-(min_y))/ ((max_x-(min_x))*1.0)
-            vel_other = [other_x-other_x_ant, other_y-other_y_ant]
-            return
-
-        else:
-            if(i==(len(data)-1)):
-                for j in range(len(data)-2,-1,-1):
-                    frame_ant =sequence_veci[j,:,:]
-                    other_x_ant = frame_ant[otherpedindex,1]
-                    other_y_ant = frame_ant[otherpedindex,2]
-                    if((other_x_ant!=0) or (other_y_ant!=0) ):
-                        other_x_ant = (other_x_ant-(min_x))/ ((max_x-(min_x))*1.0)
-                        other_y_ant = (other_y_ant-(min_y))/ ((max_x-(min_x))*1.0)
-                        vel_other = [other_x-other_x_ant, other_y-other_y_ant]
-            else:
-                for j in range(i+1,len(data)):
-                    frame_pos = sequence_veci[j,:,:]
-                    other_x_pos = frame_pos[otherpedindex,1]
-                    other_y_pos = frame_pos[otherpedindex,2]
-                    if((other_x_pos!=0) or (other_y_pos!=0)):
-                        other_x_pos = (other_x_pos-(min_x))/((max_x-(min_x))*1.0)
-                        other_y_pos = (other_y_pos-(min_y))/((max_x-(min_x))*1.0)
-                        vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
-                    if(j==(len(data)-1)):
-                        for j in range(len(data)-2,0,-1):
-                                if((data[j][0]!=data[j-1][0]) or (data[j][1]!=data[j-1][1]) ):
-                                    direcciones[i]=np.array([data[j][0]-(data[j-1][0]), data[j][1]-(data[j-1][1])])
-"""
-
-"""
-     Receives:
-            neighbors: tensor of shape [obs_len, mnp, 3] (sequence of positions of all the neighbors)
-            idx vector of length t (batches of ids of each trajectory) [t]
+    """
+        Receives:
+            Id: Id of the main agent
             obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
-     Returns:
+            neighbors: tensor of shape [obs_len, mnp, 3] (sequence of positions of all the neighbor
+        Returns:
             The tensor of optical flow values [t, obs_len, 64]
-"""
-def compute_opticalflow(neighbors, Id, obs_traj):
+    """
+    def compute_opticalflow_seq(self,Id,obs_traj,neighbors):
+        # Direction vectors
+        # TODO: simplify
+        direcciones = vectores_direccion(obs_traj)
 
-    # Direction vectors
-    direcciones = vectores_direccion(obs_traj)
+        # Sequence length
+        sequence_length  = neighbors.shape[0]
+        # Maximum number of neigbors
+        mnp              = neighbors.shape[1]
 
-    # Sequence length
-    sequence_length  = neighbors.shape[0]
-    # Maximum number of neigbors
-    mnp              = neighbors.shape[1]
+        # Output
+        optical_flow = np.zeros((sequence_length,self.num_rays), dtype='float')
 
-    # Output
-    optical_flow = np.zeros((sequence_length,64), dtype='float')
+        # Scan the sequence along time
+        for i in range(sequence_length):
+            # Current neighbors frame is [mnp,3]
+            frame = neighbors[i,:,:]
 
-    for i in range(sequence_length):
-
-        # Current frame is [mnp,3]
-        frame = neighbors[i,:,:]
-
-        # Extract next/previous frames
-        if(i==0):
-            frame_pos = neighbors[i+1,:,:]
-        else:
-            frame_ant = neighbors[i-1,:,:]
-
-        # Extract the trajectory of interest (Id)
-        person_sec = frame[frame[:,0]== Id,:][0]
-        # Current position in the trajectory of interest
-        x_current, y_current = obs_traj[i][0], obs_traj[i][1]
-
-        p_veci     = []
-        vel_p_veci = []
-
-        # Scan the other pedestrians
-        for other_ped_index in range(mnp):
-
-            # modifique
-            if((frame[other_ped_index, 0] == person_sec[0]) or frame[other_ped_index, 0]==0 ):
-                # Yo(PPi) no puede pertenecer a su propio mapa y los que no tienen informacion
-                continue
-
-            # Position of th possible neighbor
-            other_x = frame[other_ped_index, 1]
-            other_y = frame[other_ped_index, 2]
-
-            # Beginning of the trajectory
+            # Extract next/previous frames
             if(i==0):
-                other_x_pos = frame_pos[other_ped_index,1]
-                other_y_pos = frame_pos[other_ped_index,2]
-                # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
-                if(other_x_pos==0.0 and other_y_pos==0.0):
-                    vel_other=[0,0]
-                else:
-                    vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
-            # Inside the sequence
+                    frame_pos = neighbors[i+1,:,:]
             else:
-                other_x_ant = frame_ant[other_ped_index,1]
-                other_y_ant = frame_ant[other_ped_index,2]
-                if(other_x_ant==0.0 and other_y_ant==0.0):
-                    vel_other=[0,0]
+                    frame_ant = neighbors[i-1,:,:]
+
+            # Extract the trajectory of interest (Id)
+            person_sec = frame[frame[:,0]== Id,:][0]
+            # Current position in the trajectory of interest
+            x_current, y_current = obs_traj[i][0], obs_traj[i][1]
+
+            # List of neighbors
+            p_veci     = []
+            vel_p_veci = []
+
+            # Scan the other pedestrians
+            for other_ped_index in range(mnp):
+
+                # If the neighbor is id==Id or is a no-neighnor (id==0)
+                if((frame[other_ped_index, 0] == person_sec[0]) or frame[other_ped_index, 0]==0 ):
+                    continue
+
+                # Position of the possible neighbor
+                other_x = frame[other_ped_index, 1]
+                other_y = frame[other_ped_index, 2]
+
+                # Beginning of the trajectory
+                if(i==0):
+                    other_x_pos = frame_pos[other_ped_index,1]
+                    other_y_pos = frame_pos[other_ped_index,2]
+                    # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
+                    if(other_x_pos==0.0 and other_y_pos==0.0):
+                        vel_other=[0,0]
+                    else:
+                        vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
+                # Inside the sequence
                 else:
-                    vel_other = [other_x-other_x_ant, other_y-other_y_ant]
+                    other_x_ant = frame_ant[other_ped_index,1]
+                    other_y_ant = frame_ant[other_ped_index,2]
+                    if(other_x_ant==0.0 and other_y_ant==0.0):
+                        vel_other=[0,0]
+                    else:
+                        vel_other = [other_x-other_x_ant, other_y-other_y_ant]
 
-            # Keep the set of velocities
-            vel_p_veci.append(vel_other)
-            # Keep the set of positions
-            p_veci.append([other_x,other_y])
-        # Evaluate the flow from the sets of neigbors
-        optical_flow[i,:],__ = fill_optical_flow(p_veci, vel_p_veci, obs_traj[i], direcciones[i])
-    return optical_flow
+                # Keep the set of velocities
+                vel_p_veci.append(vel_other)
+                # Keep the set of positions
+                p_veci.append([other_x,other_y])
+            # Evaluate the flow from the sets of neigbors
+            optical_flow[i,:],__ =  self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci)
+        return optical_flow
 
-# Main function for optical flow computation
-def compute_opticalflow_batch(neighbors_batch, idx, obs_traj, obs_len):
-    """
-     Receives:
-            neighbors_batch: tensor of shape [t, obs_len, mnp, 3] (batch of positions of all the neighbors)
-            idx vector of length t (batches of ids of each trajectory) [t]
-            obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
-     Returns:
-            The tensor of optical flow values [t, obs_len, 64]
-    """
-    # Length of the batch
-    t = len(neighbors_batch)
-    # Scan the neighbors_batch tensor
-    vec_flow = np.zeros((t,obs_len,64))
-    for batch_idx, neighbors_descriptor in enumerate(neighbors_batch):
-        # Person id
-        person_id = idx[batch_idx]
-        # Compute the optical flow along this trajectory, given the positions of the neighbors
-        vec_flow[batch_idx,:,:] =  compute_opticalflow(neighbors_descriptor, person_id, obs_traj[batch_idx])
-    return vec_flow
+    # Main function for optical flow computation
+    def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len):
+        """
+        Receives:
+                neighbors_batch: tensor of shape [t, obs_len, mnp, 3] (batch of positions of all the neighbors)
+                idx vector of length t (batches of ids of each trajectory) [t]
+                obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
+        Returns:
+                The tensor of optical flow values [t, obs_len, 64]
+        """
+        # Length of the batch
+        t = len(neighbors_batch)
+        # Scan the neighbors_batch tensor
+        vec_flow = np.zeros((t,obs_len,self.num_rays))
+        for batch_idx, neighbors_descriptor in enumerate(neighbors_batch):
+            # Person id
+            person_id = idx[batch_idx]
+            # Compute the optical flow along this trajectory, given the positions of the neighbors
+            vec_flow[batch_idx,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor)
+        return vec_flow
