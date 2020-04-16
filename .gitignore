@@ -1,3 +1,5 @@
+*.npy
+*.h5
 *.pyc
 */results/*
 data1/*
