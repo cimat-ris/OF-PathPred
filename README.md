@@ -24,4 +24,4 @@ Then, you can open notebook:
 .venv/bin/jupyter-notebook
 ```
 
-and open the notebook located at ./keypoints/train_and_evaluate.ipynb
+and open the notebook located at ./evaluation_opticalflow/train_and_evaluate.ipynb
