@@ -1,5 +1,6 @@
 *.npy
 *.h5
+*.pickle
 *.pyc
 */results/*
 data1/*
