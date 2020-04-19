@@ -7,24 +7,20 @@ class Model(object):
     """Model graph definitions.
     """
     def __init__(self, config):
-        self.scope = config.modelname
-        self.config = config
+        self.scope       = config.modelname
+        self.config      = config
         self.global_step = tf.Variable(initial_value=0,name='global_step', shape=[],dtype='int32',trainable=False)
 
-        # get all the dimension here
+        # Get all the dimension here
         # Tensor dimensions, so pylint: disable=g-bad-name
         N  = self.N  = config.batch_size
         KP = self.KP = config.kp_size ####
-        self.P = P = 2  # traj coordinate dimension
-        #MNP = self.MNP = config.maxNumPed
-        T1 = config.obs_len
-        # las dimensiones de un frame
-        # all the inputs
+        P  = self.P  = 2              # Spatial coordinates
+        T1 = config.obs_len           # Length of the observations
 
-        # the trajactory sequence,
+        # The trajactory sequence: [N,T1,2] # T1 is the obs_len
         # in training, it is the obs+pred combined,
         # in testing, only obs is fed and the rest is zeros
-        # [N,T1,2] # T1 is the obs_len
         # mask is used for variable length input extension
         self.traj_obs_gt      = tf.compat.v1.placeholder('float', [N, None, P], name='traj_obs_gt')
         self.traj_obs_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name='traj_obs_gt_mask')
@@ -33,18 +29,17 @@ class Model(object):
         self.traj_pred_gt      = tf.compat.v1.placeholder('float', [N, None, P], name = 'traj_pred_gt')
         self.traj_pred_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name = 'traj_pred_gt_mask')
 
-        #info keypoints
+        # Info about keypoints
         self.obs_kp = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
-
-        #info social
-
-        # grid data de cada una de las secuencias
-        self.obs_flujo = tf.compat.v1.placeholder('float',[N, None,64],name='obsf_flujo')
-        #used for drop out switch
+        # Info about optical flow
+        self.obs_flow = tf.compat.v1.placeholder('float',[N, None,64],name='obsf_flow')
+        # Flag for trainig. Used for drop out switch
         self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
-
+        # Loss function
         self.loss = None
+        # Build foward model
         self.build_forward()
+        # Build loss
         self.build_loss()
 
 
@@ -52,31 +47,31 @@ class Model(object):
         """Build the forward model graph."""
         config = self.config
         # Tensor dimensions, so pylint: disable=g-bad-name
-        N  = self.N
-        KP = self.KP ####
+        N  = self.N  # Batches
+        KP = self.KP # Number of keypoints
 
-        # add dropout
+        # Add dropout
         keep_prob = tf.cond(self.is_train,
                         lambda: tf.constant(config.keep_prob),
                         lambda: tf.constant(1.0))
-        # ------------------------- encoder ------------------------
-        # trayectoria encoder
+        # ------------------------- Encoder ------------------------
+        # Trajectory encoder
         enc_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(
             config.enc_hidden_size, state_is_tuple=True, name='enc_traj')
         enc_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_traj, keep_prob)
 
-        # person pose encoder
+        # Person pose (keypoints) encoder
         if config.add_kp:
             enc_cell_kp = tf.compat.v1.nn.rnn_cell.LSTMCell(config.enc_hidden_size, state_is_tuple=True, name='enc_kp')
             enc_cell_kp = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_kp, keep_prob)
 
-        #parte social encoder
+        # Social encoding part (optical flow)
         if config.add_social:
             enc_cell_soc = tf.compat.v1.nn.rnn_cell.LSTMCell(
                 config.enc_hidden_size,state_is_tuple = True,name='enc_social')
             enc_cell_soc = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_soc,keep_prob)
 
-        # ------------------------ decoder
+        # ------------------------ Decoder
         if config.multi_decoder:
             dec_cell_traj = [tf.compat.v1.nn.rnn_cell.LSTMCell(
                 config.dec_hidden_size, state_is_tuple=True, name='dec_traj_%s' % i)
@@ -93,62 +88,61 @@ class Model(object):
         # top_scope is used for variable inside
         # encode and decode if want to share variable across
         with tf.compat.v1.variable_scope('person_pred') as top_scope:
-            # [N,T1,h_dim]
-            # xy encoder
-
+            # xy encoder: [N,T1,h_dim]
             obs_length = tf.reduce_sum(tf.cast(self.traj_obs_gt_mask, 'int32'), 1)
-
+            # Linear embedding
             traj_xy_emb_enc = linear(self.traj_obs_gt,
                                output_size=config.emb_size,
                                activation=config.activation_func,
                                add_bias=True,
                                scope='enc_xy_emb')
+            # Applies the position sequence through the LSTM
             traj_obs_enc_h, traj_obs_enc_last_state = tf.compat.v1.nn.dynamic_rnn(
                 enc_cell_traj, traj_xy_emb_enc, sequence_length = obs_length,
                 dtype='float', scope='encoder_traj')
-
-            #print("hola1------------")
-            #print(traj_obs_enc_h)
-            enc_h_list = [traj_obs_enc_h]
-
+            # Get the hidden states and the last hidden state, separately
+            enc_h_list          = [traj_obs_enc_h]
             enc_last_state_list = [traj_obs_enc_last_state]
 
-            # person pose
+            # Person pose (keypoints)
             if config.add_kp:
                 obs_kp = tf.reshape(self.obs_kp, [N, -1, KP*2])
+                # Linear embedding of the keypoints
                 obs_kp = linear(obs_kp, output_size=config.emb_size, add_bias=True,
                                 activation=config.activation_func, scope='kp_emb')
-
+                # Applies the person pose (keypoints) sequence through the LSTM
                 kp_obs_enc_h, kp_obs_enc_last_state = tf.nn.dynamic_rnn(
                     enc_cell_kp, obs_kp, sequence_length=obs_length, dtype='float',
                     scope='encoder_kp')
-                #print(kp_obs_enc_h)
+                # Get the hidden states and the last hidden state, separately
                 enc_h_list.append(kp_obs_enc_h)
-
                 enc_last_state_list.append(kp_obs_enc_last_state)
-            #aqui se agrego la parte de la interaccion social
+
+            # Interaccion social through optical flow
             if config.add_social:
+                # Linear embedding of the optical flow
                 obs_soc = linear(self.obs_flujo,output_size = config.emb_size,add_bias = True,
                     activation=config.activation_func,scope='flujo_emb')
+                # Applies the person pose (keypoints) sequence through the LSTM
                 soc_obs_enc_h, soc_obs_enc_last_state =tf.nn.dynamic_rnn(
                     enc_cell_soc, obs_soc, sequence_length=obs_length, dtype='float',
                     scope='encoder_soc')
-
+                # Get the hidden states and the last hidden state, separately
                 enc_h_list.append(soc_obs_enc_h)
                 enc_last_state_list.append(soc_obs_enc_last_state)
 
-            #----------------------------------------------------------termina parte social
-            # line 340 - 354
-            # pack all observed hidden states
-            #[batch,m,obs,h_dim]
-            obs_enc_h = tf.stack(enc_h_list, axis=1)
+            # Pack all observed hidden states
+            # [batch,m,obs,h_dim]
+            obs_enc_h          = tf.stack(enc_h_list, axis=1)
             obs_enc_last_state = concat_states(enc_last_state_list, axis=1)
 
             # -------------------------------------------------- xy decoder
+            # Last observed position
             traj_obs_last = self.traj_obs_gt[:, -1]
             pred_length = tf.reduce_sum(
                 tf.cast(self.traj_pred_gt_mask, 'int32'), 1)  # N
 
+            # Multiple decoder
             if config.multi_decoder:
                 # [N, num_traj_cat] # each is num_traj_cat classification
                 self.traj_class_logits = self.traj_class_head(
@@ -186,23 +180,26 @@ class Model(object):
                 traj_pred_out = tf.gather_nd(self.traj_pred_outs, indices)
 
             else:
+                # Single decoder called: takes the last observed position, the last encoding state,
+                # the set of all hidden states, the number of prediction steps, and the decoder cell.
                 traj_pred_out = self.decoder(traj_obs_last, traj_obs_enc_last_state,
                                              obs_enc_h, pred_length, dec_cell_traj,
                                              top_scope=top_scope, scope='decoder')
-        # for loss and forward
+        # For loss and forward
         self.traj_pred_out = traj_pred_out
 
+    # Decoder
     def decoder(self, first_input, enc_last_state, enc_h, pred_length, rnn_cell,top_scope, scope):
         """Decoder definition."""
         config = self.config
         # Tensor dimensions, so pylint: disable=g-bad-name
-        N = self.N
-        P = self.P
+        N = self.N # Batches
+        P = self.P # Spatial dimension
 
         with tf.compat.v1.variable_scope(scope):
-            # this is only used for training
+            # This is only used for training
             with tf.compat.v1.name_scope('prepare_pred_gt_training'):
-                # these input only used during training
+                # These input only used during training
                 time_1st_traj_pred = tf.transpose(
                     self.traj_pred_gt, perm=[1, 0, 2])  # [N,T2,W] -> [T2,N,W]
                 T2 = tf.shape(time_1st_traj_pred)[0]  # T2
@@ -217,7 +214,7 @@ class Model(object):
                     emit_output = cell_output  # == None for time==0
 
                     elements_finished = time >= pred_length
-                    finished = tf.reduce_all(elements_finished)
+                    finished          = tf.reduce_all(elements_finished)
 
                     # h_{t-1}
                     with tf.compat.v1.name_scope('prepare_next_cell_state'):
@@ -285,7 +282,7 @@ class Model(object):
             if additional_scope is not None:
                 return self.hidden2xy(lstm_h, return_scope=return_scope,
                                       scope=additional_scope, additional_scope=None)
-
+            # Dense layer
             out_xy = linear(lstm_h, output_size=P, activation=tf.identity,
                             add_bias=False, scope='out_xy_mlp2')
 
@@ -313,7 +310,7 @@ class Model(object):
         self.loss = self.xyloss
 
     def get_feed_dict(self, data, is_train):
-        """Givng a batch of data, construct the feed dict."""
+        """Given a batch of data, construct the feed dict."""
         # get the cap for each kind of step first
         config = self.config
         # Tensor dimensions, so pylint: disable=g-bad-name
@@ -487,7 +484,8 @@ def linear(x, output_size, scope, add_bias=False, wd=None, return_scope=False,
             return tf.random.truncated_normal(shape, stddev=0.1)
         # Common weight tensor name, so pylint: disable=g-bad-name
         W = tf.compat.v1.get_variable('W', dtype='float', initializer=init,
-                            shape=[flat_x.get_shape()[-1].value, output_size])
+                                shape=[flat_x.get_shape()[-1].value, output_size])
+        #W = tf.Variable('W', dtype='float', initializer=init,shape=[flat_x.get_shape()[-1].value, output_size])
         flat_out = tf.matmul(flat_x, W)
         if add_bias:
             # disable=unused-argument
