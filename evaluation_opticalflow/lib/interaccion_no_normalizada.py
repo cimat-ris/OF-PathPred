@@ -144,7 +144,12 @@ class OpticalFlowSimulator(object):
 
         # Scan the neighbors
         for neighbor_position,neighbor_velocity in zip(neighbors_positions,neighbors_velocities):
-            k = int(32-(math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0]))/self.delta)
+            bearing = (math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0]))
+            if bearing<-math.pi/2.0:
+                bearing=bearing+2.0*math.pi
+            if bearing>3*math.pi/2.0:
+                bearing=bearing-2.0*math.pi
+            k = int(32-bearing/self.delta)
             if k>=0 and k<self.num_rays:
                 d =(current_position[0]-neighbor_position[0])**2+(current_position[1]-neighbor_position[1])**2
                 # Distance to this neighbor
