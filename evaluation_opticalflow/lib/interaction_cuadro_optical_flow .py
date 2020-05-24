@@ -2,6 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 
+
+"""
+Aun no se ha modificado
+solo puse el archivo para poner aqui el codigo correspondiente
+
+"""
+
 def vector_normal(vec_dir):
     """
     Computes the normal vector.
@@ -101,6 +108,7 @@ class OpticalFlowSimulator(object):
 
         # Angle corresponding to the current direction
         #theta = math.atan2(current_direction[1], current_direction[0])
+        # TODO: this matrix is the same for all the neighbors, so it could be computed once
         # Rotation matrix
         #mr = np.array( [[math.cos(theta),-math.sin(theta)],[math.sin(theta),math.cos(theta)]])
 
@@ -115,6 +123,7 @@ class OpticalFlowSimulator(object):
         x = relative_position_l[1]/relative_position_l[0]
         return (delta_vel_l[1]-x*delta_vel_l[0])/relative_position_l[0]
 
+
     """
          Receives:
                 current_position: current position of the person of interest
@@ -124,7 +133,7 @@ class OpticalFlowSimulator(object):
         Returns:
                 An optical flow vector, a list of visible neighbors
     """
-    def get_flow_in_cone(self, current_position, current_direction,neighbors_positions,neighbors_velocities):
+    def get_flow_in_cone(self,current_position, current_direction,neighbors_positions,neighbors_velocities):
         nlen = self.num_rays
         # Closest distances
         vec_coord = [[]]*nlen
@@ -147,7 +156,7 @@ class OpticalFlowSimulator(object):
                 bearing=bearing+2.0*math.pi
             if bearing>3*math.pi/2.0:
                 bearing=bearing-2.0*math.pi
-            k = int(nlen/2.-bearing/self.delta)
+            k = int(32-bearing/self.delta)
             if k>=0 and k<self.num_rays:
                 d =(current_position[0]-neighbor_position[0])**2+(current_position[1]-neighbor_position[1])**2
                 # Distance to this neighbor
@@ -173,7 +182,14 @@ class OpticalFlowSimulator(object):
             The tensor of optical flow values [t, obs_len, 64]
     """
     def compute_opticalflow_seq(self,Id,obs_traj,neighbors):
-     
+
+        """
+         vi que me faltaban breaks, pero todo lo demas lo hice
+         de esa forma por que si dos posiciones consecutivas son iguales,
+         entonces el vector direccion de esa posicion seria el vector cero,
+         pero obtendria un error al momento de calcular el angulo de dicho vector.
+         entonces lo que hice es tomar el
+        """
         direcciones = vectores_direccion(obs_traj)
 
         # Sequence length
@@ -185,15 +201,15 @@ class OpticalFlowSimulator(object):
         optical_flow     = np.zeros((sequence_length,self.num_rays), dtype='float')
         visible_neighbors= np.zeros((sequence_length,self.num_rays,2), dtype='float')
         # Scan the sequence along time
-        for i in range(sequence_length):
+        for i in range(1,sequence_length,1):
             # Current neighbors frame is [mnp,3]
             frame = neighbors[i,:,:]
 
             # Extract next/previous frames
-            if(i==0):
-                    frame_pos = neighbors[i+1,:,:]
-            else:
-                    frame_ant = neighbors[i-1,:,:]
+            #if(i==0):
+            #        frame_pos = neighbors[i+1,:,:]
+            #else:
+            frame_ant = neighbors[i-1,:,:]
 
             # Extract the trajectory of interest (Id)
             person_sec = frame[frame[:,0]== Id,:][0]
@@ -220,16 +236,15 @@ class OpticalFlowSimulator(object):
                     other_y_pos = frame_pos[other_ped_index,2]
                     # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
                     if(other_x_pos==0.0 and other_y_pos==0.0):# (if(frame_pos[other_ped_index,0])==0)
-                        vel_other = [0,0]
+                        vel_other=[0,0]
                     else:
                         vel_other = [ other_x_pos-other_x, other_y_pos-other_y]
                 # Inside the sequence
                 else:
                     other_x_ant = frame_ant[other_ped_index,1]
                     other_y_ant = frame_ant[other_ped_index,2]
-                    # Esto  
                     if(other_x_ant ==0.0 and other_y_ant == 0.0):
-                        vel_other = [0,0]
+                        vel_other=[0,0]
                     else:
                         vel_other = [other_x-other_x_ant, other_y-other_y_ant]
 
@@ -238,8 +253,8 @@ class OpticalFlowSimulator(object):
                 # Keep the set of positions
                 p_veci.append([other_x,other_y])
             # Evaluate the flow from the sets of neigbors
-            optical_flow[i,:], visible_neighbors[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci)
-        return optical_flow, visible_neighbors
+            optical_flow[i,:],visible_neighbors[i,:,:] =  self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci)
+        return optical_flow,visible_neighbors
 
     # Main function for optical flow computation
     def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len):
