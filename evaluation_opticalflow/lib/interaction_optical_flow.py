@@ -82,7 +82,9 @@ class OpticalFlowSimulator(object):
             plt.plot(thetas,np.zeros_like(thetas))
             plt.ylim((0,3.14))
             plt.ylim((-1,1))
+        plt.savefig('/home/jbhayet/of-sample.pdf')            
         plt.show()
+        print('Saving...')
 
 
     """
