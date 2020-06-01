@@ -22,6 +22,7 @@ import tensorflow as tf
 from lib.preprocess import *
 from lib.evaluation import *
 from lib.sequence_preparation import *
+from lib.model import *
 
 
 datasets  = [0]
@@ -166,53 +167,15 @@ for i in range(9):
 # ## Network
 
 # In[113]:
+model = SingleStepPrediction()
+model.compile(optimizer=optimizers.RMSprop(lr = 0.01, decay=1e-2), loss='logcosh',metrics=['mse'])
 
-
-from keras.models import Sequential
-from keras import optimizers
-from keras.layers import Dense
-from keras.layers import LSTM
-from keras.callbacks import EarlyStopping
-from keras import initializers
-from datetime import datetime
-from keras.utils import plot_model
-
-hidden_state = 10
-
-if 'model' in globals(): del model
-model = None
-model = Sequential()
-model.add(LSTM(hidden_state, return_sequences=True, input_shape=data_shape, name='lstm1'))
-model.add(LSTM(hidden_state, name='lstm2'))
-model.add(Dense(2))
-
-
-# In[114]:
-
-
-model.summary()
-
-
-# In[115]:
-
-
-#validation_data=(vali_obs, vali_pred),
-opt = optimizers.RMSprop(lr = 0.01, decay=1e-2)
-model.compile(optimizer=opt, loss='logcosh',metrics=['mse'])
 # model.compile(optimizer=opt, loss='mean_squared_error',metrics=['mse'])
 history= model.fit(trainX, trainY, epochs=250, batch_size=64, verbose=2)
-
-
-# In[116]:
-
+model.summary()
 
 history_dict= history.history
 history_dict.keys()
-
-
-# In[117]:
-
-
 acc  = history.history['mean_squared_error']
 loss = history.history['loss']
 #val_acc = history.history['val_mean_squared_error']s
@@ -237,7 +200,6 @@ plt.xlabel('Epochs')
 plt.ylabel('MSE')
 plt.legend()
 plt.show()
-
 
 # In[118]:
 
@@ -272,7 +234,7 @@ for i in range(9):
 # In[119]:
 
 
-model.save('lstm-xy1.h5')
+model.save_weights('models/simple-{}.ckpt'.format(representation_mode))
 
 
 # # Load the model
@@ -280,8 +242,8 @@ model.save('lstm-xy1.h5')
 # In[120]:
 
 
-model = load_model('lstm-xy1.h5')
-
+#model = load_model('lstm-xy1.tf',save_format="tf")
+model.load_weights('models/simple-{}.ckpt'.format(representation_mode))
 
 # ## Evaluate the errors
 
