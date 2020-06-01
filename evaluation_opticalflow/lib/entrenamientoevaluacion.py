@@ -108,10 +108,9 @@ def evaluate(dataset, tester,sess,arguments):
 
     l2dis = []
     num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
-    traj_class_correct = []
-    traj_obs = []
-    traj_ver = []
-    traj_pred = []
+    #traj_obs = []
+    #traj_ver = []
+    #traj_pred = []
     for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
 
         pred_out = tester.step(batch,sess)
@@ -127,9 +126,9 @@ def evaluate(dataset, tester,sess,arguments):
 
             assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
             diff = pred_traj_gt - this_pred_out_abs
-            traj_obs.append(obs_traj_gt)
-            traj_ver.append(pred_traj_gt)
-            traj_pred.append(this_pred_out_abs)
+            #traj_obs.append(obs_traj_gt)
+            #traj_ver.append(pred_traj_gt)
+            #traj_pred.append(this_pred_out_abs)
             diff = diff**2
             diff = np.sqrt(np.sum(diff, axis=1))
             d.append(diff)
@@ -139,7 +138,7 @@ def evaluate(dataset, tester,sess,arguments):
     fde = [o[-1] for o in l2dis] # final displacement
     p = { "ade": np.mean(ade), "fde": np.mean(fde)}
     #, traj_ver, traj_pred
-    return p, traj_ver, traj_pred, traj_obs
+    return p
 
 
 def evaluate_new(dataset, tester,sess):
@@ -152,31 +151,25 @@ def evaluate_new(dataset, tester,sess):
   Returns:
     Evaluation results.
   """
+  cont       = 0
+  prom       = 0.0
+  predicho   = []
+  verdadero  = []
+  error_prom = []
 
   config = tester.config
   #sess = tester.sess
 
   l2dis = []
   num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
-  traj_class_correct = []
-
-  cont=0
-  predic=[]
-  prom=0.0
-  error_prom=[]
+  
   for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
-    #print("batch")
-    #print(batch)
+    
     pred_out = tester.step(batch,sess)
     cont +=1
-    #print(cont)
-    #print(pred_out)
-
 
     this_actual_batch_size = batch["original_batch_size"]
     d = []
-
-
     for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
       if i >= this_actual_batch_size:
         break
@@ -190,13 +183,14 @@ def evaluate_new(dataset, tester,sess):
       diff = pred_traj_gt - this_pred_out_abs
       diff = diff**2
       diff = np.sqrt(np.sum(diff, axis=1))
+      d.append(diff)
       #print("Trayectoria verdadera")
       #print( pred_traj_gt)
       #print("Trayectoria predicha")
       #print( this_pred_out_abs )
       #print(np.mean(diff))
-      predic.append(this_pred_out_abs)
-      d.append(diff)
+      predicho.append(this_pred_out_abs)
+      verdadero.append(pred_traj_gt)
       prom += np.mean(diff)
       error_prom.append(np.mean(diff))
 
@@ -209,6 +203,6 @@ def evaluate_new(dataset, tester,sess):
 
   p = { "ade": np.mean(ade), "fde": np.mean(fde),"error_prom":prom/len(error_prom)}
 
-  #print(p)
+  
 
-  return p,predic
+  return p,predicho, verdadero

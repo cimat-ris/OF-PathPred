@@ -1,17 +1,12 @@
-Los siguientes archivos es donde se prueban 
-individualmente los dataset con el flujo_optico 
-
-* ETH-HOTEL_12_NoN_SIN_KP.ipynb
-* ETH-UNIV_12_NoN_SIN_KP.ipynb
-* Zara01_12_NoN_SIN_KP.ipynb
-* Zara02_12_NoN_SIN_KP.ipynb
 
 En los siguientes archivos se entrena con 4 de los 
-dataset de UCY/ETH y se prueba con uno. Esto se hace con el modelo 
-que tiene el flujo optico
+dataset de UCY/ETH y se prueba con el sobrante.
+En este caso solo se trabaja con la información
+de coordenadas mundo y  flujo_óptico
+sin tomar en cuenta una vecindad (en el flujo óptico). 
 
-*Probamos con UCY_UNIV_12_SIN_KP.ipynb, etc
-
-
-n estas pruebas se trabaja con los datos en marco mundo
-
+* FO-EVALUAMOS ETH-HOTEL.ipynb
+* FO--EVALUAMOS ETH-UNIV.ipynb
+* FO-EVALUAMOS UCY-ZARA01.ipynb
+* FO-EVALUAMOS UCY-ZARA02.ipynb
+* FO-EVALUAMOS UCY-UNIV.ipynb

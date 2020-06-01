@@ -5,7 +5,7 @@ import collections
 
 def grouper(lst, num):
     args = [iter(lst)]*num
-    out = itertools.zip_longest(*args, fillvalue=None)
+    out = itertools.izip_longest(*args, fillvalue=None)
     out = list(out)
     return out
 

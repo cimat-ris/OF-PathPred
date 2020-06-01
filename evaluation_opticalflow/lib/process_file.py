@@ -2,10 +2,16 @@ import os
 from tqdm import tqdm
 import glob
 import numpy as np
+from interaction_optical_flow import OpticalFlowSimulator
 
-# Funcion para preprocesar los datos cargados.
-# Esta funcion solo procesa los datos de un conjunto de datos que estan en un solo archivo
-# Process the data from path_file
+#En todas estas funciones cuando se usa el modo add_social
+# se contempla a los vecinos que pueden no permanecer en toda la secuencia
+
+"""
+  Process the data from path_file, of only dataset
+  input: The direction of file, arg: obs_len, pred_len,etc. , delim
+  return: a  dictionary with obs_traj, obs_traj_rel, obs_person, key_idx, obs_kp_rel
+"""
 def process_file_modif(path_file, args, delim):
     # Observation length
     obs_len  = args.obs_len
@@ -62,9 +68,10 @@ def process_file_modif(path_file, args, delim):
 
 
     # Maximum number of persons in a frame sequence
-    person_max = args.person_max #---  22
+     
     print("[INF] Number of considered subsequences: ",len(frames))
-
+    #max_p=0
+    #max_lon=0
     # Iterate over the frames
     for idx, frame in enumerate(frames):
 
@@ -77,7 +84,8 @@ def process_file_modif(path_file, args, delim):
 
         # Number of unique persons "cur_seq_data"
         num_person_in_cur_seq = len(persons_in_cur_seq)
-
+        #if(num_person_in_cur_seq>max_p):
+        #    max_p = num_person_in_cur_seq
         # The following two arrays have the same shape
         # "cur_seq" contains all the information of all the pedestrians in the sequence
         # and he information is encoded in an absolute frame (no transformation)
@@ -96,6 +104,7 @@ def process_file_modif(path_file, args, delim):
 
         # When using social context information
         if args.add_social:
+            person_max = args.person_max
             # absolute pixel-based data: id_person, x, y
             sourceData = np.zeros((num_person_in_cur_seq, seq_len, person_max, 3),dtype="float32")
             # velocity
@@ -103,7 +112,6 @@ def process_file_modif(path_file, args, delim):
 
         # This counter is reinitialized every time we change frame0
         count_person = 0
-
         # Foe all the persons appearing in this sequence that starts at frame
         for person_id in persons_in_cur_seq:
             # Get the information about person_id, in the whole sequence
@@ -112,21 +120,28 @@ def process_file_modif(path_file, args, delim):
             if len(cur_person_seq) != seq_len:
                 # We do not have enough observations for this person
                 continue
-            # -----------------------------------------------------------------------
-            # Check whether the first 8 positions are not the same
-            # -----------------------------------------------------------------------
-            con_iguales=0
-            for n in range(obs_len-1):
-                if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
-                    con_iguales +=1
-            if (con_iguales==obs_len-1):
-                continue
+
+           
+
+            #if(num_person_in_cur_seq>max_lon):
+            #    max_lon=num_person_in_cur_seq
 
             # AQUI AGREGAMOS LA INFORMACION DE CONTEXTO SOCIAL
             # Creamos lista con las personas de cada frame
             # esto es con el fin de tener la informacion de todos sus vecinos de la persona_id actual
             # esto se inicializa cada que cambiamos de una sucesion de seq_len
             if args.add_social:
+                # -----------------------------------------------------------------------
+                # Check whether the first 8 positions are not the same
+                # -----------------------------------------------------------------------
+                con_iguales = 0
+                for n in range(obs_len-1):
+                    if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
+                        con_iguales +=1
+                if (con_iguales==obs_len-1):
+                    continue
+
+
                 # List of all the persons in this sequence
                 pedID_list         = list(persons_in_cur_seq)
                 #  To keep neighbors data for the person person_id
@@ -212,7 +227,10 @@ def process_file_modif(path_file, args, delim):
         if args.add_social:
             seq_list_person.append(sourceData[:count_person])
             #seq_list_person_rel.append(sourceData_rel[:count_person])
-
+    #print(" maximo numero de personas que permanecen en toda una secuencia de frames")
+    #print(max_p)
+    #print("max_person long")
+    #print(max_lon)
 
     # N is numero de secuencias de frames  for each video, K is num_person in each frame
     # el numero total que tendremos es el numero total de personas que hayan cumplido que si tienen secuencia
@@ -290,52 +308,52 @@ def process_file_modif(path_file, args, delim):
 
     return data
 
+"""
+  Process the data from several file, the that form the set of training and evaluation 
+  and the file of test is process with process_file_modif
+  input: a array whit the directions the all file, a array with max_person of each file
+   of the array of direcctions,  arg: obs_len, pred_len, ind_test, delim
+  return: a  dictionary with obs_traj, obs_traj_rel, obs_person, key_idx, obs_kp_rel, obs_flujo
+"""
+def process_file_modif_varios(data_dirs, list_max_person, args, delim):
 
+    datasets = range(len(list_max_person))
+    datasets = list(datasets)
+    datasets.remove(args.ind_test)
+    list_max_person.remove(list_max_person[args.ind_test]) 
 
-
-
-#Esta funcion procesa los sub-archivos
-#Es decir de un archivo selecciono ciertos conjuntos de frame y por lo tanto
-#Se hacen archivos por cada conjunto de frames
-
-def process_file_modif_varios(path_file, args, delim):
+    #Las direcciones del conjunto de entrenamiento
+    used_data_dirs = [data_dirs[x] for x in datasets]
 
     obs_len = args.obs_len
     pred_len = args.pred_len
     seq_len = obs_len + pred_len
 
-    # este conjunto va guardando los id de las personas que si tuvieron secuencias de la longitud deseada
-    key_idx=[]
-
     # va guardando los frames de cada secuencia buena
-    seq_frameidx_list = []  # [N, seq_len]
+    seq_frames = []  # [N, seq_len]
 
     num_person_in_start_frame=[]
 
+    seq_list  = []
+    seq_list_rel = []
 
-    seq_list=[]
-    seq_list_rel=[]
-
-    kp_list = []  # [N, seq_len, 18, 2]
+    kp_list   = []  # [N, seq_len, 18, 2]
     kp_list_rel = []
+    
+    todo_flujo =[]
 
-    seq_list_person=[]
-    seq_list_person_rel=[]
-
-    # aqui tengo todas las direcciones de los sub_datas
-    sub_datas = glob.glob(os.path.join(path_file,"*.csv"))
-    print(sub_datas)
-
-    for sub_data in tqdm(sub_datas, ascii=True):
-
-        #se obtiene el nombre del archivo sin importar del punto txt, csv,etc.
-        name_sub_data = os.path.splitext(os.path.basename(sub_data))[0]
-        print(name_sub_data)
-
+    for indi,directory in enumerate(used_data_dirs):
+        
+        seq_list_person_indi = []
+        key_idx_indi         = []
+        seq_list_indi        = []
+  
+        sub_data= os.path.join(directory, 'mundo/mun_pos.csv')
+        print(sub_data)
 
         kp_feats = {} # "frameidx_personId"
         if args.add_kp:
-            kp_file_path= os.path.join(args.kp_path,"%s.csv" % name_sub_data)
+            kp_file_path= os.path.join(directory,'keypoints.csv')
 
             with open(kp_file_path, "r") as f:
 
@@ -344,37 +362,35 @@ def process_file_modif_varios(path_file, args, delim):
                     key = fidxykp[0] + "_" +fidxykp[1]
                     kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) # TODO: MOdificar segun la prob
 
-        data=[]
+        # Trajectory coordinates
+        data = []
         with open(sub_data, "r") as traj_file:
             for line in traj_file:
-                #fidx, pid, x, y = line.strip().split('\t')
+                #id_frame, id_person, x, y
                 fidx, pid, x, y = line.strip().split(delim)
                 data.append([fidx, pid, x, y])
+        # Convert python array to numpy array
         data = np.array(data, dtype="float32")
 
-        frames = np.unique(data[:, 0]).tolist()  # all frame_idx
+        # We suppose that the frame ids are in ascending order
+        frames     = np.unique(data[:, 0]).tolist()  # id_frames
         frame_data = []  # people in frame
-        #num_c_frame=[]
-        #toda la informacion de cada frame
+
+        # Group the pedstrian data frame by frame
+        # id_frame, id_person, x, y
         for frame in frames:
-            frame_data.append(data[frame == data[:, 0], :])
-            # el numero de personas por frame
-            #num_c_frame.append(data[frame == data[:, 0], :].shape[0])
-        #person_max=np.max(num_c_frame)
-        person_max=8
-        #print('Numero de maximo de personas que hay en un frame')
-        #print(np.max(num_c_frame))
-        #print(person_max)
-        contador=0
+            frame_data.append(data[data[:, 0]==frame, :])
+   
+        #contador=0
+
         for idx, frame in enumerate(frames):
             #la secuencia de frames de size seq_len=obs+pred
-            cur_seq_data = np.concatenate(frame_data[idx:idx + seq_len], axis = 0)
+            cur_seq_data = np.concatenate(frame_data[idx:idx + seq_len],axis=0)
 
-            # los indices unicos de las personas en toda la secuencoa de frames
-            persons_in_cur_seq = np.unique(cur_seq_data[:, 1])
+            # Unique indices for the persons in the sequence "cur_seq_data"
+            persons_in_cur_seq = np.unique(cur_seq_data[:,1])
 
-
-            # El numero de personas unicas que hay en la secuencia de frames
+            # El numero de personas de la interseccion de los id_person de cur_seq_data
             num_person_in_cur_seq = len(persons_in_cur_seq)
 
             # los siguientes dos array tienen la misma forma
@@ -393,9 +409,7 @@ def process_file_modif_varios(path_file, args, delim):
             # en las secuencia de frames
             cur_seq_frame = np.zeros((num_person_in_cur_seq, seq_len), dtype="int32")
 
-            # se inicializa cada que cambiamos de secuencia de frames
-            count_person = 0
-
+            
             if args.add_kp:
                 # absolute pixel
                 kp_feat = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 2),
@@ -405,12 +419,12 @@ def process_file_modif_varios(path_file, args, delim):
                             dtype="float32")
 
             if args.add_social:
+                person_max = list_max_person[indi]
                 # absolute pixel
                 sourceData = np.zeros((num_person_in_cur_seq, seq_len, person_max, 3),dtype="float32")
 
-                # velocity
-                sourceData_rel = np.zeros((num_person_in_cur_seq, seq_len, person_max, 3),dtype="float32")
-
+            # se inicializa cada que cambiamos de secuencia de frames
+            count_person = 0
             # Aqui se recorre cada una de las personas que hay en toda la secuencia de frames
             for person_id in persons_in_cur_seq:
                 # se obtiene toda la informacion de persona person_id presente en la secuencia de frames
@@ -418,31 +432,27 @@ def process_file_modif_varios(path_file, args, delim):
 
                 # este if es para asegurar que todas las personas tengan secuencias de longitud seq_len
 
-
                 if len(cur_person_seq) != seq_len:
                     # se omite la secuencia que no cubre todos loa frames
                     continue
-
-                con_iguales=0
-                for n in range(obs_len-1):
-                    if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
-                        con_iguales +=1
-                if(con_iguales==obs_len-1):
-                    continue
-
-                contador +=1
 
                 # -----------------------------------------------------------------------
                 # Creamos lista con las personas de cada frame
                 # esto es con el fin de tener la informacion de todos sus vecinos de la persona_id actual
                 # esto se inicializa cada que cambiamos de una sucesion de seq_len
                 if args.add_social:
+
+                    con_iguales=0
+                    for n in range(obs_len-1):
+                        if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
+                            con_iguales +=1
+                    if(con_iguales==obs_len-1):
+                        continue
+
                     #cur_frame_seq = []
                     #Recorremos cada uno de los frames en los que esta la person_id actual
                     pedID_list = list(persons_in_cur_seq)
 
-                    #print("secuencia")
-                    #print(np.unique(cur_seq_data[:,0]).tolist())
                     # recorremos cada uno de los frames de la secuencia
                     vecinos_person_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
 
@@ -454,27 +464,12 @@ def process_file_modif_varios(path_file, args, delim):
                         sseq_frame_data = sseq_frame_data[:,1:4]
                         for ped in range(num_person_in_cur_seq):
                             pedID = pedID_list[ped]
-                            if pedID == 0:
-                                print('continueeeeeeeeeee---------')
-                                continue
-                            else:
-                                sped = sseq_frame_data[sseq_frame_data[:, 0] == pedID, :]
-                                if sped.size != 0:
-                                    #sourceData[count_person,seq, ped, :] = sped
-                                    vecinos_person_seq[seq,ped,:] = sped
+                            sped = sseq_frame_data[sseq_frame_data[:, 0] == pedID, :]
+                            if sped.size != 0:
+                                #sourceData[count_person,seq, ped, :] = sped
+                                vecinos_person_seq[seq,ped,:] = sped
                         seq+=1
-
-                    vecinos_person_seq_rel = np.zeros_like(vecinos_person_seq)
-                    #aqui agregamos solo los IDs
-                    vecinos_person_seq_rel[:,:,0] = vecinos_person_seq[:,:,0]
-                    vecinos_person_seq_rel[1:,:,1:] = vecinos_person_seq[1:,:,1:]-vecinos_person_seq[:-1,:,1:]
-
                     sourceData[count_person,:,:,:] = vecinos_person_seq
-                    sourceData_rel[count_person,:,:,:] = vecinos_person_seq_rel
-
-                    #seq_list_person_obs.append( sourceData[:obs_len,:,:] )
-                    #seq_list_person_pred.append( sourceData[obs_len:,:,:] )
-
                 # [seq_len,2], solo tiene x,y
                 cur_person_seq = cur_person_seq[:, 2:]
                 cur_person_seq_rel = np.zeros_like(cur_person_seq)
@@ -496,7 +491,7 @@ def process_file_modif_varios(path_file, args, delim):
                 cur_seq_frame[count_person, :] = frame_idxs
 
                 # tiene el person_id de cada una de las personas que si tuvieron secuencias de longitud seq_len
-                key_idx.append(person_id)
+                key_idx_indi.append(person_id)
 
                 #Si agregamos informacion de pose  "keypoints"
                 if args.add_kp:
@@ -514,39 +509,69 @@ def process_file_modif_varios(path_file, args, delim):
             num_person_in_start_frame.append(count_person)
 
             # Solo las personas "count_person" se preserva su informacion
+        
             seq_list.append(cur_seq[:count_person])
             seq_list_rel.append(cur_seq_rel[:count_person])
-            seq_frameidx_list.append(cur_seq_frame[:count_person])
-
+            seq_frames.append(cur_seq_frame[:count_person])
+            # esto es para pasarlo a al momento de calcular el flujo optico individual
+            seq_list_indi.append(cur_seq[:count_person])
+            
+            
             #Otras caracteristicas
             if args.add_kp:
                 kp_list.append(kp_feat[:count_person])
                 kp_list_rel.append(kp_feat_rel[:count_person])
             #print(count_person)
             if args.add_social:
-                seq_list_person.append(sourceData[:count_person])
-                #seq_list_person_rel.append(sourceData_rel[:count_person])
+                #seq_list_person.append(sourceData[:count_person])
+                seq_list_person_indi.append(sourceData[:count_person])
+        #aquiiiiiiiiiiiiiiiiiii
+        if args.add_social:
+            # la informacion de los vecinos
+            seq_list_person_indi = np.concatenate(seq_list_person_indi, axis = 0)
 
-        print(contador)
-    num_seq = len(seq_list)  # el numero total se secuencias de frames de tamano seq_len que hubieron,sea
+            obs_person = seq_list_person_indi[:,:obs_len,:,:]
+            pred_person = seq_list_person_indi[:,obs_len:,:,:]
+            
+            seq_list_indi =np.concatenate(seq_list_indi,axis=0)
+            
+            obs_traj = seq_list_indi[:, :obs_len, :]
+            pred_traj = seq_list_indi[:, obs_len:, :]
+            
+            #se tiene la informacion para calcular el flujo optico
+            vec = {
+                "obs_person": obs_person,
+                "key_idx": np.array(key_idx_indi),
+                "obs_traj":  obs_traj
+            }
+            
+            print(vec['obs_person'].shape)
+            print(vec['key_idx'].shape)
+            print(vec['obs_traj'].shape)
+            fo = OpticalFlowSimulator()
+            flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len)
+            todo_flujo.append(flujo)
+            print(flujo.shape)
+            if(indi==1):
+                print(flujo)
+                #print(vec['obs_person'])
+                #print(vec['key_idx'])
+                #print(vec['obs_traj'])
 
-
-
-    #seq_frameidx_list=np.concatenate(seq_frameidx_list,axis=0)
     # N is numero de secuencias de frames  for each video, K is num_person in each frame
     # el numero total que tendremos es el numero total de personas que hayan cumplido que si tienen secuencia
     seq_list = np.concatenate(seq_list, axis=0)
     seq_list_rel = np.concatenate(seq_list_rel, axis=0)
     # Agregue
-    seq_frameidx_list = np.concatenate(seq_frameidx_list, axis=0)
+    seq_frames= np.concatenate(seq_frames, axis=0)
     # we get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
     obs_traj = seq_list[:, :obs_len, :]
     pred_traj = seq_list[:, obs_len:, :]
     # Agregue
-    frame_obs = seq_frameidx_list[:, :obs_len]
-    frame_pred = seq_frameidx_list[:, obs_len:]
+    frame_obs = seq_frames[:, :obs_len]
+    #frame_pred = seq_frames[:, obs_len:]
 
     obs_traj_rel = seq_list_rel[:, :obs_len, :]
     pred_traj_rel = seq_list_rel[:, obs_len:, :]
@@ -556,39 +581,16 @@ def process_file_modif_varios(path_file, args, delim):
     cum_start_idx = [0] + np.cumsum(num_person_in_start_frame).tolist()
     seq_start_end = np.array([(start, end) for start, end in zip(cum_start_idx, cum_start_idx[1:])], dtype="int")
 
-    #print(obs_person[0][0])
-    # save the data
     data = {
         "obs_traj": obs_traj,
         "obs_traj_rel": obs_traj_rel,
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
-        "key_idx": np.array(key_idx),
         "frames_obs": frame_obs,
-        "frames_pred": frame_pred,
+        #"frames_pred": frame_pred,
         #"frame_list":seq_frameidx_list
     }
-
-    #obs_person = np.array(seq_list_person_obs)
-    #pred_person = np.array(seq_list_person_pred)
-
-    if args.add_social:
-        seq_list_person = np.concatenate(seq_list_person, axis = 0)
-        seq_list_person_rel = np.concatenate(seq_list_person_rel, axis = 0)
-
-        #pred_person = np.array(seq_list_person_pred)
-        obs_person = seq_list_person[:,:obs_len,:,:]
-        pred_person = seq_list_person[:,obs_len:,:,:]
-        obs_person_rel = seq_list_person_rel[:,:obs_len,:,:]
-        pred_person_rel = seq_list_person_rel[:,obs_len:,:,:]
-
-        data.update({
-            "obs_person": obs_person,
-            "pred_person": pred_person,
-            "obs_person_rel": obs_person_rel,
-            "pred_person_rel": pred_person_rel,
-        })
-
+   
     if args.add_kp:
         # [N*K, seq_len, 17, 2]
         kp_list = np.concatenate(kp_list, axis=0)
@@ -601,18 +603,33 @@ def process_file_modif_varios(path_file, args, delim):
         data.update({
             "obs_kp": obs_kp,
             "obs_kp_rel": obs_kp_rel,
-            #"pred_kp": pred_kp,
+        })
+    if args.add_social:
+        todo_flujo = np.concatenate(todo_flujo,axis=0)
+        print(todo_flujo.shape)
+        data.update({
+            "obs_flujo": todo_flujo,
         })
 
     return data
 
+
+
+
+"""
+  Process the data from several file, the that form the set of training and evaluation 
+  if  your respective obs_flujo was already computed. 
+  input: a array with the indices of the file that they will be processed,  arg: obs_len, pred_len,etc. 
+         ,delim
+  return: a  dictionary with obs_traj, obs_traj_rel, obs_person, obs_kp_rel, obs_flujo
+"""
 def datos_subprocesados_varios(datasets, args, delim):
 
-    data_dirs = ['../data1/eth/univ/mundo', '../data1/eth/hotel/mundo',
-                 '../data1/ucy/zara/zara01/mundo', '../data1/ucy/zara/zara02/mundo',
-                 '../data1/ucy/univ/mundo']
+    data_dirs = ['../data1/eth-univ/mundo', '../data1/eth-hotel/mundo',
+                 '../data1/ucy-zara01/mundo', '../data1/ucy-zara02/mundo',
+                 '../data1/ucy-univ/mundo']
 
-    name_flujo = ['eth_univ','eth_hotel','zara01','zara02','ucyuniv']
+    name_flujo = ['eth-univ','eth-hotel','ucy-zara01','ucy-zara02','ucy-univ']
 
     used_data_dirs = [data_dirs[x] for x in datasets]
 
@@ -637,28 +654,22 @@ def datos_subprocesados_varios(datasets, args, delim):
     kp_list = []  # [N, seq_len, 18, 2]
     kp_list_rel = []
 
-    seq_list_person=[]
-    seq_list_person_rel=[]
-
     # aqui tengo todas las direcciones de los sub_datas
     #sub_datas = glob.glob(os.path.join(path_file,"*.csv"))
     #print(sub_datas)
 
     for indi,directory in enumerate(used_data_dirs):
+        
         name_sub_flujo ='flujo_bien_non_'+ used_name[indi]+'_total_mundo_12.npy'
 
         directory_sub_flujo = os.path.join(args.directory_flujo,name_sub_flujo)
-
+        # se carga el archivo del flujo
         sub_flujo = np.load(directory_sub_flujo)
         if indi==0:
             todo_flujo = sub_flujo
         if indi>0:
             todo_flujo = np.concatenate((todo_flujo,sub_flujo),axis=0)
 
-
-        #se obtiene el nombre del archivo sin importar del punto txt, csv,etc.
-        #name_sub_data = os.path.splitext(os.path.basename(sub_data))[0]
-        #print(name_sub_data)
         sub_data= os.path.join(directory, 'mun_pos.csv')
         print(sub_data)
 
@@ -682,26 +693,19 @@ def datos_subprocesados_varios(datasets, args, delim):
         data = np.array(data, dtype="float32")
 
         frames = np.unique(data[:, 0]).tolist()  # all frame_idx
-        frame_data = []  # people in frame
-        #num_c_frame=[]
+        frame_data = []  
+     
         #toda la informacion de cada frame
         for frame in frames:
             frame_data.append(data[frame == data[:, 0], :])
-            # el numero de personas por frame
-            #num_c_frame.append(data[frame == data[:, 0], :].shape[0])
-        #person_max=np.max(num_c_frame)
-        person_max=8
-        #print('Numero de maximo de personas que hay en un frame')
-        #print(np.max(num_c_frame))
-        #print(person_max)
-        contador=0
+       
+        #contador = 0
         for idx, frame in enumerate(frames):
             #la secuencia de frames de size seq_len=obs+pred
             cur_seq_data = np.concatenate(frame_data[idx:idx + seq_len], axis = 0)
 
             # los indices unicos de las personas en toda la secuencoa de frames
             persons_in_cur_seq = np.unique(cur_seq_data[:, 1])
-
 
             # El numero de personas unicas que hay en la secuencia de frames
             num_person_in_cur_seq = len(persons_in_cur_seq)
@@ -722,8 +726,6 @@ def datos_subprocesados_varios(datasets, args, delim):
             # en las secuencia de frames
             cur_seq_frame = np.zeros((num_person_in_cur_seq, seq_len), dtype="int32")
 
-            # se inicializa cada que cambiamos de secuencia de frames
-            count_person = 0
 
             if args.add_kp:
                 # absolute pixel
@@ -732,13 +734,9 @@ def datos_subprocesados_varios(datasets, args, delim):
                 # velocity
                 kp_feat_rel = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 2),
                             dtype="float32")
-
-            if args.add_social:
-                # absolute pixel
-                sourceData = np.zeros((num_person_in_cur_seq, seq_len, person_max, 3),dtype="float32")
-
-                # velocity
-                sourceData_rel = np.zeros((num_person_in_cur_seq, seq_len, person_max, 3),dtype="float32")
+            
+            # se inicializa cada que cambiamos de secuencia de frames
+            count_person = 0
 
             # Aqui se recorre cada una de las personas que hay en toda la secuencia de frames
             for person_id in persons_in_cur_seq:
@@ -746,64 +744,18 @@ def datos_subprocesados_varios(datasets, args, delim):
                 cur_person_seq = cur_seq_data[cur_seq_data[:, 1] == person_id, :]
 
                 # este if es para asegurar que todas las personas tengan secuencias de longitud seq_len
-
-
                 if len(cur_person_seq) != seq_len:
                     # se omite la secuencia que no cubre todos loa frames
                     continue
 
-                con_iguales=0
-                for n in range(obs_len-1):
-                    if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
-                        con_iguales +=1
-                if(con_iguales==obs_len-1):
-                    continue
-
-                contador +=1
-
-                # -----------------------------------------------------------------------
-                # Creamos lista con las personas de cada frame
-                # esto es con el fin de tener la informacion de todos sus vecinos de la persona_id actual
-                # esto se inicializa cada que cambiamos de una sucesion de seq_len
                 if args.add_social:
-                    #cur_frame_seq = []
-                    #Recorremos cada uno de los frames en los que esta la person_id actual
-                    pedID_list = list(persons_in_cur_seq)
-
-                    #print("secuencia")
-                    #print(np.unique(cur_seq_data[:,0]).tolist())
-                    # recorremos cada uno de los frames de la secuencia
-                    vecinos_person_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
-
-                    seq = 0
-                    for num_frame in np.unique(cur_seq_data[:,0]).tolist():
-                        # Toda la informacion del frame num_frame
-                        sseq_frame_data = cur_seq_data[cur_seq_data[:,0] == num_frame, :]
-                        # solo se toman los Id,x,y de toda  informacion
-                        sseq_frame_data = sseq_frame_data[:,1:4]
-                        for ped in range(num_person_in_cur_seq):
-                            pedID = pedID_list[ped]
-                            if pedID == 0:
-                                print('continueeeeeeeeeee---------')
-                                continue
-                            else:
-                                sped = sseq_frame_data[sseq_frame_data[:, 0] == pedID, :]
-                                if sped.size != 0:
-                                    #sourceData[count_person,seq, ped, :] = sped
-                                    vecinos_person_seq[seq,ped,:] = sped
-                        seq+=1
-
-                    vecinos_person_seq_rel = np.zeros_like(vecinos_person_seq)
-                    #aqui agregamos solo los IDs
-                    vecinos_person_seq_rel[:,:,0] = vecinos_person_seq[:,:,0]
-                    vecinos_person_seq_rel[1:,:,1:] = vecinos_person_seq[1:,:,1:]-vecinos_person_seq[:-1,:,1:]
-
-                    sourceData[count_person,:,:,:] = vecinos_person_seq
-                    sourceData_rel[count_person,:,:,:] = vecinos_person_seq_rel
-
-                    #seq_list_person_obs.append( sourceData[:obs_len,:,:] )
-                    #seq_list_person_pred.append( sourceData[obs_len:,:,:] )
-
+                    con_iguales=0
+                    for n in range(obs_len-1):
+                        if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
+                            con_iguales +=1
+                    if(con_iguales==obs_len-1):
+                        continue
+                
                 # [seq_len,2], solo tiene x,y
                 cur_person_seq = cur_person_seq[:, 2:]
                 cur_person_seq_rel = np.zeros_like(cur_person_seq)
@@ -838,6 +790,9 @@ def datos_subprocesados_varios(datasets, args, delim):
                     kp_feat_rel[count_person, 1:, :, :] = kp_feat[count_person, 1:, :, :] - kp_feat[count_person, :-1, :, :]
                 count_person += 1
 
+            # contador cuenta cuanta subsucesiones hubier+on por cada sud_archivo
+            #print("El numero de secuencias")
+            #print(contador)
             # Es el vector de que cuenta por cada sucesion de frames cuantas personas por cada sucesion si
             # tuvieron la longitud deseada
             num_person_in_start_frame.append(count_person)
@@ -851,12 +806,6 @@ def datos_subprocesados_varios(datasets, args, delim):
             if args.add_kp:
                 kp_list.append(kp_feat[:count_person])
                 kp_list_rel.append(kp_feat_rel[:count_person])
-            #print(count_person)
-            if args.add_social:
-                seq_list_person.append(sourceData[:count_person])
-                #seq_list_person_rel.append(sourceData_rel[:count_person])
-
-        print(contador)
     num_seq = len(seq_list)  # el numero total se secuencias de frames de tamano seq_len que hubieron,sea
 
     print(todo_flujo.shape)
@@ -894,31 +843,10 @@ def datos_subprocesados_varios(datasets, args, delim):
         "obs_traj_rel": obs_traj_rel,
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
-        "key_idx": np.array(key_idx),
-        "frames_obs": frame_obs,
-        "frames_pred": frame_pred,
-        #"frame_list":seq_frameidx_list
+        #"key_idx": np.array(key_idx),
+        #"frames_obs": frame_obs,
+        #"frames_pred": frame_pred,
     }
-
-    #obs_person = np.array(seq_list_person_obs)
-    #pred_person = np.array(seq_list_person_pred)
-
-    if args.add_social:
-        seq_list_person = np.concatenate(seq_list_person, axis = 0)
-        seq_list_person_rel = np.concatenate(seq_list_person_rel, axis = 0)
-
-        #pred_person = np.array(seq_list_person_pred)
-        obs_person = seq_list_person[:,:obs_len,:,:]
-        pred_person = seq_list_person[:,obs_len:,:,:]
-        obs_person_rel = seq_list_person_rel[:,:obs_len,:,:]
-        pred_person_rel = seq_list_person_rel[:,obs_len:,:,:]
-
-        data.update({
-            "obs_person": obs_person,
-            "pred_person": pred_person,
-            "obs_person_rel": obs_person_rel,
-            "pred_person_rel": pred_person_rel,
-        })
 
     if args.add_kp:
         # [N*K, seq_len, 17, 2]

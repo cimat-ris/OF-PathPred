@@ -32,7 +32,7 @@ class Model(object):
         # Info about keypoints
         self.obs_kp = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
         # Info about optical flow
-        self.obs_flow = tf.compat.v1.placeholder('float',[N, None,64],name='obsf_flow')
+        self.obs_flujo = tf.compat.v1.placeholder('float',[N, None,64],name='obs_flujo')
         # Flag for trainig. Used for drop out switch
         self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
         # Loss function
@@ -94,8 +94,8 @@ class Model(object):
             traj_xy_emb_enc = linear(self.traj_obs_gt,
                                output_size=config.emb_size,
                                activation=config.activation_func,
-                               add_bias=True,
-                               scope='enc_xy_emb')
+                               add_bias = True,
+                               scope = 'enc_xy_emb')
             # Applies the position sequence through the LSTM
             traj_obs_enc_h, traj_obs_enc_last_state = tf.compat.v1.nn.dynamic_rnn(
                 enc_cell_traj, traj_xy_emb_enc, sequence_length = obs_length,
@@ -136,7 +136,7 @@ class Model(object):
             obs_enc_h          = tf.stack(enc_h_list, axis=1)
             obs_enc_last_state = concat_states(enc_last_state_list, axis=1)
 
-            # -------------------------------------------------- xy decoder
+            # ----------------------------- xy decoder-----------------------------------------
             # Last observed position
             traj_obs_last = self.traj_obs_gt[:, -1]
             pred_length = tf.reduce_sum(
