@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# This script performs trajectory predicton the PETS-S2L1 dataset. 
-
-# In[73]:
-
-
+# This script performs trajectory predicton the PETS-S2L1 dataset.
 import os
 import pickle
 import numpy as np
@@ -14,114 +10,16 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from pylab import *
 from scipy. ndimage import filters
-import pandas as pd
 import os
 from keras.models import Model, Sequential, save_model, load_model
 import math
 from sklearn.metrics import mean_squared_error
-
 import random
 from sklearn.preprocessing import MinMaxScaler
 import h5py
 import tensorflow as tf
+from lib.preprocess import *
 
-
-# In[74]:
-
-
-import os 
-import pickle
-import numpy as np
-import random
-
-def preprocess(data_dirs,data_filename,output_file):
-    # all_ped_data is a dictionary mapping each ped to their
-    # trajectories given by matrix 3 x numPoints with each column
-    # in the order x, y, frameId.
-    # Pedestrians from all datasets are combined.
-    # Dataset pedestrian indices are stored in dataset_indices.
-    all_ped_data   ={}
-    dataset_indices=[]
-    current_ped    = 0
-    # For each dataset
-    for directory in data_dirs:
-        # Define the path to its respective csv file
-        file_path = os.path.join(directory,data_filename)
-
-        # Load the data from the csv file.
-        # Data are a 4xnumTrajPoints matrix.
-        data = np.genfromtxt(file_path, delimiter=',')
-        
-        # Number of pedestrians in this dataset
-        numPeds=np.size(np.unique(data[:,1]))        
-        print("[INF] Number of distinct pedestrians in"+ directory+": "+str(numPeds))
-       
-        # Iterate over the pedetrians
-        for ped in range(1, numPeds+1):
-            # Data for pedestrian ped
-            traj = data[ data[:, 1] == ped]
-            # Stored as (x,y,frame_Id)
-            traj = traj[:, [2,3,0]]
-            # Seen as [[x,...],[y,...],[Frame_Id,..]]
-            traj=[list(traj[:,0]),list(traj[:,1]),list(traj[:,2])]
-            all_ped_data[current_ped + ped] = np.array(traj)
-
-        # Current dataset done
-        dataset_indices.append(current_ped+numPeds)
-        current_ped += numPeds
-
-    # Whole data: t-uple of all the pedestrians data with the indices of the pedestrians
-    complete_data = (all_ped_data, dataset_indices)
-    # Stores all the da		\label{tab: comparacionabsoluta}ta in a pickle file
-    f = open(output_file, "wb")
-    pickle.dump(complete_data, f, protocol=2)
-    f.close()
-    return complete_data
-
-
-# In[75]:
-
-
-def load_preprocessed(preprocessed_data_file,seq_length_obs,batch_size):
-    
-    # Load the pickle files
-    f = open(preprocessed_data_file, "rb")
-    raw_data = pickle.load(f)
-    f.close()
-
-    # Pedestrian data
-    all_ped_data =raw_data[0]
-
-    # We build  data as sequences with length seq_length_obs  
-    data    = []
-    counter = 0
-
-    # For each pedestrian data
-    for ped in all_ped_data:
-        
-        # Extract trajectory of pedestrian ped
-        traj = all_ped_data[ped]
-           
-        # If the length of the trajectory is greater than seq_length (+2 as we need both source and target data)
-        #solo se toman las trajectorias de longitud mayor a seq_length+2
-        if traj.shape[1] >= (seq_length_obs+1):
-            # TODO: (Improve) Store only the (x,y) coordinates for now
-            data.append(traj[[0, 1], :].T)
-            #print(traj[[0, 1], :].T)
-            # Number of batches this datapoint is worth
-            #print(traj.shape[1] )
-            #print(int(traj.shape[1] / ((seq_length_obs+1))))
-            counter += int(traj.shape[1] / ((seq_length_obs+1)))
-        
-    # Calculate the number of batches (each of batch_size) in the data
-    #counter tiene la cantidad de bloques de 8 pasos
-        
-    num_batches = int(counter /batch_size)
-    #cada bache tiene batch_size conjuntos donde cada conjunto tiene datos de length+2
-    return data,num_batches
-
-
-# In[76]:
 
 
 datasets  = [0]
@@ -143,87 +41,6 @@ print("[INF] Number of samples "+str(number_p))
 # In[77]:
 
 
-# Divide a long sequence into mini-sequences of seq_length_obs+1 data (x,y)
-def split_sequence_training_xy(seq_length_obs,data):  
-    length=int(len(data))
-    X,Y=[],[]
-    for j in range(length):
-        traj = data[j]
-        lon  = traj.shape[0]-seq_length_obs
-        for i in range(0,lon):
-            # Form sub-sequences of seq_length_obs data 
-            a = traj[i:(i +seq_length_obs ), :]
-            X.append(a)
-            # The target value is the next one (absolute values) in the sequence 
-            b = traj[i +seq_length_obs,:]
-            Y.append(b)
-    return np.array(X),np.array(Y)
-
-
-# In[78]:
-
-
-# Divide a long sequence into mini-sequences of seq_length_obs+1 data (dx,dy)
-def split_sequence_training_dxdy(seq_length_obs,data):
-    length = int(len(data))
-    X,Y = [],[]
-    for j in range(length):
-        traj = data[j]
-        lon  = traj.shape[0]-seq_length_obs-1
-        for i in range(0,lon+1):
-            # Form sub-sequences of seq_length_obs data             
-            a = traj[i:(i +seq_length_obs ), :]
-            X.append(a)
-            # The target value is the increment to the next one            
-            b = traj[i+seq_length_obs, :]  
-            Y.append(b-a[len(a)-1,:])
-    return np.array(X), np.array(Y)
-
-
-# In[79]:
-
-
-# Compute the linear interpolation model
-def linear_lsq_model(x,y):
-    t      = range(1,len(x)+1)
-    x_mean = np.mean(x)
-    t_mean = np.mean(t)
-    t_var  = np.var(t)
-    xt_cov = np.cov (x, t)[0][1]
-    vx     = xt_cov/t_var
-    x0     = x_mean-(vx*t_mean)
-            
-    y_mean = np.mean(y)
-    yt_cov = np.cov (y, t)[0][1]
-    vy     = yt_cov/t_var
-    y0     = y_mean-(vy*t_mean)
-    return x0,y0,vx,vy
-
-
-# In[80]:
-
-
-# Divide a long sequence into mini-sequences of seq_length_obs+1 data (deviations to the linear model)
-def split_sequence_training_lineardev(seq_length_obs,data):
-    length = int(len(data))
-    X,Y = [],[]
-    for j in range(length):
-        traj = data[j]
-        lon  = traj.shape[0]-seq_length_obs
-        for i in range(0,lon):
-            total = traj[i:(i + seq_length_obs ), :]
-            X.append(total)
-            xx = traj[i:(i + seq_length_obs ), 0]
-            yy = traj[i:(i + seq_length_obs ), 1]
-            
-            # Compute the linear interpolation model
-            # TODO: vary the support of the interpolation model
-            x0,y0,vx,vy = linear_lsq_model(xx,yy) 
-            x_next      = x0+vx*(len(xx)+1)
-            y_next      = y0+vy*(len(yy)+1)
-            Y.append(traj[i+seq_length_obs, :]-[x_next,y_next])
-    return np.array(X), np.array(Y)
-
 
 # ## Trajectory visualization
 
@@ -235,27 +52,26 @@ color_names = ["r","crimson" ,"g", "b","c","m","y","lightcoral", "peachpuff","gr
 
 for i in range(len(data_p)):
     plt.plot(data_p[i][:,0],data_p[i][:,1],color=color_names[i])
-plt.title("Full trajectories in PETS-2009") 
-plt.xlabel("x coordinate")   
-plt.ylabel("y coordinate") 
+plt.title("Full trajectories in PETS-2009")
+plt.xlabel("x coordinate")
+plt.ylabel("y coordinate")
 plt.savefig("PETS2009-alltrajctories.pdf")
-plt.show() 
+plt.show()
 
 
 # ## Splitting the data
 
-# In[82]:
 
 
 def split_data_idgroups(combination,intervals_ids,data):
     # Form different combinations of training/testing sets
     training_set = []
     for i in range(len(combination)-1):
-        for j in intervals_ids[combination[i]]:            
+        for j in intervals_ids[combination[i]]:
             training_set.append(data[j])
     testing_set = []
     for i in intervals_ids[combination[4]]:
-        testing_set.append(data[i])    
+        testing_set.append(data[i])
     return training_set,testing_set
 
 
@@ -274,7 +90,7 @@ if split_mode==0:
 
     # TODO: generalize?
     combinations=[(0,1,2,3,4),(0,1,2,4,3),(0,1,3,4,2),(0,2,3,4,1),(1,2,3,4,0)]
-    # Generate train/test  
+    # Generate train/test
     train1,test1 = split_data_idgroups(combinations[0],intervals_ids,data_p)
     train2,test2 = split_data_idgroups(combinations[1],intervals_ids,data_p)
     train3,test3 = split_data_idgroups(combinations[2],intervals_ids,data_p)
@@ -316,9 +132,9 @@ representation_mode= 'dxdy'
 if representation_mode=='xy':
     trainX,trainY = split_sequence_training_xy(length_obs,train1)
 if representation_mode=='dxdy':
-    trainX,trainY = split_sequence_training_dxdy(length_obs,train1)    
+    trainX,trainY = split_sequence_training_dxdy(length_obs,train1)
 if representation_mode=='lineardev':
-    trainX,trainY = split_sequence_training_lineardev(length_obs,train1)        
+    trainX,trainY = split_sequence_training_lineardev(length_obs,train1)
 
 
 # In[110]:
@@ -345,14 +161,14 @@ for i in range(9):
     plt.plot(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
     if representation_mode=='xy':
         plt.plot(trainY[rnds[i]][0],trainY[rnds[i]][1],'r+')
-    if representation_mode=='dxdy':    
+    if representation_mode=='dxdy':
         plt.plot(trainX[rnds[i]][-1,0]+trainY[rnds[i]][0],trainX[rnds[i]][-1,1]+trainY[rnds[i]][1],'r+')
-    if representation_mode=='lineardev':  
-        x0,y0,vx,vy   = linear_lsq_model(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1]) 
+    if representation_mode=='lineardev':
+        x0,y0,vx,vy   = linear_lsq_model(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
         x_pred_linear = x0+vx*(len(trainX[rnds[i]][:,0])+1)
         y_pred_linear = y0+vy*(len(trainX[rnds[i]][:,1])+1)
         plt.plot(x_pred_linear+trainY[rnds[i]][0],y_pred_linear+trainY[rnds[i]][1],'r+')
-        
+
 
 
 # ## Network
@@ -444,19 +260,19 @@ for i in range(9):
     next_point= model.predict(traj_obsr)
     plt.plot(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
     if representation_mode=='xy':
-        plt.plot(next_point[0][0],next_point[0][1],'go')        
+        plt.plot(next_point[0][0],next_point[0][1],'go')
         plt.plot(trainY[rnds[i]][0],trainY[rnds[i]][1],'r+')
-    if representation_mode=='dxdy':    
+    if representation_mode=='dxdy':
         plt.plot(trainX[rnds[i]][-1,0]+next_point[0][0],trainX[rnds[i]][-1,1]+next_point[0][1],'go')
         plt.plot(trainX[rnds[i]][-1,0]+trainY[rnds[i]][0],trainX[rnds[i]][-1,1]+trainY[rnds[i]][1],'r+')
-    if representation_mode=='lineardev':  
-        x0,y0,vx,vy   = linear_lsq_model(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1]) 
+    if representation_mode=='lineardev':
+        x0,y0,vx,vy   = linear_lsq_model(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
         x_pred_linear = x0+vx*(len(trainX[rnds[i]][:,0])+1)
         y_pred_linear = y0+vy*(len(trainX[rnds[i]][:,1])+1)
-        plt.plot(x_pred_linear+next_point[0][0],y_pred_linear+next_point[0][1],'go')        
+        plt.plot(x_pred_linear+next_point[0][0],y_pred_linear+next_point[0][1],'go')
         plt.plot(x_pred_linear+trainY[rnds[i]][0],y_pred_linear+trainY[rnds[i]][1],'r+')
-                
-    plt.axis('equal')    
+
+    plt.axis('equal')
 
 
 # # Save the model
@@ -482,7 +298,7 @@ model = load_model('lstm-xy1.h5')
 
 # Evaluate the ADE
 def evaluate_ade(predicted_traj, true_traj, observed_length):
-    
+
     error = np.zeros(len(true_traj) - observed_length)
     # For each point in the predicted trajectory
     for i in range(observed_length, len(true_traj)):
@@ -509,7 +325,7 @@ def evaluate_fde(predicted_traj, true_traj, observed_length):
 
 
 # This function takes a set of trajectories and build sub-sequences seq_length_obs+seq_length_pred
-def split_sequence_testing(seq_length_obs,data,seq_length_pred): 
+def split_sequence_testing(seq_length_obs,data,seq_length_pred):
     tamano = int(len(data))
     X,Y_true = [],[]
     # se recorre todo los datos de test
@@ -517,7 +333,7 @@ def split_sequence_testing(seq_length_obs,data,seq_length_pred):
         traj = data[j]
         lon = traj.shape[0]-seq_length_obs-seq_length_pred
         for i in range(0,lon+1):
-            a = traj[i:(i +seq_length_obs ), :]  
+            a = traj[i:(i +seq_length_obs ), :]
             X.append(a)
             # The full trajectory
             b = traj[i: (i+seq_length_obs+seq_length_pred), :]
@@ -538,7 +354,7 @@ def evaluate_testing_set(datos, seq_length_obs, seq_length_pred,pixels=False, mo
     for i in range(len(X)):
         traj_obs  = X[i]
         traj_pred = X[i]
-        # For each timestep to predict    
+        # For each timestep to predict
         for j in range(seq_length_pred):
             traj_obsr = np.reshape(traj_obs, (1,traj_obs.shape[0],traj_obs.shape[1]) )
             # Applies the model to produce the next point
@@ -546,10 +362,10 @@ def evaluate_testing_set(datos, seq_length_obs, seq_length_pred,pixels=False, mo
             if mode=='dxdy':
                 next_point=next_point+traj_obs[-1]
             if mode=='lineardev':
-                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1]) 
+                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1])
                 x_pred_linear = x0+vx*(len(traj_obs[:,0])+1)
                 y_pred_linear = y0+vy*(len(traj_obs[:,1])+1)
-                next_point=next_point+[x_pred_linear,y_pred_linear]    
+                next_point=next_point+[x_pred_linear,y_pred_linear]
             traj_obs  = np.concatenate((traj_obs[1:len(traj_obs)],next_point),axis=0)
             traj_pred = np.concatenate((traj_pred,next_point),axis=0)
         # Evaluate the difference
@@ -570,7 +386,7 @@ def evaluate_testing_set(datos, seq_length_obs, seq_length_pred,pixels=False, mo
         print('---------Error (normalized coordinates)--------')
     print('[RES] ADE: ',error_ade)
     print('[RES] FDE: ',error_fde)
-        
+
 
 
 # In[125]:
@@ -601,7 +417,7 @@ def evaluate_testing_set_start(datos, seq_length_obs, seq_length_pred, mode='xy'
     # Just the starting parts of the sequence
     X,Y_true    = split_sequence_start_testing(seq_length_obs,datos,seq_length_pred)
     total_error = 0.0
-    plt.figure(figsize=(18,15)) 
+    plt.figure(figsize=(18,15))
     color_names       = ["r","crimson" ,"g", "b","c","m","y","lightcoral", "peachpuff","grey","springgreen" ,"fuchsia","violet","teal","seagreen","lime","yellow","coral","aquamarine","hotpink"]
     plt.subplot(1,1,1)
     print(len(X))
@@ -617,25 +433,25 @@ def evaluate_testing_set_start(datos, seq_length_obs, seq_length_pred, mode='xy'
             if mode=='dxdy':
                 next_point=next_point+traj_obs[-1]
             if mode=='lineardev':
-                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1]) 
+                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1])
                 x_pred_linear = x0+vx*(len(traj_obs[:,0])+1)
                 y_pred_linear = y0+vy*(len(traj_obs[:,1])+1)
-                next_point=next_point+[x_pred_linear,y_pred_linear]      
+                next_point=next_point+[x_pred_linear,y_pred_linear]
             # Next observation will be shifted by one to the right
             traj_obs  = np.concatenate((traj_obs[1:len(traj_obs)],next_point),axis=0)
             traj_pred = np.concatenate((traj_pred,next_point),axis=0)
 
         error_ade = evaluate_ade(traj_pred,Y_true[i],seq_length_obs)
-        error_fde = evaluate_fde(traj_pred,Y_true[i],seq_length_obs)                                     
-        
+        error_fde = evaluate_fde(traj_pred,Y_true[i],seq_length_obs)
+
         plt.plot(Y_true[i][0:8,0],Y_true[i][0:8,1],'*--',color=color_names[19-i],label = 'Observed')
         plt.plot(Y_true[i][7:,0],Y_true[i][7:,1],'--',color=color_names[i],label = 'GT')
         plt.plot(traj_pred[seq_length_obs-1:,0],traj_pred[seq_length_obs-1:,1],'-',color=color_names[19-i],label = 'Predicted')
         plt.axis('equal')
         total_error += error_ade
-    plt.title("Predicting 4 positions with LTM-X-Y") 
+    plt.title("Predicting 4 positions with LTM-X-Y")
     plt.xlabel('x-coordinate')
-    plt.ylabel('y-coordinate')       
+    plt.ylabel('y-coordinate')
     error_model = total_error/len(X)
     print("[RES] Average error ",error_model)
     #plt.savefig("4predichas.pdf")
@@ -676,11 +492,11 @@ def plot_qualitative(p,v,name):
     plot(p[0][0:8,0],p[0][0:8,1],'*--',color= color_names[2],label = 'Observed')
     plot(p[0][7:,0],p[0][7:,1],'-',color=color_names[2],label='Predicted')
     plot(v[0][7:,0],v[0][7:,1],'--',color=color_names[4],label='Ground truth')
-    
+
     plot(p[1][0:8,0],p[1][0:8,1],'*--',color= color_names[2])
     plot(p[1][7:,0],p[1][7:,1],'-',color=color_names[2])
     plot(v[1][7:,0],v[1][7:,1],'--',color=color_names[4])
-    
+
     plt.legend()
     plt.savefig(name)
     plt.show()
@@ -691,18 +507,18 @@ def plot_qualitative(p,v,name):
 
 # Esta funcion hace la prediccion en coordenadas pixel
 def sample_en_pixeles_cualitativamente(datos, seq_length_obs, seq_length_pred, mode='xy'):
-    
-    
+
+
     X,Y_true = split_sequence_testing(seq_length_obs,datos,seq_length_pred)
     total_error = 0.0
     total_final = 0.0
     trayectoria = []
     verdadero= []
-    
+
     for i in range(len(X)):
         traj_obs = X[i]
         traj_pred = X[i]
-        
+
         for j in range(seq_length_pred):
             traj_obsr  = np.reshape(traj_obs, (1,traj_obs.shape[0],traj_obs.shape[1]) )
             # Applies the model
@@ -710,26 +526,26 @@ def sample_en_pixeles_cualitativamente(datos, seq_length_obs, seq_length_pred, m
             if mode=='dxdy':
                 next_point=next_point+traj_obs[-1]
             if mode=='lineardev':
-                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1]) 
+                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1])
                 x_pred_linear = x0+vx*(len(traj_obs[:,0])+1)
                 y_pred_linear = y0+vy*(len(traj_obs[:,1])+1)
-                next_point=next_point+[x_pred_linear,y_pred_linear]          
+                next_point=next_point+[x_pred_linear,y_pred_linear]
             traj_obs   = np.concatenate((traj_obs[1:len(traj_obs)], next_point), axis = 0)
             traj_pred  = np.concatenate((traj_pred, next_point), axis = 0)
-        
+
         traj_pre =  np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
         traj_tr = np.column_stack((768*Y_true[i][:,0],576*Y_true[i][:,1]))
-       
+
         trayectoria.append(traj_pre)
         verdadero.append(traj_tr)
-        #SE CALCULA LA METRICA ADE 
-        
+        #SE CALCULA LA METRICA ADE
+
         total_error += evaluate_ade(traj_pre, traj_tr, seq_length_obs)
         total_final += evaluate_fde(traj_pre, traj_tr, seq_length_obs)
-            
+
     error_modelo     = total_error/len(X)
     error_fde_modelo = total_final/len(X)
-        
+
     print('---------Error--------')
     print('ADE')
     print(error_modelo)
@@ -742,7 +558,7 @@ def sample_en_pixeles_cualitativamente(datos, seq_length_obs, seq_length_pred, m
 
 
 """
-Para graficar los resultados cualitativos se escoge el mejor modelo de los 
+Para graficar los resultados cualitativos se escoge el mejor modelo de los
 5,  para pets con framerate 7.5
 """
 band = 0
@@ -759,7 +575,3 @@ plot_qualitative(p,v,name)
 
 
 # In[ ]:
-
-
-
-
