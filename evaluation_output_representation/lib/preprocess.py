@@ -2,6 +2,22 @@ import os
 import pickle
 import numpy as np
 import random
+import matplotlib.pyplot as plt
+from lib.sequence_preparation import *
+
+
+def plot_trajectories(data_p):
+    ## Trajectory visualization
+    import random
+    color_names = ["r","crimson" ,"g", "b","c","m","y","lightcoral", "peachpuff","grey","springgreen" ,"fuchsia","violet","teal","seagreen","lime","yellow","coral","aquamarine","hotpink"]
+
+    for i in range(len(data_p)):
+        plt.plot(data_p[i][:,0],data_p[i][:,1],color=color_names[i])
+    plt.title("Full trajectories in PETS-2009")
+    plt.xlabel("x coordinate")
+    plt.ylabel("y coordinate")
+    plt.savefig("PETS2009-alltrajctories.pdf")
+    plt.show()
 
 # Preprocessing function
 # Reads all the files in data_dirs/directory/data_filename
@@ -87,3 +103,58 @@ def load_preprocessed(preprocessed_data_file,seq_length_obs,batch_size):
     num_batches = int(counter /batch_size)
     #cada bache tiene batch_size conjuntos donde cada conjunto tiene datos de length+2
     return data,num_batches
+
+
+# ## Splitting the data by ids
+def split_data_idgroups(combination,intervals_ids,data):
+    # Form different combinations of training/testing sets
+    training_set = []
+    for i in range(len(combination)-1):
+        for j in intervals_ids[combination[i]]:
+            training_set.append(data[j])
+    testing_set = []
+    for i in intervals_ids[combination[4]]:
+        testing_set.append(data[i])
+    return training_set,testing_set
+
+def split_data(data_p,split_mode,length_obs,length_pred,representation_mode):
+    total_length = len(data_p)
+
+    if split_mode==0:
+        indices      = range(total_length)
+        intervals_ids        = []
+        # Pedestrians are split in groups of 4
+        for i in range(0,total_length,4):
+            intervals_ids.append(indices[i:i+4])
+        # TODO: generalize?
+        combinations=[(0,1,2,3,4),(0,1,2,4,3),(0,1,3,4,2),(0,2,3,4,1),(1,2,3,4,0)]
+        # Generate train/test
+        for i in range(5):
+            # TODO
+            train1,test1 = split_data_idgroups(combinations[0],intervals_ids,data_p)
+
+    elif split_mode==1:
+        random.seed(0)
+        indices      = np.arange(total_length)
+        data_p = np.array(data_p)
+        random.shuffle(indices)
+        training_size = int(total_length * 0.80)
+        testing_size  = total_length-training_size
+
+        train1 = data_p[indices[0:training_size]]
+        test1  = data_p[indices[training_size:]]
+
+        print("[INF] Number of pedestrians "+str(total_length))
+        print("[INF] Training with " ,len(train1))
+        print("[INF] Testing with " ,len(test1))
+
+    if representation_mode=='xy':
+        trainX,trainY = split_sequence_training_xy(length_obs,train1)
+    if representation_mode=='dxdy':
+        trainX,trainY = split_sequence_training_dxdy(length_obs,train1)
+    if representation_mode=='lineardev':
+        trainX,trainY = split_sequence_training_lineardev(length_obs,train1)
+
+    testX,testY  = split_sequence_testing(length_obs,test1,length_pred)
+
+    return trainX,trainY,testX,testY
