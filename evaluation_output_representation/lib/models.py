@@ -29,7 +29,7 @@ class SingleStepPrediction(tf.keras.Model):
         return self.regression(x)
 
     # Training loop
-    def training_loop(self,trainX,trainY):
+    def training_loop(self,trainX,trainY, epochs=250, batch_size=64):
         self.compile(optimizer=optimizers.RMSprop(lr = 0.01, decay=1e-2), loss='logcosh',metrics=['mse'])
         history= self.fit(trainX, trainY, epochs=250, batch_size=64, verbose=2)
         self.summary()
@@ -108,22 +108,26 @@ class SingleStepPrediction(tf.keras.Model):
 
 
     # Takes a testing set and evaluates errors on it
-    def evaluate(self,testX,testY,seq_length_obs,seq_length_pred,pixels=False):
+    def evaluate(self, testX, testY, seq_length_obs, seq_length_pred, pixels=False):
         # Observations and targets, by splitting the trajectories of the testing set
-        total_ade = 0.0
-        total_fde = 0.0
+        total_ade    = 0.0
+        total_fde    = 0.0
+        all_traj_pred= []
+        all_traj_gt  = []
         # Iterate over the splitted testing data
         for i in range(len(testX)):
             traj_obs,traj_pred = self.predict_steps(testX[i],seq_length_pred)
             # Evaluate the difference
             if pixels:
-                traj_pred_pixels = np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
-                traj_gt_pixels   = np.column_stack((768*testY[i][:,0],576*testY[i][:,1]))
-                total_ade += evaluate_ade(traj_pred_pixels, traj_gt_pixels, seq_length_obs)
-                total_fde += evaluate_fde(traj_pred_pixels, traj_gt_pixels, seq_length_obs)
+                traj_pred = np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
+                traj_gt   = np.column_stack((768*testY[i][:,0],576*testY[i][:,1]))
             else:
-                total_ade += evaluate_ade(traj_pred, testY[i], seq_length_obs)
-                total_fde += evaluate_fde(traj_pred, testY[i], seq_length_obs)
+                traj_gt = testY
+            total_ade += evaluate_ade(traj_pred, traj_gt, seq_length_obs)
+            total_fde += evaluate_fde(traj_pred, traj_gt, seq_length_obs)
+            # Keep GT and predicted trajectories in pixels
+            all_traj_pred.append(traj_pred)
+            all_traj_gt.append(traj_gt)
 
         error_ade = total_ade/len(testX)
         error_fde = total_fde/len(testX)
@@ -133,67 +137,23 @@ class SingleStepPrediction(tf.keras.Model):
             print('---------Error (normalized coordinates)--------')
         print('[RES] ADE: ',error_ade)
         print('[RES] FDE: ',error_fde)
+        return all_traj_pred, all_traj_gt
 
-    # Quantitative evaluation
-    def evaluate_and_plot(self,data, seq_length_obs, seq_length_pred, mode='xy'):
+    # Plot predictions
+    def predict_and_plot(self, testX, testY, seq_length_obs, seq_length_pred, pixels=False):
         # Just the starting parts of the sequence
-        testX,testY    = split_sequence_start_testing(seq_length_obs,data,seq_length_pred)
-        total_ade      = 0.0
         plt.figure(figsize=(18,15))
         color_names       = ["r","crimson" ,"g", "b","c","m","y","lightcoral", "peachpuff","grey","springgreen" ,"fuchsia","violet","teal","seagreen","lime","yellow","coral","aquamarine","hotpink"]
         plt.subplot(1,1,1)
-        all_traj_pred_pixels = []
-        all_traj_gt_pixels   = []
         # For all the subsequences
         for i in range(len(testX)):
             traj_obs,traj_pred = self.predict_steps(testX[i],seq_length_pred)
-            error_ade = evaluate_ade(traj_pred,testY[i],seq_length_obs)
-            error_fde = evaluate_fde(traj_pred,testY[i],seq_length_obs)
-
             plt.plot(testY[i][0:8,0],testY[i][0:8,1],'*--',color=color_names[19-i],label = 'Observed')
             plt.plot(testY[i][7:,0],testY[i][7:,1],'--',color=color_names[i],label = 'GT')
             plt.plot(traj_pred[seq_length_obs-1:,0],traj_pred[seq_length_obs-1:,1],'-',color=color_names[19-i],label = 'Predicted')
             plt.axis('equal')
-            total_ade += error_ade
-
-            traj_pred_pixels = np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
-            traj_gt_pixels   = np.column_stack((768*testY[i][:,0],576*testY[i][:,1]))
-
-            all_traj_pred_pixels.append(traj_pred_pixels)
-            all_traj_gt_pixels.append(traj_gt_pixels)
-
         plt.title("Predicting 4 positions with LTM-X-Y")
         plt.xlabel('x-coordinate')
         plt.ylabel('y-coordinate')
-        error_model = total_ade/len(testX)
-        print('[RES] ADE: ',error_ade)
         #plt.savefig("4predichas.pdf")
         plt.show()
-
-    # Esta funcion hace la prediccion en coordenadas pixel
-    def predict_sample(self, data, seq_length_obs, seq_length_pred):
-
-        testX,testY  = split_sequence_testing(seq_length_obs,data,seq_length_pred)
-        total_ade    = 0.0
-        total_fde    = 0.0
-        all_traj_pred= []
-        all_traj_gt  = []
-
-        for i in range(len(testX)):
-            # Predict steps for trajectory i
-            traj_obs,traj_pred = self.predict_steps(testX[i],seq_length_pred)
-            traj_pred = np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
-            traj_gt   = np.column_stack((768*testY[i][:,0],576*testY[i][:,1]))
-            # Keep GT and predicted trajectories in pixels
-            all_traj_pred.append(traj_pred)
-            all_traj_gt.append(traj_gt)
-            # ADE/FDE
-            total_ade += evaluate_ade(traj_pred, traj_gt, seq_length_obs)
-            total_fde += evaluate_fde(traj_pred, traj_gt, seq_length_obs)
-
-        error_ade = total_ade/len(testX)
-        error_fde = total_fde/len(testX)
-        print('[RES] Evaluating one sample ')
-        print('[RES] ADE: ',error_ade)
-        print('[RES] FDE: ',error_fde)
-        return all_traj_pred, all_traj_gt

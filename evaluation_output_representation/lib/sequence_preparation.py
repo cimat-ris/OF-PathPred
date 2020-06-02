@@ -71,7 +71,7 @@ def split_sequence_training_lineardev(seq_length_obs,data):
     return np.array(X), np.array(Y)
 
 # Prepare sequences for testing
-def split_sequence_start_testing(seq_length_obs,data,seq_length_pred):
+def split_sequence_start_testing(data,seq_length_obs,seq_length_pred):
     tamano = int(len(data))
     X,Y_true = [],[]
     for j in range(tamano):
@@ -81,7 +81,7 @@ def split_sequence_start_testing(seq_length_obs,data,seq_length_pred):
     return np.array(X),np.array(Y_true)
 
 # This function takes a set of trajectories and build sub-sequences seq_length_obs+seq_length_pred
-def split_sequence_testing(seq_length_obs,data,seq_length_pred):
+def split_sequence_testing(data,seq_length_obs,seq_length_pred):
     tamano = int(len(data))
     X,Y_true = [],[]
     # se recorre todo los datos de test

@@ -155,6 +155,6 @@ def split_data(data_p,split_mode,length_obs,length_pred,representation_mode):
     if representation_mode=='lineardev':
         trainX,trainY = split_sequence_training_lineardev(length_obs,train1)
 
-    testX,testY  = split_sequence_testing(length_obs,test1,length_pred)
-
+    testX,testY  = split_sequence_testing(test1,length_obs,length_pred)
+    trainX       = np.reshape(trainX, (trainX.shape[0],trainX.shape[1],trainX.shape[2]))
     return trainX,trainY,testX,testY

@@ -51,8 +51,8 @@ length_pred        = 4
 representation_mode= 'dxdy'
 # Generate training/testing datasets
 trainX,trainY,testX,testY = split_data(data_p,split_mode,length_obs,length_pred,representation_mode)
+allX,allY                 = split_sequence_start_testing(data_p,length_obs,length_pred)
 
-trainX = np.reshape(trainX, (trainX.shape[0],trainX.shape[1],trainX.shape[2]))
 data_shape = trainX.shape[1:]
 print('[INF] Shape of training data ',np.shape(trainX))
 
@@ -75,22 +75,28 @@ model.load_weights('models/simple-{}.ckpt'.format(representation_mode))
 # Evaluate the errors
 model.evaluate(testX,testY,length_obs,length_pred,True)
 # Evaluate on the whole dataset
-model.evaluate_and_plot(data_p,length_obs,length_pred)
+model.predict_and_plot(allX,allY,length_obs,length_pred)
 
 
 ## Qualitative evaluation
 cruce     = [data_p[3][252:264,:],data_p[4][135:147,:]]
 paralelos = [data_p[2][1:13],data_p[3][20:32]]
-inverso  = [data_p[4][167:179],data_p[6][15:27]]
-p,v = model.predict_sample(cruce,length_obs,length_pred)
+inverso   = [data_p[4][167:179],data_p[6][15:27]]
+
+# First example
+testX,testY  = split_sequence_testing(cruce,length_obs,length_pred)
+p,v = model.evaluate(testX,testY,length_obs,length_pred,True)
 name = "cruce_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
-p,v = model.predict_sample(paralelos,length_obs,length_pred)
+
+# Second example
+testX,testY  = split_sequence_testing(paralelos,length_obs,length_pred)
+p,v = model.evaluate(testX,testY,length_obs,length_pred,True)
 name = "paralelos_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
-p,v = model.predict_sample(inverso,length_obs,length_pred)
+
+# Third example
+testX,testY  = split_sequence_testing(inverso,length_obs,length_pred)
+p,v = model.evaluate(testX,testY,length_obs,length_pred,True)
 name = "inverso_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
-
-
-# In[ ]:
