@@ -75,7 +75,7 @@ model.load_weights('models/simple-{}.ckpt'.format(representation_mode))
 # Evaluate the errors
 model.evaluate(testX,testY,length_obs,length_pred,True)
 # Evaluate on the whole dataset
-model.evaluate_testing_set_start(data_p,length_obs,length_pred)
+model.evaluate_and_plot(data_p,length_obs,length_pred)
 
 
 ## Qualitative evaluation
