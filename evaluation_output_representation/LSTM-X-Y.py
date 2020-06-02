@@ -18,11 +18,12 @@ import random
 from sklearn.preprocessing import MinMaxScaler
 import h5py
 import tensorflow as tf
+print('[INF] TF Version: '+tf.__version__)
 
 from lib.preprocess import *
 from lib.evaluation import *
 from lib.sequence_preparation import *
-from lib.model import *
+from lib.models import *
 
 
 datasets  = [0]
@@ -66,10 +67,6 @@ def split_data_idgroups(combination,intervals_ids,data):
     for i in intervals_ids[combination[4]]:
         testing_set.append(data[i])
     return training_set,testing_set
-
-
-# In[83]:
-
 
 split_mode   = 1
 total_length = len(data_p)
@@ -130,132 +127,27 @@ if representation_mode=='lineardev':
     trainX,trainY = split_sequence_training_lineardev(length_obs,train1)
 
 
-# In[110]:
-
-
 trainX = np.reshape(trainX, (trainX.shape[0],trainX.shape[1],trainX.shape[2]))
-
-
-# In[111]:
-
-
 data_shape = trainX.shape[1:]
 print('[INF] Shape of training data ',np.shape(trainX))
 
 
-# In[112]:
+# Build and train the network
+model = SingleStepPrediction(representation_mode)
+model.training_loop(trainX,trainY)
 
+# Plot some samples of the prediction, on the training dataset
+model.plot_prediction_samples(trainX,trainY)
 
-# Examples of training data
-rnds = np.random.randint(0, np.shape(trainX)[0], size=9)
-plt.subplots(3,3,figsize=(15,15))
-for i in range(9):
-    plt.subplot(3,3,1+i)
-    plt.plot(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
-    if representation_mode=='xy':
-        plt.plot(trainY[rnds[i]][0],trainY[rnds[i]][1],'r+')
-    if representation_mode=='dxdy':
-        plt.plot(trainX[rnds[i]][-1,0]+trainY[rnds[i]][0],trainX[rnds[i]][-1,1]+trainY[rnds[i]][1],'r+')
-    if representation_mode=='lineardev':
-        x0,y0,vx,vy   = linear_lsq_model(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
-        x_pred_linear = x0+vx*(len(trainX[rnds[i]][:,0])+1)
-        y_pred_linear = y0+vy*(len(trainX[rnds[i]][:,1])+1)
-        plt.plot(x_pred_linear+trainY[rnds[i]][0],y_pred_linear+trainY[rnds[i]][1],'r+')
-
-
-
-# ## Network
-
-# In[113]:
-model = SingleStepPrediction()
-model.compile(optimizer=optimizers.RMSprop(lr = 0.01, decay=1e-2), loss='logcosh',metrics=['mse'])
-
-# model.compile(optimizer=opt, loss='mean_squared_error',metrics=['mse'])
-history= model.fit(trainX, trainY, epochs=250, batch_size=64, verbose=2)
-model.summary()
-
-history_dict= history.history
-history_dict.keys()
-acc  = history.history['mean_squared_error']
-loss = history.history['loss']
-#val_acc = history.history['val_mean_squared_error']s
-#val_loss = history.history['val_loss']
-
-epochs = range(1, len(loss)+1)
-
-plt.figure(figsize=(12,5))
-plt.subplot(1,2,1)
-plt.plot(epochs, loss, 'b', label='Training loss')
-#plt.plot(epochs, val_loss, 'g', label='Validation loss')
-plt.title('Training loss')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.legend()
-
-plt.subplot(1,2,2)
-plt.plot(epochs, acc, 'r', label='Training mse')
-#plt.plot(epochs, val_acc, 'g', label='Validation mse')
-plt.title('Training mse')
-plt.xlabel('Epochs')
-plt.ylabel('MSE')
-plt.legend()
-plt.show()
-
-# In[118]:
-
-
-# Examples of training data
-rnds = np.random.randint(0, np.shape(trainX)[0], size=9)
-plt.subplots(3,3,figsize=(15,15))
-for i in range(9):
-    plt.subplot(3,3,1+i)
-    traj_obsr = np.reshape(trainX[rnds[i]], (1,trainX[rnds[i]].shape[0],trainX[rnds[i]].shape[1]) )
-    # Applies the model to produce the next point
-    next_point= model.predict(traj_obsr)
-    plt.plot(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
-    if representation_mode=='xy':
-        plt.plot(next_point[0][0],next_point[0][1],'go')
-        plt.plot(trainY[rnds[i]][0],trainY[rnds[i]][1],'r+')
-    if representation_mode=='dxdy':
-        plt.plot(trainX[rnds[i]][-1,0]+next_point[0][0],trainX[rnds[i]][-1,1]+next_point[0][1],'go')
-        plt.plot(trainX[rnds[i]][-1,0]+trainY[rnds[i]][0],trainX[rnds[i]][-1,1]+trainY[rnds[i]][1],'r+')
-    if representation_mode=='lineardev':
-        x0,y0,vx,vy   = linear_lsq_model(trainX[rnds[i]][:,0],trainX[rnds[i]][:,1])
-        x_pred_linear = x0+vx*(len(trainX[rnds[i]][:,0])+1)
-        y_pred_linear = y0+vy*(len(trainX[rnds[i]][:,1])+1)
-        plt.plot(x_pred_linear+next_point[0][0],y_pred_linear+next_point[0][1],'go')
-        plt.plot(x_pred_linear+trainY[rnds[i]][0],y_pred_linear+trainY[rnds[i]][1],'r+')
-
-    plt.axis('equal')
-
-
-# # Save the model
-
-# In[119]:
-
-
+# Save the model
 model.save_weights('models/simple-{}.ckpt'.format(representation_mode))
-
-
-# # Load the model
-
-# In[120]:
-
-
-#model = load_model('lstm-xy1.tf',save_format="tf")
+# Load the model
 model.load_weights('models/simple-{}.ckpt'.format(representation_mode))
 
-# ## Evaluate the errors
-
-# In[121]:
-
-
-
-
-
-evaluate_testing_set(model,test1,8,4,True,representation_mode)
+# Evaluate the errors
+model.evaluate_testing_set(test1,8,4,True)
 # Evaluate on the whole dataset
-evaluate_testing_set_start(model,data_p,8,4,representation_mode)
+model.evaluate_testing_set_start(data_p,8,4)
 
 
 # ## Qualitative evaluation
@@ -274,14 +166,6 @@ paralelos.append(data_p[3][20:32])
 inverso = []
 inverso.append(data_p[4][167:179])
 inverso.append(data_p[6][15:27])
-
-
-# In[130]:
-
-
-
-# In[132]:
-
 
 """
 Para graficar los resultados cualitativos se escoge el mejor modelo de los
