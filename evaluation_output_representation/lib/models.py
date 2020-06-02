@@ -138,7 +138,7 @@ class SingleStepPrediction(tf.keras.Model):
     def evaluate_and_plot(self,data, seq_length_obs, seq_length_pred, mode='xy'):
         # Just the starting parts of the sequence
         testX,testY    = split_sequence_start_testing(seq_length_obs,data,seq_length_pred)
-        total_error    = 0.0
+        total_ade      = 0.0
         plt.figure(figsize=(18,15))
         color_names       = ["r","crimson" ,"g", "b","c","m","y","lightcoral", "peachpuff","grey","springgreen" ,"fuchsia","violet","teal","seagreen","lime","yellow","coral","aquamarine","hotpink"]
         plt.subplot(1,1,1)
@@ -154,7 +154,7 @@ class SingleStepPrediction(tf.keras.Model):
             plt.plot(testY[i][7:,0],testY[i][7:,1],'--',color=color_names[i],label = 'GT')
             plt.plot(traj_pred[seq_length_obs-1:,0],traj_pred[seq_length_obs-1:,1],'-',color=color_names[19-i],label = 'Predicted')
             plt.axis('equal')
-            total_error += error_ade
+            total_ade += error_ade
 
             traj_pred_pixels = np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
             traj_gt_pixels   = np.column_stack((768*testY[i][:,0],576*testY[i][:,1]))
@@ -165,13 +165,13 @@ class SingleStepPrediction(tf.keras.Model):
         plt.title("Predicting 4 positions with LTM-X-Y")
         plt.xlabel('x-coordinate')
         plt.ylabel('y-coordinate')
-        error_model = total_error/len(testX)
-        print("[RES] Average error ",error_model)
+        error_model = total_ade/len(testX)
+        print('[RES] ADE: ',error_ade)
         #plt.savefig("4predichas.pdf")
         plt.show()
 
     # Esta funcion hace la prediccion en coordenadas pixel
-    def sample_en_pixeles_cualitativamente(self, data, seq_length_obs, seq_length_pred):
+    def predict_sample(self, data, seq_length_obs, seq_length_pred):
 
         testX,testY  = split_sequence_testing(seq_length_obs,data,seq_length_pred)
         total_ade    = 0.0
@@ -193,10 +193,7 @@ class SingleStepPrediction(tf.keras.Model):
 
         error_ade = total_ade/len(testX)
         error_fde = total_fde/len(testX)
-
-        print('---------Error--------')
-        print('ADE')
-        print(error_ade)
-        print('FDE')
-        print(error_fde)
+        print('[RES] Evaluating one sample ')
+        print('[RES] ADE: ',error_ade)
+        print('[RES] FDE: ',error_fde)
         return all_traj_pred, all_traj_gt

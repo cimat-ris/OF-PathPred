@@ -82,13 +82,13 @@ model.evaluate_and_plot(data_p,length_obs,length_pred)
 cruce     = [data_p[3][252:264,:],data_p[4][135:147,:]]
 paralelos = [data_p[2][1:13],data_p[3][20:32]]
 inverso  = [data_p[4][167:179],data_p[6][15:27]]
-p,v = model.sample_en_pixeles_cualitativamente(cruce,8,4)
+p,v = model.predict_sample(cruce,length_obs,length_pred)
 name = "cruce_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
-p,v = model.sample_en_pixeles_cualitativamente(paralelos,8,4)
+p,v = model.predict_sample(paralelos,length_obs,length_pred)
 name = "paralelos_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
-p,v = model.sample_en_pixeles_cualitativamente(inverso,8,4)
+p,v = model.predict_sample(inverso,length_obs,length_pred)
 name = "inverso_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
 
