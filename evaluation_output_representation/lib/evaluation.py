@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from lib.sequence_preparation import *
 
 # Evaluate the ADE
 def evaluate_ade(predicted_traj, true_traj, observed_length):
@@ -33,5 +32,6 @@ def plot_qualitative(p,v,name):
     plt.plot(v[1][7:,0],v[1][7:,1],'--',color=color_names[4])
 
     plt.legend()
+    plt.title('Prediction sample {}'.format(name))
     plt.savefig(name)
     plt.show()

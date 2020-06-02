@@ -31,7 +31,7 @@ class SingleStepPrediction(tf.keras.Model):
     # Training loop
     def training_loop(self,trainX,trainY, epochs=250, batch_size=64):
         self.compile(optimizer=optimizers.RMSprop(lr = 0.01, decay=1e-2), loss='logcosh',metrics=['mse'])
-        history= self.fit(trainX, trainY, epochs=250, batch_size=64, verbose=2)
+        history= self.fit(trainX, trainY, epochs=epochs, batch_size=batch_size, verbose=2)
         self.summary()
 
         history_dict= history.history

@@ -20,7 +20,6 @@ import tensorflow as tf
 print('[INF] TF Version: '+tf.__version__)
 
 from lib.preprocess import *
-from lib.evaluation import *
 from lib.sequence_preparation import *
 from lib.models import *
 
@@ -60,7 +59,7 @@ print('[INF] Shape of training data ',np.shape(trainX))
 ################################################################################################################
 # Build and train the network
 model = SingleStepPrediction(representation_mode)
-model.training_loop(trainX,trainY)
+model.training_loop(trainX,trainY,epochs=350)
 
 # Plot some samples of the prediction, on the training dataset
 model.plot_prediction_samples(trainX,trainY)
