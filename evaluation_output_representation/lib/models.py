@@ -8,12 +8,14 @@ from tensorflow.keras import initializers
 from tensorflow.keras.utils import plot_model
 from lib.evaluation import *
 import matplotlib.pyplot as plt
+import random
 
 class SingleStepPrediction(tf.keras.Model):
     # Constructor, the layers are defined here
-    def __init__(self,mode='xy',hidden_state=10):
+    def __init__(self,mode='xy',hidden_state=10,length_r=8):
         super(SingleStepPrediction, self).__init__(name='SingleStepPrediction')
         self.output_representation_mode = mode
+        self.length_r = length_r
         self.rnn1 = LSTM(hidden_state, return_sequences=True, name='lstm1')
         self.rnn2 = LSTM(hidden_state, name='lstm2')
         self.regression= Dense(2)
@@ -38,7 +40,7 @@ class SingleStepPrediction(tf.keras.Model):
         history_dict.keys()
         acc  = history.history['mean_squared_error']
         loss = history.history['loss']
-        #val_acc = history.history['val_mean_squared_error']s
+        #val_acc = history.history['val_mean_squared_error']
         #val_loss = history.history['val_loss']
 
         # Plot results
@@ -62,6 +64,7 @@ class SingleStepPrediction(tf.keras.Model):
         plt.show()
 
     # Plot prediction results
+    # datax, datay is training data 
     def plot_prediction_samples(self,dataX,dataY):
         # Select randomly 9 trajectories
         rnds = np.random.randint(0, np.shape(dataX)[0], size=9)
@@ -79,7 +82,7 @@ class SingleStepPrediction(tf.keras.Model):
                 plt.plot(dataX[rnds[i]][-1,0]+next_point[0][0], dataX[rnds[i]][-1,1]+next_point[0][1],'go')
                 plt.plot(dataX[rnds[i]][-1,0]+dataY[rnds[i]][0],dataX[rnds[i]][-1,1]+dataY[rnds[i]][1],'r+')
             if self.output_representation_mode=='lineardev':
-                x0,y0,vx,vy   = linear_lsq_model(dataX[rnds[i]][:,0],dataX[rnds[i]][:,1])
+                x0,y0,vx,vy   = linear_lsq_model(dataX[rnds[i]][:,0],dataX[rnds[i]][:,1],self.length_r )
                 x_pred_linear = x0+vx*(len(dataX[rnds[i]][:,0])+1)
                 y_pred_linear = y0+vy*(len(dataX[rnds[i]][:,1])+1)
                 plt.plot(x_pred_linear+next_point[0][0], y_pred_linear+next_point[0][1],'go')
@@ -98,15 +101,39 @@ class SingleStepPrediction(tf.keras.Model):
             if self.output_representation_mode=='dxdy':
                 next_point=next_point+traj_obs[-1]
             if self.output_representation_mode=='lineardev':
-                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1])
+                x0,y0,vx,vy   = linear_lsq_model(traj_obs[:,0],traj_obs[:,1],self.length_r)
                 x_pred_linear = x0+vx*(len(traj_obs[:,0])+1)
                 y_pred_linear = y0+vy*(len(traj_obs[:,1])+1)
-                next_point=next_point+[x_pred_linear,y_pred_linear]
+                next_point = next_point+[x_pred_linear,y_pred_linear]
+            
             traj_obs   = np.concatenate((traj_obs[1:len(traj_obs)], next_point), axis = 0)
             traj_pred  = np.concatenate((traj_pred, next_point), axis = 0)
-        return traj_obs,traj_pred
+        return traj_pred
 
+    def relative_to_abs(rel_pred, start_pos):
+        rel_pred = np.reshape(rel_pred,(len(rel_pred),2))
+        displacement = np.cumsum(rel_pred, axis=0)
+        abs_pred = displacement + np.array([start_pos])
+        return abs_pred
+    
+    def predict_steps_only_displacement(self,X,Y,seq_length_obs,seq_length_pred):
+        traj_obs_rel = X
+        traj_obs_abs = Y
+        
+        pred_rel = []
+        for j in range(seq_length_pred):
+            traj_obsr    = np.reshape(traj_obs_rel, (1,traj_obs.shape[0],traj_obs.shape[1]) )
+            next_point   = self.predict(traj_obsr)
+            pred_rel.append(next_point)
 
+            traj_obs_rel = np.concatenate( (traj_obs_rel[1:len(traj_obs_rel)],next_point),axis=0)
+            traj_obs_rel[0,:] = [0,0]
+        
+        pred_abs  = relative_to_abs(pred_rel,traj_obs_abs[seq_length_obs-1,:])
+        traj_pred = np.concatenate((traj_obs_abs[:seq_length_obs,:], pred_abs), axis=0)
+        return traj_pred
+        
+         
     # Takes a testing set and evaluates errors on it
     def evaluate(self, testX, testY, seq_length_obs, seq_length_pred, pixels=False):
         # Observations and targets, by splitting the trajectories of the testing set
@@ -116,7 +143,10 @@ class SingleStepPrediction(tf.keras.Model):
         all_traj_gt  = []
         # Iterate over the splitted testing data
         for i in range(len(testX)):
-            traj_obs,traj_pred = self.predict_steps(testX[i],seq_length_pred)
+            if self.output_representation_mode=='only_displacement':
+                traj_pred =self.predict_steps_only_displacement(testX[i],testY[i],seq_length_obs,seq_length_pred)
+            else:
+                traj_pred = self.predict_steps(testX[i],seq_length_pred)
             # Evaluate the difference
             if pixels:
                 traj_pred = np.column_stack((768*traj_pred[:,0],576*traj_pred[:,1]))
@@ -147,10 +177,14 @@ class SingleStepPrediction(tf.keras.Model):
         plt.subplot(1,1,1)
         # For all the subsequences
         for i in range(len(testX)):
-            traj_obs,traj_pred = self.predict_steps(testX[i],seq_length_pred)
-            plt.plot(testY[i][0:8,0],testY[i][0:8,1],'*--',color=color_names[19-i],label = 'Observed')
-            plt.plot(testY[i][7:,0],testY[i][7:,1],'--',color=color_names[i],label = 'GT')
-            plt.plot(traj_pred[seq_length_obs-1:,0],traj_pred[seq_length_obs-1:,1],'-',color=color_names[19-i],label = 'Predicted')
+            cpu = random.choice(range(1,20,1))
+            if self.output_representation_mode=='only_displacement':
+                traj_pred = self.predict_steps_only_displacement(testX[i],testY[i],seq_length_obs,seq_length_pred)
+            else:
+                traj_pred = self.predict_steps(testX[i],seq_length_pred)
+            plt.plot(testY[i][0:8,0],testY[i][0:8,1],'*--',color=color_names[cpu],label = 'Observed')
+            plt.plot(testY[i][7:,0],testY[i][7:,1],'--',color=color_names[cpu-1],label = 'GT')
+            plt.plot(traj_pred[seq_length_obs-1:,0],traj_pred[seq_length_obs-1:,1],'-',color=color_names[cpu],label = 'Predicted')
             plt.axis('equal')
         plt.title("Predicting 4 positions with LTM-X-Y")
         plt.xlabel('x-coordinate')

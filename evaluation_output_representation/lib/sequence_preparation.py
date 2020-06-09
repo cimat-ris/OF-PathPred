@@ -34,8 +34,15 @@ def split_sequence_training_dxdy(seq_length_obs,data):
     return np.array(X), np.array(Y)
 
 # Compute the linear interpolation model
-def linear_lsq_model(x,y):
+def linear_lsq_model(x,y,length_r):
+    l_obs  = len(x)
+
     t      = range(1,len(x)+1)
+    if(length_r<l_obs):
+        t = t[obs-longitud:obs]
+        x = x[obs-longitud:obs]
+        y = y[obs-longitud:obs]
+    
     x_mean = np.mean(x)
     t_mean = np.mean(t)
     t_var  = np.var(t)
@@ -50,7 +57,7 @@ def linear_lsq_model(x,y):
     return x0,y0,vx,vy
 
 # Divide a long sequence into mini-sequences of seq_length_obs+1 data (deviations to the linear model)
-def split_sequence_training_lineardev(seq_length_obs,data):
+def split_sequence_training_lineardev(seq_length_obs,data,length_r):
     length = int(len(data))
     X,Y = [],[]
     for j in range(length):
@@ -63,15 +70,33 @@ def split_sequence_training_lineardev(seq_length_obs,data):
             yy = traj[i:(i + seq_length_obs ), 1]
 
             # Compute the linear interpolation model
-            # TODO: vary the support of the interpolation model
-            x0,y0,vx,vy = linear_lsq_model(xx,yy)
+            
+            x0,y0,vx,vy = linear_lsq_model(xx,yy,length_r)
             x_next      = x0+vx*(len(xx)+1)
             y_next      = y0+vy*(len(yy)+1)
             Y.append(traj[i+seq_length_obs, :]-[x_next,y_next])
     return np.array(X), np.array(Y)
 
-# Prepare sequences for testing
-def split_sequence_start_testing(data,seq_length_obs,seq_length_pred):
+# Divide a long sequence into mini-sequences of seq_length_obs+1 data (model of only displacement)
+def split_sequence_training_only_displacement(seq_length_obs,data):
+ 
+    length = int(len(data))
+    
+    X,Y = [],[]
+    for j in range(length):
+        traj = data[j]
+        lon  = traj.shape[0]-seq_length_obs
+        for i in range(0,lon):
+            pos_rel = np.zeros((seq_length_obs+1,2), dtype="float")
+            pos_abs = traj[i:(i +seq_length_obs+1 ), :]
+            pos_rel[1:, :] = pos_abs[1:, :] - pos_abs[:-1, :]
+            X.append(pos_rel[:seq_length_obs,:]) 
+            Y.append(pos_rel[seq_length_obs:])
+    Y = np.concatenate(Y,axis=0)
+    return np.array(X), Y
+
+# Prepare sequences for testing the models of output representation
+def split_sequence_start_testing_ouput_representation(data,seq_length_obs,seq_length_pred):
     tamano = int(len(data))
     X,Y_true = [],[]
     for j in range(tamano):
@@ -80,14 +105,35 @@ def split_sequence_start_testing(data,seq_length_obs,seq_length_pred):
         Y_true.append(traj[0:seq_length_obs+seq_length_pred,:])
     return np.array(X),np.array(Y_true)
 
-# This function takes a set of trajectories and build sub-sequences seq_length_obs+seq_length_pred
-def split_sequence_testing(data,seq_length_obs,seq_length_pred):
+# Prepare sequences for testing the model only displacement
+def split_sequence_start_testing_only_displacement(data,seq_length_obs,seq_length_pred):
+    tamano = int(len(data))
+    X,Y_true = [],[]
+    for j in range(tamano):
+        traj    = data[j]
+        pos_rel = np.zeros((seq_length_obs,2), dtype="float")
+        pos_abs = traj[0:seq_length_obs, :]
+        pos_rel[1:,:] = pos_abs[1:, :] - pos_abs[:-1, :]
+        X.append(pos_rel)
+        Y_true.append(traj[0:seq_length_obs+seq_length_pred,:])
+    return np.array(X),np.array(Y_true)
+
+
+def split_sequence_start_testing(data,seq_length_obs,seq_length_pred,representation_mode):
+    if representation_mode=='only_displacement':
+        allX,allY = split_sequence_start_testing_only_displacement(data,seq_length_obs,seq_length_pred) 
+    else:
+        allX,allY = split_sequence_start_testing_ouput_representation(data,seq_length_obs,seq_length_pred)
+    return allX,allY  
+        
+# This function takes a set of trajectories (test) and build sub-sequences seq_length_obs+seq_length_pred
+def split_sequence_testing_output_representation(data,seq_length_obs,seq_length_pred):
     tamano = int(len(data))
     X,Y_true = [],[]
     # se recorre todo los datos de test
     for j in range(tamano):
         traj = data[j]
-        lon = traj.shape[0]-seq_length_obs-seq_length_pred
+        lon  = traj.shape[0]-seq_length_obs-seq_length_pred
         for i in range(0,lon+1):
             a = traj[i:(i +seq_length_obs ), :]
             X.append(a)
@@ -95,3 +141,34 @@ def split_sequence_testing(data,seq_length_obs,seq_length_pred):
             b = traj[i: (i+seq_length_obs+seq_length_pred), :]
             Y_true.append(b)
     return np.array(X),np.array(Y_true)
+
+# This fuction takes a set of trajectories (test) and build sub-sequences seq_length_obs+seq_length_pred
+# to the model of only displacement
+def split_sequence_testing_only_displacement(data,seq_length_obs,seq_length_pred):
+    tamano = int(len(data))
+    
+    X_des,Y_abs = [],[]
+    for j in range(tamano):
+        traj = data[j]
+        lon = traj.shape[0]-seq_length_obs-seq_length_pred
+        for i in range(0,lon+1):
+            pos_rel = np.zeros((seq_length_obs+seq_length_pred,2), dtype='float')
+            pos_abs = traj[i:(i +seq_length_obs+ seq_length_pred ), :]
+            
+            pos_rel[1:,:] = pos_abs[1:,:]-pos_abs[:-1,:]
+            
+            X_des.append(pos_rel[:seq_length_obs,:])
+      
+            Y_abs.append(pos_abs[0:seq_length_obs+seq_length_pred ,:])
+            
+    return np.array(X_des),np.array(Y_abs)
+
+def split_sequence_testing(data,seq_length_obs,seq_length_pred, representation_mode):
+    if representation_mode=='only_displacement':
+        X,Y = split_sequence_testing_only_displacement(data,seq_length_obs,seq_length_pred)
+    else: 
+        X,Y = split_sequence_testing_output_representation(data,seq_length_obs,seq_length_pred)
+    return X,Y    
+
+        
+        

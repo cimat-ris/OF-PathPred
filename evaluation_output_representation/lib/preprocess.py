@@ -93,7 +93,6 @@ def load_preprocessed(preprocessed_data_file,seq_length_obs,batch_size):
         # If the length of the trajectory is greater than seq_length (+2 as we need both source and target data)
         #solo se toman las trajectorias de longitud mayor a seq_length+2
         if traj.shape[1] >= (seq_length_obs+1):
-            # TODO: (Improve) Store only the (x,y) coordinates for now
             data.append(traj[[0, 1], :].T)
             # Number of batches this datapoint is worth
             counter += int(traj.shape[1] / ((seq_length_obs+1)))
@@ -117,21 +116,21 @@ def split_data_idgroups(combination,intervals_ids,data):
         testing_set.append(data[i])
     return training_set,testing_set
 
-def split_data(data_p,split_mode,length_obs,length_pred,representation_mode):
+def split_data(data_p,split_mode,length_obs,length_pred,representation_mode,id_train=1,length_r=8):
     total_length = len(data_p)
 
     if split_mode==0:
         indices      = range(total_length)
         intervals_ids        = []
-        # Pedestrians are split in groups of 4
-        for i in range(0,total_length,4):
-            intervals_ids.append(indices[i:i+4])
+        # Pedestrians are split in groups of size 20 percent of the number of pedestrians in the dataset
+        step_size = int(np.ceil(total_length/5.))
+        for i in range(0,total_length,step_size):
+            intervals_ids.append(indices[i:i+step_size])
         # TODO: generalize?
         combinations=[(0,1,2,3,4),(0,1,2,4,3),(0,1,3,4,2),(0,2,3,4,1),(1,2,3,4,0)]
         # Generate train/test
-        for i in range(5):
-            # TODO
-            train1,test1 = split_data_idgroups(combinations[0],intervals_ids,data_p)
+        #for i in range(5):
+        train1,test1 = split_data_idgroups(combinations[id_train-1],intervals_ids,data_p)
 
     elif split_mode==1:
         random.seed(0)
@@ -153,8 +152,11 @@ def split_data(data_p,split_mode,length_obs,length_pred,representation_mode):
     if representation_mode=='dxdy':
         trainX,trainY = split_sequence_training_dxdy(length_obs,train1)
     if representation_mode=='lineardev':
-        trainX,trainY = split_sequence_training_lineardev(length_obs,train1)
+        trainX,trainY = split_sequence_training_lineardev(length_obs,train1,length_r)
+    if representation_mode=='only_displacement':
+        trainX,trainY = split_sequence_training_only_displacement(length_obs,train1)
 
-    testX,testY  = split_sequence_testing(test1,length_obs,length_pred)
+    testX,testY = split_sequence_testing(test1,length_obs,length_pred,representation_mode)
+    
     trainX       = np.reshape(trainX, (trainX.shape[0],trainX.shape[1],trainX.shape[2]))
     return trainX,trainY,testX,testY

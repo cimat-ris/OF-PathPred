@@ -19,6 +19,8 @@ import h5py
 import tensorflow as tf
 print('[INF] TF Version: '+tf.__version__)
 
+import sys
+sys.path.append('../evaluation_output_representation/lib')
 from lib.preprocess import *
 from lib.sequence_preparation import *
 from lib.models import *
@@ -47,10 +49,11 @@ plot_trajectories(data_p)
 split_mode         = 1
 length_obs         = 8
 length_pred        = 4
-representation_mode= 'dxdy'
+representation_mode='dxdy'
+id_train           = 1
 # Generate training/testing datasets
-trainX,trainY,testX,testY = split_data(data_p,split_mode,length_obs,length_pred,representation_mode)
-allX,allY                 = split_sequence_start_testing(data_p,length_obs,length_pred)
+trainX,trainY,testX,testY = split_data(data_p,split_mode,length_obs,length_pred,representation_mode,id_train)
+allX,allY                 = split_sequence_start_testing(data_p,length_obs,length_pred,representation_mode)
 
 data_shape = trainX.shape[1:]
 print('[INF] Shape of training data ',np.shape(trainX))
@@ -62,7 +65,8 @@ model = SingleStepPrediction(representation_mode)
 model.training_loop(trainX,trainY,epochs=350)
 
 # Plot some samples of the prediction, on the training dataset
-model.plot_prediction_samples(trainX,trainY)
+if representation_mode!='only_displacement':
+    model.plot_prediction_samples(trainX,trainY)
 
 # Save the model
 model.save_weights('models/simple-{}.ckpt'.format(representation_mode))
@@ -83,19 +87,19 @@ paralelos = [data_p[2][1:13],data_p[3][20:32]]
 inverso   = [data_p[4][167:179],data_p[6][15:27]]
 
 # First example
-testX,testY  = split_sequence_testing(cruce,length_obs,length_pred)
+testX,testY  = split_sequence_testing(cruce,length_obs,length_pred,representation_mode)
 p,v = model.evaluate(testX,testY,length_obs,length_pred,True)
 name = "cruce_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
 
 # Second example
-testX,testY  = split_sequence_testing(paralelos,length_obs,length_pred)
+testX,testY  = split_sequence_testing(paralelos,length_obs,length_pred,representation_mode)
 p,v = model.evaluate(testX,testY,length_obs,length_pred,True)
 name = "paralelos_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
 
 # Third example
-testX,testY  = split_sequence_testing(inverso,length_obs,length_pred)
+testX,testY  = split_sequence_testing(inverso,length_obs,length_pred,representation_mode)
 p,v = model.evaluate(testX,testY,length_obs,length_pred,True)
 name = "inverso_absoluto_ing.pdf"
 plot_qualitative(p,v,name)
