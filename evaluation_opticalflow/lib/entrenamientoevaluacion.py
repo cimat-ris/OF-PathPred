@@ -62,7 +62,6 @@ class Tester(object):
         self.config = config
         self.model = model
         self.traj_pred_out = self.model.traj_pred_out
-        #self.sess = sess
         if config.multi_decoder:
             self.traj_class_logits = self.model.traj_class_logits
             self.traj_outs = self.model.traj_pred_outs
@@ -70,12 +69,84 @@ class Tester(object):
     def step(self,batch,sess):
         """One inferencing step."""
         config = self.config
-        #sess = self.sess
-        # give one batch of Dataset, use model to get the result,
+        # Give one batch of Dataset, use model to get the result,
         feed_dict = self.model.get_feed_dict(batch, is_train = False)
         pred_out = sess.run(self.traj_pred_out, feed_dict = feed_dict)
         return pred_out
 
+    def evaluate(self,dataset,sess):
+        """Evaluate a dataset using the tester model.
+        Args:
+            dataset: the Dataset instance
+            config: arguments
+            sess: tensorflow session
+        Returns:
+            Evaluation results.
+        """
+        config = self.config
+
+        l2dis = []
+        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
+        for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
+            #
+            pred_out               = self.step(batch,sess)
+            this_actual_batch_size = batch["original_batch_size"]
+            d = []
+            # For all the trajectories in the batch
+            for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+                if i >= this_actual_batch_size:
+                    break
+                # Conserve the x,y coordinates
+                this_pred_out     = pred_out[i][:, :2] #[pred,2]
+                # Convert it to absolute (starting from the last observed position)
+                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                # Check shape is OK
+                assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+                # Error for ade/fde
+                diff = pred_traj_gt - this_pred_out_abs
+                diff = diff**2
+                diff = np.sqrt(np.sum(diff, axis=1))
+                d.append(diff)
+            l2dis += d
+        ade = [t for o in l2dis for t in o] # average displacement
+        fde = [o[-1] for o in l2dis] # final displacement
+        return { "ade": np.mean(ade), "fde": np.mean(fde)}
+
+    def apply_on_batch(self,dataset,batchId,sess):
+        """Evaluate the dataset using the tester model.
+        Args:
+            dataset: the Dataset instance
+            batchId: the batch to apply the predictor on
+            sess: tensorflow session
+        Returns:
+            traj_obs,traj_gt,traj_pred.
+        """
+        config = self.config
+        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
+        traj_obs = []
+        traj_gt  = []
+        traj_pred= []
+        #for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
+        batches = dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False)
+        for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
+                if idx==batchId:
+                    break
+        # Apply the network
+        pred_out               = self.step(batch,sess)
+        this_actual_batch_size = batch["original_batch_size"]
+        # For all the trajectories in the batch
+        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+            if i >= this_actual_batch_size:
+                break
+            # Conserve the x,y coordinates
+            this_pred_out     = pred_out[i][:, :2] #[pred,2]
+            # Convert it to absolute (starting from the last observed position)
+            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+            # Keep all the trajectories
+            traj_obs.append(obs_traj_gt)
+            traj_gt.append(pred_traj_gt)
+            traj_pred.append(this_pred_out_abs)
+        return traj_obs,traj_gt,traj_pred
 
 def relative_to_abs(rel_traj, start_pos):
     """Relative x,y to absolute x,y coordinates.
@@ -90,55 +161,6 @@ def relative_to_abs(rel_traj, start_pos):
     displacement = np.cumsum(rel_traj, axis=0)
     abs_traj = displacement + np.array([start_pos])  # [1,2]
     return abs_traj
-
-
-def evaluate(dataset, tester,sess,arguments):
-    """Evaluate the dataset using the tester model.
-    Args:
-    dataset: the Dataset instance
-    config: arguments
-    sess: tensorflow session
-    tester: the Tester instance
-    Returns:
-    Evaluation results.
-    """
-
-    config = tester.config
-    #sess = tester.sess
-
-    l2dis = []
-    num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
-    #traj_obs = []
-    #traj_ver = []
-    #traj_pred = []
-    for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
-
-        pred_out = tester.step(batch,sess)
-        this_actual_batch_size = batch["original_batch_size"]
-        d = []
-        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            if i >= this_actual_batch_size:
-                break
-
-            this_pred_out = pred_out[i][:, :2] #[pred,2]
-
-            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-
-            assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
-            diff = pred_traj_gt - this_pred_out_abs
-            #traj_obs.append(obs_traj_gt)
-            #traj_ver.append(pred_traj_gt)
-            #traj_pred.append(this_pred_out_abs)
-            diff = diff**2
-            diff = np.sqrt(np.sum(diff, axis=1))
-            d.append(diff)
-
-        l2dis += d
-    ade = [t for o in l2dis for t in o] # average displacement
-    fde = [o[-1] for o in l2dis] # final displacement
-    p = { "ade": np.mean(ade), "fde": np.mean(fde)}
-    #, traj_ver, traj_pred
-    return p
 
 
 def evaluate_new(dataset, tester,sess):
@@ -162,9 +184,9 @@ def evaluate_new(dataset, tester,sess):
 
   l2dis = []
   num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
-  
+
   for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
-    
+
     pred_out = tester.step(batch,sess)
     cont +=1
 
@@ -203,6 +225,6 @@ def evaluate_new(dataset, tester,sess):
 
   p = { "ade": np.mean(ade), "fde": np.mean(fde),"error_prom":prom/len(error_prom)}
 
-  
+
 
   return p,predicho, verdadero
