@@ -82,7 +82,7 @@ class OpticalFlowSimulator(object):
             plt.plot(thetas,np.zeros_like(thetas))
             plt.ylim((0,3.14))
             plt.ylim((-1,1))
-        plt.savefig('/home/jbhayet/of-sample.pdf')            
+        plt.savefig('/home/jbhayet/of-sample.pdf')
         plt.show()
         print('Saving...')
 
@@ -175,7 +175,7 @@ class OpticalFlowSimulator(object):
             The tensor of optical flow values [t, obs_len, 64]
     """
     def compute_opticalflow_seq(self,Id,obs_traj,neighbors):
-     
+
         direcciones = vectores_direccion(obs_traj)
 
         # Sequence length
@@ -229,7 +229,7 @@ class OpticalFlowSimulator(object):
                 else:
                     other_x_ant = frame_ant[other_ped_index,1]
                     other_y_ant = frame_ant[other_ped_index,2]
-                    # Esto  
+                    # Esto
                     if(other_x_ant ==0.0 and other_y_ant == 0.0):
                         vel_other = [0,0]
                     else:
@@ -244,12 +244,13 @@ class OpticalFlowSimulator(object):
         return optical_flow, visible_neighbors
 
     # Main function for optical flow computation
-    def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len):
+    def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len, obstacles):
         """
         Receives:
                 neighbors_batch: tensor of shape [t, obs_len, mnp, 3] (batch of positions of all the neighbors)
                 idx vector of length t (batches of ids of each trajectory) [t]
                 obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
+                obstacles a list of polygons corresponding to the obstacles in the scene
         Returns:
                 The tensor of optical flow values [t, obs_len, 64]
         """
