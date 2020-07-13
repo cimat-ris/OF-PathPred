@@ -20,7 +20,7 @@ def image_to_world_xy(image_xy, H):
 # It saves both as files
 def generate_obstacle_polygons(dataset_paths,dataset_name):
     # Read the map image
-    imagenew    = cv2.imread(dataset_paths+dataset_name+'annotated.png',cv2.IMREAD_GRAYSCALE) # Gray values
+    imagenew    = cv2.imread(dataset_paths+dataset_name+'/annotated.png',cv2.IMREAD_GRAYSCALE) # Gray values
     # Binarize
     r,binary1   = cv2.threshold(imagenew, 1, 255, cv2.THRESH_BINARY)
     kernel      = np.ones((11,11),np.uint8)
@@ -32,7 +32,7 @@ def generate_obstacle_polygons(dataset_paths,dataset_name):
     # with same colors or intensity.
     erosion_inv= 255 - erosion1
     contours,_ = cv2.findContours(erosion_inv, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    img2       = cv2.imread(dataset_paths+dataset_name+'annotated.png', cv2.IMREAD_COLOR)
+    img2       = cv2.imread(dataset_paths+dataset_name+'/annotated.png', cv2.IMREAD_COLOR)
 
     # Searching through every region selected to find the required polygon.
     num       = 0
@@ -45,7 +45,7 @@ def generate_obstacle_polygons(dataset_paths,dataset_name):
             approx = np.append(approx, [approx[0,:,:]], axis=0)
             cv2.drawContours(img2, [approx], 0, (255, 255, 0), 5)
             # Form the filename and save the file
-            filename = "obstacles-img-{:04d}.txt".format(num)
+            filename = "/obstacles-img-{:04d}.txt".format(num)
             np.savetxt(dataset_paths+dataset_name+filename, approx[:,0,:])
             obstacles.append(approx[:,0,:])
             num = num + 1
@@ -59,7 +59,7 @@ def generate_obstacle_polygons(dataset_paths,dataset_name):
     for obs in obstacles:
         obs_world = image_to_world_xy(obs, H)
         # Save them in the same directory
-        filename = "obstacles-world-{:04d}.txt".format(num)
+        filename = "/obstacles-world-{:04d}.txt".format(num)
         np.savetxt(dataset_paths+dataset_name+filename, obs_world)
         num = num+1
 
