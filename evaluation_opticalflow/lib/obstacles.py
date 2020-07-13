@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import os
-import pickle
 
 # Image-to-world mapping
 def image_to_world_xy(image_xy, H):
@@ -16,13 +15,6 @@ def image_to_world_xy(image_xy, H):
     image_xy1 = np.concatenate([image_xy, np.ones((len(image_xy), 1))],axis=1)
     world_xy1 = H.dot(image_xy1.T).T
     return world_xy1[:, :2] / np.expand_dims(world_xy1[:, 2], axis=1)
-
-
-dataset_name = 'ucy-univ/'
-dataset_name = 'ucy-zara01/'
-dataset_name = 'ucy-zara02/'
-dataset_name = 'eth-hotel/'
-dataset_name = 'eth-univ/'
 
 # This function generates both image and world coordinates of the obstacle polygons.
 # It saves both as files
