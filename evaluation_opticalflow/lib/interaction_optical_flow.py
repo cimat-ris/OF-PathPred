@@ -197,6 +197,7 @@ class OpticalFlowSimulator(object):
                             closest_squared_distances[k] = l[0]*l[0]
                             visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
                             visible_neighbors[k,:]       = [np.Inf,np.Inf]
+                            flow[k]                      = self.optical_flow_contribution(current_position,visible_obstacles[k,:],current_direction,[0,0],mr)
 
         return flow,visible_neighbors,visible_obstacles
 
