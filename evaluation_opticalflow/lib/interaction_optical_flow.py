@@ -55,7 +55,7 @@ class OpticalFlowSimulator(object):
         self.thetaf    = thetaf
         self.delta     = (thetaf-theta0)/num_rays
         self.num_rays  = num_rays
-
+        self.epsilon   = 0.05
 
     def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles):
         """ Funcion para graficar y visualizar los vectores y puntos"""
@@ -176,28 +176,41 @@ class OpticalFlowSimulator(object):
         # Test for ray casting: first check if some polygons do intersect the ray.
         visible_obstacles = np.Inf*np.ones((nlen,2))
         for o,obst in enumerate(obstacles):
-            for i in np.arange(0,obst.shape[0]-1):
-                dx       = obst[i+1,0]-obst[i,0]
-                dy       = obst[i+1,1]-obst[i,1]
-                bearingm = norm_angle((math.atan2(obst[i,1]  -current_position[1],obst[i,0]  -current_position[0])-math.atan2(current_direction[1],current_direction[0])))
-                bearingp = norm_angle((math.atan2(obst[i+1,1]-current_position[1],obst[i+1,0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
+            for i in np.arange(0,obst.shape[0]):
+                p1       = obst[i,:]
+                p2       = obst[(i+1)%obst.shape[0],:]
+                dx       = p2[0]-p1[0]
+                dy       = p2[1]-p1[1]
+                bearingm = norm_angle((math.atan2(p1[1]-current_position[1],p1[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
+                bearingp = norm_angle((math.atan2(p2[1]-current_position[1],p2[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
                 km       = int(nlen/2.-bearingm/self.delta)
                 kp       = int(nlen/2.-bearingp/self.delta)
                 # One of the two ends should be visible
                 if (km>=0 and km<self.num_rays) or (kp>=0 and kp<self.num_rays):
+                    if bearingm>math.pi/2:
+                        if bearingm-bearingp>math.pi:
+                            km = self.num_rays
+                        else:
+                            km = 0
+                    if bearingp>math.pi/2:
+                        if bearingp-bearingm>math.pi:
+                            kp = self.num_rays
+                        else:
+                            kp = 0
                     # For all the rays in the range
-                    for k in range(max(0,min(km,kp)),min(self.num_rays,max(km,kp))):
-                        # Compute intersection with line
-                        sk= np.sin(theta-self.delta*(k-nlen/2))
-                        ck= np.cos(theta-self.delta*(k-nlen/2))
-                        A = np.array([[ck,-dx],[sk,-dy]])
-                        B = np.array([obst[i,0]-current_position[0],obst[i,1]-current_position[1]])
-                        l = np.linalg.solve(A, B)
-                        if l[0]>0 and l[1]>0 and l[1]<1 and l[0]*l[0]<closest_squared_distances[k]:
-                            closest_squared_distances[k] = l[0]*l[0]
-                            visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
-                            visible_neighbors[k,:]       = [np.Inf,np.Inf]
-                            flow[k]                      = self.optical_flow_contribution(current_position,visible_obstacles[k,:],current_direction,[0,0],mr)
+                    for k in range(min(km,kp),max(km,kp)):
+                        if k>=0 and k<self.num_rays:
+                            # Compute intersection with line
+                            sk= np.sin(theta-self.delta*(k-nlen/2))
+                            ck= np.cos(theta-self.delta*(k-nlen/2))
+                            A = np.array([[ck,-dx],[sk,-dy]])
+                            B = np.array([p1[0]-current_position[0],p1[1]-current_position[1]])
+                            l = np.linalg.solve(A, B)
+                            if l[0]>=0.0 and l[1]>=-self.epsilon and l[1]<=1.0+self.epsilon and l[0]*l[0]<closest_squared_distances[k]:
+                                closest_squared_distances[k] = l[0]*l[0]
+                                visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
+                                visible_neighbors[k,:]       = [np.Inf,np.Inf]
+                                flow[k]                      = self.optical_flow_contribution(current_position,visible_obstacles[k,:],current_direction,[0,0],mr)
 
         return flow,visible_neighbors,visible_obstacles
 
