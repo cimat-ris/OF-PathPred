@@ -74,6 +74,9 @@ class OpticalFlowSimulator(object):
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
+            # Draw obstacles
+            for obst in obstacles:
+                plt.plot(obst[:,0],obst[:,1],"g-")
             plt.axis('equal')
             # Plot the optical flow
             plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
@@ -117,6 +120,7 @@ class OpticalFlowSimulator(object):
         x = relative_position_l[1]/relative_position_l[0]
         return (delta_vel_l[1]-x*delta_vel_l[0])/relative_position_l[0]
 
+
     """
          Receives:
                 current_position: current position of the person of interest
@@ -126,7 +130,7 @@ class OpticalFlowSimulator(object):
         Returns:
                 An optical flow vector, a list of visible neighbors
     """
-    def get_flow_in_cone(self, current_position, current_direction,neighbors_positions,neighbors_velocities):
+    def get_flow_in_cone(self, current_position, current_direction,neighbors_positions,neighbors_velocities,obstacles):
         nlen = self.num_rays
         # Closest distances
         vec_coord = [[]]*nlen
@@ -163,6 +167,13 @@ class OpticalFlowSimulator(object):
                         flow[k+1]                      = u
                         closest_squared_distances[k+1] = d
                         visible_neighbors[k+1,:]       = neighbor_position
+
+        # Test for ray casting: first check if some polygons do intersect the ray.
+        # If so, plot in red
+        for o,obst in enumerate(obstacles):
+            for i in np.arange(0,obst.shape[0]-1):
+                bearingm = (math.atan2(obst[i,1]  -current_position[1],obst[i,0]  -current_position[0])-math.atan2(current_direction[1],current_direction[0]))
+                bearingp = (math.atan2(obst[i+1,1]-current_position[1],obst[i+1,0]-current_position[0])-math.atan2(current_direction[1],current_direction[0]))
 
         return flow,visible_neighbors
 
@@ -241,7 +252,7 @@ class OpticalFlowSimulator(object):
                 # Keep the set of positions
                 p_veci.append([other_x,other_y])
             # Evaluate the flow from the sets of neigbors
-            optical_flow[i,:], visible_neighbors[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci)
+            optical_flow[i,:], visible_neighbors[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci,obstacles)
         return optical_flow, visible_neighbors
 
     # Main function for optical flow computation
