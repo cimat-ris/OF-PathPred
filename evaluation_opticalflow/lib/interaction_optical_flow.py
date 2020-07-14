@@ -2,6 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 
+def norm_angle(angle):
+    if angle<-math.pi/2.0:
+        angle=angle+2.0*math.pi
+    if angle>3*math.pi/2.0:
+        angle=angle-2.0*math.pi
+    return angle
+
 def vector_normal(vec_dir):
     """
     Computes the normal vector.
@@ -50,7 +57,7 @@ class OpticalFlowSimulator(object):
         self.num_rays  = num_rays
 
 
-    def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,obstacles):
+    def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles):
         """ Funcion para graficar y visualizar los vectores y puntos"""
         plt.subplots(4,3,figsize=(15,15))
         for seq_pos in range(1,7):
@@ -74,6 +81,9 @@ class OpticalFlowSimulator(object):
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
+            # Plot the visible obstacles
+            for vobs in visible_obstacles[seq_pos]:
+                plt.plot(vobs[0],vobs[1],color='magenta',marker='o',markersize=8)
             # Draw obstacles
             for obst in obstacles:
                 plt.plot(obst[:,0],obst[:,1],"g-")
@@ -133,7 +143,6 @@ class OpticalFlowSimulator(object):
     def get_flow_in_cone(self, current_position, current_direction,neighbors_positions,neighbors_velocities,obstacles):
         nlen = self.num_rays
         # Closest distances
-        vec_coord = [[]]*nlen
         closest_squared_distances = np.Inf*np.ones(nlen)
         # Output: the optical flow and the visible neighbors
         flow = np.zeros(nlen)
@@ -148,11 +157,7 @@ class OpticalFlowSimulator(object):
 
         # Scan the neighbors
         for neighbor_position,neighbor_velocity in zip(neighbors_positions,neighbors_velocities):
-            bearing = (math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0]))
-            if bearing<-math.pi/2.0:
-                bearing=bearing+2.0*math.pi
-            if bearing>3*math.pi/2.0:
-                bearing=bearing-2.0*math.pi
+            bearing = norm_angle((math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
             k = int(nlen/2.-bearing/self.delta)
             if k>=0 and k<self.num_rays:
                 d =(current_position[0]-neighbor_position[0])**2+(current_position[1]-neighbor_position[1])**2
@@ -169,13 +174,31 @@ class OpticalFlowSimulator(object):
                         visible_neighbors[k+1,:]       = neighbor_position
 
         # Test for ray casting: first check if some polygons do intersect the ray.
-        # If so, plot in red
+        visible_obstacles = np.Inf*np.ones((nlen,2))
         for o,obst in enumerate(obstacles):
             for i in np.arange(0,obst.shape[0]-1):
-                bearingm = (math.atan2(obst[i,1]  -current_position[1],obst[i,0]  -current_position[0])-math.atan2(current_direction[1],current_direction[0]))
-                bearingp = (math.atan2(obst[i+1,1]-current_position[1],obst[i+1,0]-current_position[0])-math.atan2(current_direction[1],current_direction[0]))
+                dx       = obst[i+1,0]-obst[i,0]
+                dy       = obst[i+1,1]-obst[i,1]
+                bearingm = norm_angle((math.atan2(obst[i,1]  -current_position[1],obst[i,0]  -current_position[0])-math.atan2(current_direction[1],current_direction[0])))
+                bearingp = norm_angle((math.atan2(obst[i+1,1]-current_position[1],obst[i+1,0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
+                km       = int(nlen/2.-bearingm/self.delta)
+                kp       = int(nlen/2.-bearingp/self.delta)
+                # One of the two ends should be visible
+                if (km>=0 and km<self.num_rays) or (kp>=0 and kp<self.num_rays):
+                    # For all the rays in the range
+                    for k in range(max(0,min(km,kp)),min(self.num_rays,max(km,kp))):
+                        # Compute intersection with line
+                        sk= np.sin(theta-self.delta*(k-nlen/2))
+                        ck= np.cos(theta-self.delta*(k-nlen/2))
+                        A = np.array([[ck,-dx],[sk,-dy]])
+                        B = np.array([obst[i,0]-current_position[0],obst[i,1]-current_position[1]])
+                        l = np.linalg.solve(A, B)
+                        if l[0]>0 and l[1]>0 and l[1]<1 and l[0]*l[0]<closest_squared_distances[k]:
+                            closest_squared_distances[k] = l[0]*l[0]
+                            visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
+                            visible_neighbors[k,:]       = [np.Inf,np.Inf]
 
-        return flow,visible_neighbors
+        return flow,visible_neighbors,visible_obstacles
 
     """
         Receives:
@@ -198,6 +221,7 @@ class OpticalFlowSimulator(object):
         # Output
         optical_flow     = np.zeros((sequence_length,self.num_rays), dtype='float')
         visible_neighbors= np.zeros((sequence_length,self.num_rays,2), dtype='float')
+        visible_obstacles= np.zeros((sequence_length,self.num_rays,2), dtype='float')
         # Scan the sequence along time
         for i in range(sequence_length):
             # Current neighbors frame is [mnp,3]
@@ -252,8 +276,8 @@ class OpticalFlowSimulator(object):
                 # Keep the set of positions
                 p_veci.append([other_x,other_y])
             # Evaluate the flow from the sets of neigbors
-            optical_flow[i,:], visible_neighbors[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci,obstacles)
-        return optical_flow, visible_neighbors
+            optical_flow[i,:], visible_neighbors[i,:,:], visible_obstacles[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],p_veci,vel_p_veci,obstacles)
+        return optical_flow, visible_neighbors, visible_obstacles
 
     # Main function for optical flow computation
     def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len, obstacles):
@@ -271,9 +295,11 @@ class OpticalFlowSimulator(object):
         # Scan the neighbors_batch tensor
         vec_flow  = np.zeros((t,obs_len,self.num_rays))
         vis_neigh = np.zeros((t,obs_len,self.num_rays,2))
+        vis_obst  = np.zeros((t,obs_len,self.num_rays,2))
+
         for batch_idx, neighbors_descriptor in enumerate(neighbors_batch):
             # Person id
             person_id = idx[batch_idx]
             # Compute the optical flow along this trajectory, given the positions of the neighbors
-            vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
-        return vec_flow,vis_neigh
+            vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
+        return vec_flow,vis_neigh,vis_obst
