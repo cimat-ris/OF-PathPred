@@ -50,7 +50,7 @@ class OpticalFlowSimulator(object):
         self.num_rays  = num_rays
 
 
-    def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors):
+    def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,obstacles):
         """ Funcion para graficar y visualizar los vectores y puntos"""
         plt.subplots(4,3,figsize=(15,15))
         for seq_pos in range(1,7):
@@ -171,10 +171,11 @@ class OpticalFlowSimulator(object):
             Id: Id of the main agent
             obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
             neighbors: tensor of shape [obs_len, mnp, 3] (sequence of positions of all the neighbor
+            obstacles: list of polygons
         Returns:
             The tensor of optical flow values [t, obs_len, 64]
     """
-    def compute_opticalflow_seq(self,Id,obs_traj,neighbors):
+    def compute_opticalflow_seq(self,Id,obs_traj,neighbors,obstacles):
 
         direcciones = vectores_direccion(obs_traj)
 
@@ -263,5 +264,5 @@ class OpticalFlowSimulator(object):
             # Person id
             person_id = idx[batch_idx]
             # Compute the optical flow along this trajectory, given the positions of the neighbors
-            vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor)
+            vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
         return vec_flow,vis_neigh
