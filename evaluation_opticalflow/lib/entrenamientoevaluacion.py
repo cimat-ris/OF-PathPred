@@ -60,15 +60,14 @@ class Tester(object):
     """Tester for model."""
     def __init__(self, model, config):
         self.config = config
-        self.model = model
+        self.model  = model
         self.traj_pred_out = self.model.traj_pred_out
         if config.multi_decoder:
             self.traj_class_logits = self.model.traj_class_logits
             self.traj_outs = self.model.traj_pred_outs
 
     def step(self,batch,sess):
-        """One inferencing step."""
-        config = self.config
+        """One inference step."""
         # Give one batch of Dataset, use model to get the result,
         feed_dict = self.model.get_feed_dict(batch, is_train = False)
         pred_out = sess.run(self.traj_pred_out, feed_dict = feed_dict)
@@ -113,11 +112,11 @@ class Tester(object):
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     def apply_on_batch(self,dataset,batchId,sess):
-        """Evaluate the dataset using the tester model.
+        """Evaluate a dataset batch using the tester model.
         Args:
-            dataset: the Dataset instance
+            dataset: the dataset instance
             batchId: the batch to apply the predictor on
-            sess: tensorflow session
+            sess:    tensorflow session
         Returns:
             traj_obs,traj_gt,traj_pred.
         """
@@ -126,12 +125,13 @@ class Tester(object):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
-        #for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
+        # Get the batches
         batches = dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False)
+        # Scan all the batches and simply stop when we reach the one with Id batchId
         for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
                 if idx==batchId:
                     break
-        # Apply the network
+        # Apply the network to this batch
         pred_out               = self.step(batch,sess)
         this_actual_batch_size = batch["original_batch_size"]
         # For all the trajectories in the batch
@@ -139,7 +139,8 @@ class Tester(object):
             if i >= this_actual_batch_size:
                 break
             # Conserve the x,y coordinates
-            this_pred_out     = pred_out[i][:, :2] #[pred,2]
+            this_pred_out     = pred_out[i][:, :2]
+            print(this_pred_out.shape)
             # Convert it to absolute (starting from the last observed position)
             this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
             # Keep all the trajectories

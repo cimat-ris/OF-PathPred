@@ -14,11 +14,11 @@ class Model(object):
         # Get all the dimension here
         # Tensor dimensions, so pylint: disable=g-bad-name
         N  = self.N  = config.batch_size
-        KP = self.KP = config.kp_size ####
-        P  = self.P  = 2              # Spatial coordinates
-        T1 = config.obs_len           # Length of the observations
+        KP = self.KP = config.kp_size    # Keypoints
+        P  = self.P  = 2                 # Spatial coordinates
+        T1 = config.obs_len              # Length of the observations
 
-        # The trajactory sequence: [N,T1,2] # T1 is the obs_len
+        # The trajectory sequence: [N,T1,2] # T1 is the obs_len
         # in training, it is the obs+pred combined,
         # in testing, only obs is fed and the rest is zeros
         # mask is used for variable length input extension
@@ -30,9 +30,9 @@ class Model(object):
         self.traj_pred_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name = 'traj_pred_gt_mask')
 
         # Info about keypoints
-        self.obs_kp = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
+        self.obs_kp    = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
         # Info about optical flow
-        self.obs_flujo = tf.compat.v1.placeholder('float',[N, None,64],name='obs_flujo')
+        self.obs_flow  = tf.compat.v1.placeholder('float',[N, None,64],name='obs_flow')
         # Flag for trainig. Used for drop out switch
         self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
         # Loss function
@@ -121,8 +121,8 @@ class Model(object):
             # Interaccion social through optical flow
             if config.add_social:
                 # Linear embedding of the optical flow
-                obs_soc = linear(self.obs_flujo,output_size = config.emb_size,add_bias = True,
-                    activation=config.activation_func,scope='flujo_emb')
+                obs_soc = linear(self.obs_flow,output_size = config.emb_size,add_bias = True,
+                    activation=config.activation_func,scope='flow_emb')
                 # Applies the person pose (keypoints) sequence through the LSTM
                 soc_obs_enc_h, soc_obs_enc_last_state =tf.nn.dynamic_rnn(
                     enc_cell_soc, obs_soc, sequence_length=obs_length, dtype='float',
@@ -355,20 +355,15 @@ class Model(object):
                 traj_pred_gt_mask[i, j] = True
 
         # ------------------------------------------------------
+        # Social component (through optical flow)
         if config.add_social:
-            #assert len(data['obs_person_rel'])== N
-            obs_flujo = np.zeros((N, T_in, 64),dtype ='float')
-            feed_dict[self.obs_flujo] = obs_flujo
-
-            #each batch
-            # agregamos el vector de flujo
-            #for i, flujo_seq in enumerate(obs_flujo):
-            #    for j, flujo_paso in enumerate(flujo_seq):
-            #        obs_flujo[i,j,:]= flujo_paso
-            #feed_dict[self.obs_frame] = data['obs_person']
-            for i, flujo_seq in enumerate(data['obs_flujo']):
-                for j , flujo_paso in enumerate(flujo_seq):
-                    obs_flujo[i,j,:] = flujo_paso
+            # TODO: pass the 64 as a parameter
+            obs_flow = np.zeros((N, T_in, 64),dtype ='float')
+            feed_dict[self.obs_flow] = obs_flow
+            # each batch
+            for i, flow_seq in enumerate(data['obs_flow']):
+                for j , flow_step in enumerate(flow_seq):
+                    obs_flow[i,j,:] = flow_step
 
         # -----------------------------------------------------------
         # person pose input
