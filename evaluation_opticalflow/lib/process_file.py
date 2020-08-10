@@ -4,7 +4,6 @@ import glob
 import numpy as np
 from interaction_optical_flow import OpticalFlowSimulator
 from interaction_cuadro_optical_flow import OpticalFlowSimulator1
-from interaction_optical_flow_obstacles import OpticalFlowSimulator_obstacles
 from obstacles import load_world_obstacle_polygons
 
 # En todas estas funciones cuando se usa el modo add_social
@@ -21,7 +20,7 @@ def process_file_modif(path_file, args, delim):
     # Prediction length
     pred_len = args.pred_len
     # Total sequence length
-    seq_len = obs_len + pred_len
+    seq_len  = obs_len + pred_len
     print("[INF] Sequence length (observation+prediction): ",seq_len)
     num_person_in_start_frame = []
 
@@ -47,7 +46,7 @@ def process_file_modif(path_file, args, delim):
                 fidxykp = line.strip().split(delim)
                 key     = fidxykp[0] + "_" +fidxykp[1]
                 #key_idx.append(key)
-                kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) 
+                kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)
     # Read obstacles
     if args.obstacles:
         t = path_file.split('/')
@@ -57,6 +56,7 @@ def process_file_modif(path_file, args, delim):
 
     # Trajectory coordinates
     path_file_com = os.path.join(path_file, 'mundo/mun_pos.csv')
+    raw_traj_data = []
     with open(path_file_com, "r") as traj_file:
         for line in traj_file:
             # Format is: id_frame, id_person, x, y
@@ -277,12 +277,11 @@ def process_file_modif(path_file, args, delim):
 
         data.update({
             "obs_kp": obs_kp,
-            "obs_kp_rel": obs_kp_rel,
-            #"pred_kp": pred_kp,
+            "obs_kp_rel": obs_kp_rel
         })
     if args.obstacles:
         data.update({
-            "obstacles:" obstacles_world,
+            "obstacles": obstacles_world
         })
 
     return data
@@ -299,7 +298,7 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
     datasets = range(len(list_max_person))
     datasets = list(datasets)
     datasets.remove(args.ind_test)
-    list_max_person = np.delete(list_max_person, args.ind_test) 
+    list_max_person = np.delete(list_max_person, args.ind_test)
 
     if(len(lim)!=0):
         lim = np.delete(lim, args.ind_test,axis=0)
@@ -349,7 +348,9 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
             data_paths = t[0]+'/'+t[1]+'/'
             dataset_name = t[2]
             obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
-
+        else:
+            obstacles_world = None
+            
         # Trajectory coordinates
         data = []
         with open(sub_data, "r") as traj_file:
@@ -532,7 +533,7 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
                 "key_idx": np.array(key_idx_indi),
                 "obs_traj":  obs_traj
             }
-            
+
             #print(vec['obs_person'].shape)
             #print(vec['key_idx'].shape)
             #print(vec['obs_traj'].shape)
@@ -540,14 +541,10 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
                 fo = OpticalFlowSimulator1()
                 flujo,vis_neigh = fo.compute_opticalflow_batch_with_neighborhood(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len,lim[indi,:])
             else:
-                if args.obstacles:
-                    fo = OpticalFlowSimulator_obstacles()
-                    flujo,vis_neigh,vis_obst = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'], args.obs_len,obstacles_world)  
-                else:
-                    fo = OpticalFlowSimulator()
-                    flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len)
+                fo = OpticalFlowSimulator()
+                flujo,vis_neigh,vis_obst = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'], args.obs_len,obstacles_world)
             todo_flujo.append(flujo)
-          
+
     # N is numero de secuencias de frames  for each video, K is num_person in each frame
     # el numero total que tendremos es el numero total de personas que hayan cumplido que si tienen secuencia
     seq_list = np.concatenate(seq_list, axis=0)

@@ -37,7 +37,7 @@ generate_obstacle_polygons(dataset_paths,dataset_name)
 obstacles_world = load_world_obstacle_polygons(dataset_paths,dataset_name)
 
 # File of trajectories coordinates. Coordinates are in world frame
-data_path = '../data1/'+dataset_name+'/mundo/mun_pos.csv'
+data_path = '../data1/'+dataset_name
 
 # Parameters
 class parameters:
@@ -54,6 +54,8 @@ class parameters:
         self.kp_num     = 18
         # Key point flag
         self.add_kp     = False
+        # Obstacles flag
+        self.obstacles  = True
 
 # Load the default parameters
 arguments = parameters()
@@ -75,18 +77,6 @@ if recompute_opticalflow==True:
 
 # Load the optical flow
 optical_flow = np.load(optical_flow_file)
-
-# Select a random sequence
-idSample = random.sample(range(1,optical_flow.shape[0]), 1)
-
-# Trajectory
-traj_sample   = data["obs_traj"][idSample][0]
-traj_neighbors= data['obs_person'][idSample][0]
-traj_id       = data['key_idx'][idSample]
-# Optical flow
-optical_flow_sample,visible_neighbors_sample,visible_obst_sample = OFSimulator.compute_opticalflow_seq(traj_id,traj_sample,traj_neighbors,obstacles_world)
-# Plot
-OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world)
 data.update({"obs_flow": optical_flow})
 
 # Seed
