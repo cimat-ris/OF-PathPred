@@ -60,21 +60,18 @@ arguments = parameters()
 data = process_file_modif(data_path, arguments, ',')
 # Select a random sequence
 idSample = random.sample(range(1,data["obs_traj"].shape[0]), 1)
-# Trajectory
+# The random sequence selected
 traj_sample   = data["obs_traj"][idSample][0]
 traj_neighbors= data['obs_person'][idSample][0]
 traj_id       = data['key_idx'][idSample]
+OFSimulator          = OpticalFlowSimulator()
 
 # Optical flow: no obstacle
-OFSimulator          = OpticalFlowSimulator(obstacles=False)
-# Optical flow
-optical_flow_sample,visible_neighbors_sample,visible_obst_sample = OFSimulator.compute_opticalflow_seq(traj_id,traj_sample,traj_neighbors,obstacles_world)
-# Plot
-OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow, with no obstacle")
-
-# Optical flow: with obstacles
-OFSimulator          = OpticalFlowSimulator(obstacles=True)
-# Optical flow
 optical_flow_sample,visible_neighbors_sample,visible_obst_sample = OFSimulator.compute_opticalflow_seq(traj_id,traj_sample,traj_neighbors,obstacles_world)
 # Plot
 OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow, with obstacles")
+
+# Optical flow: with obstacles
+optical_flow_sample,visible_neighbors_sample,visible_obst_sample = OFSimulator.compute_opticalflow_seq(traj_id,traj_sample,traj_neighbors,None)
+# Plot
+OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,None,None,title="Sample optical flow, with no obstacle")

@@ -50,13 +50,12 @@ def vectores_direccion(data):
 
 # Main class for computing the optical flow
 class OpticalFlowSimulator(object):
-    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, obstacles=False):
+    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64):
         self.theta0    = theta0
         self.thetaf    = thetaf
         self.delta     = (thetaf-theta0)/num_rays
         self.num_rays  = num_rays
         self.epsilon   = 0.05
-        self.obstacles = obstacles
 
     def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles,title):
         """ Funcion para graficar y visualizar los vectores y puntos"""
@@ -84,10 +83,11 @@ class OpticalFlowSimulator(object):
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
-            if self.obstacles:
+            if visible_obstacles is not None:
                 # Plot the visible obstacles
                 for vobs in visible_obstacles[seq_pos]:
                     plt.plot(vobs[0],vobs[1],color='magenta',marker='o',markersize=8)
+            if obstacles is not None:
                 # Draw obstacles
                 for obst in obstacles:
                     plt.plot(obst[:,0],obst[:,1],"g-")
@@ -180,7 +180,7 @@ class OpticalFlowSimulator(object):
 
         # Test for ray casting: first check if some polygons do intersect the ray.
         visible_obstacles = None
-        if self.obstacles:
+        if obstacles is not None:
             visible_obstacles = np.Inf*np.ones((nlen,2))
             for o,obst in enumerate(obstacles):
                 for i in np.arange(0,obst.shape[0]):
@@ -241,7 +241,7 @@ class OpticalFlowSimulator(object):
         # Output
         optical_flow     = np.zeros((sequence_length,self.num_rays), dtype='float')
         visible_neighbors= np.zeros((sequence_length,self.num_rays,2), dtype='float')
-        if self.obstacles:
+        if obstacles is not None:
             visible_obstacles= np.zeros((sequence_length,self.num_rays,2), dtype='float')
         else:
             visible_obstacles= None
@@ -311,14 +311,14 @@ class OpticalFlowSimulator(object):
                 p_veci.append([other_x,other_y])
 
             # Evaluate the flow from the sets of neigbors
-            if self.obstacles:
+            if obstacles is not None:
                 optical_flow[i,:], visible_neighbors[i,:,:], visible_obstacles[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
             else:
                 optical_flow[i,:], visible_neighbors[i,:,:], __ = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
         return optical_flow, visible_neighbors, visible_obstacles
 
     # Main function for optical flow computation
-    def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len, obstacles=None):
+    def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len, obstacles):
         """
         Receives:
                 neighbors_batch: tensor of shape [t, obs_len, mnp, 3] (batch of positions of all the neighbors)
@@ -332,16 +332,16 @@ class OpticalFlowSimulator(object):
         # Scan the neighbors_batch tensor
         vec_flow  = np.zeros((t,obs_len,self.num_rays))
         vis_neigh = np.zeros((t,obs_len,self.num_rays,2))
-        if self.obstacles:
-            vis_obst  = np.zeros((t,obs_len,self.num_rays,2))
+        if obstacles is not None:
+            vis_obst  = None
         else:
-            vis_obs   = None
+            vis_obst  = np.zeros((t,obs_len,self.num_rays,2))
         for batch_idx, neighbors_descriptor in enumerate(neighbors_batch):
             # Person id
             person_id = idx[batch_idx]
             # Compute the optical flow along this trajectory, given the positions of the neighbors
-            if self.obstacles:
-                vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
-            else:
+            if obstacles is not None:
                 vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],__ =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
+            else:
+                vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
         return vec_flow,vis_neigh,vis_obst
