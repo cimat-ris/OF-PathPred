@@ -344,4 +344,4 @@ class OpticalFlowSimulator(object):
                 vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
             else:
                 vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],__ =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
-        return vec_flow,vis_neigh,vis_obs
+        return vec_flow,vis_neigh,vis_obst
