@@ -50,7 +50,7 @@ def vectores_direccion(data):
 
 # Main class for computing the optical flow
 class OpticalFlowSimulator_obstacles(object):
-    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64):
+    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, obstacles=False):
         self.theta0    = theta0
         self.thetaf    = thetaf
         self.delta     = (thetaf-theta0)/num_rays
@@ -78,27 +78,27 @@ class OpticalFlowSimulator_obstacles(object):
                     for neighbor_prev in neighbors_trajectory[seq_pos-1]:
                         if neighbor_prev[0]==neighbor[0]:
                             plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
-            # plot the observer agent
-            plt.plot(current_position[0],current_position[1], color='blue',marker='o', markersize=14)
+            # Plot the observer agent
+            plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=14)
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
-            # Plot the visible obstacles
-            for vobs in visible_obstacles[seq_pos]:
-                plt.plot(vobs[0],vobs[1],color='magenta',marker='o',markersize=8)
-            # Draw obstacles
-            for obst in obstacles:
-                plt.plot(obst[:,0],obst[:,1],"g-")
+            if self.obstacles:
+                # Plot the visible obstacles
+                for vobs in visible_obstacles[seq_pos]:
+                    plt.plot(vobs[0],vobs[1],color='magenta',marker='o',markersize=8)
+                # Draw obstacles
+                for obst in obstacles:
+                    plt.plot(obst[:,0],obst[:,1],"g-")
             plt.axis('equal')
             # Plot the optical flow
             plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
             thetas = np.linspace(self.theta0,self.thetaf,65)[:-1]
             plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
             plt.plot(thetas,np.zeros_like(thetas))
-            plt.ylim((0,3.14))
+            plt.xlim((0,3.14))
             plt.ylim((-1,1))
-        plt.savefig('/home/andrea/of-sampl-obstacles.pdf')
-        #plt.savefig('/home/jbhayet/of-sample.pdf')
+        plt.savefig('./of-sample.pdf')
         plt.show()
         print('Saving...')
 
@@ -128,7 +128,6 @@ class OpticalFlowSimulator_obstacles(object):
 
         # Process in the same way to express the relative velocity in the rotated frame
         current_vel = np.array(current_vel)
-        #delta_vel   = neighbor_velocity-current_direction
         delta_vel   = neighbor_velocity-current_vel
         delta_vel_l = np.array([rotation_matrix[0,0]*delta_vel[0]+rotation_matrix[0,1]*delta_vel[1],rotation_matrix[1,0]*delta_vel[0]+rotation_matrix[1,1]*delta_vel[1]])
 
@@ -145,7 +144,7 @@ class OpticalFlowSimulator_obstacles(object):
         Returns:
                 An optical flow vector, a list of visible neighbors
     """
-    def get_flow_in_cone(self, current_position, current_direction, current_vel, neighbors_positions, neighbors_velocities,obstacles):
+    def get_flow_in_cone(self, current_position, current_direction, current_vel, neighbors_positions, neighbors_velocities, obstacles):
         nlen = self.num_rays
         # Closest distances
         closest_squared_distances = np.Inf*np.ones(nlen)
@@ -168,7 +167,7 @@ class OpticalFlowSimulator_obstacles(object):
                 d =(current_position[0]-neighbor_position[0])**2+(current_position[1]-neighbor_position[1])**2
                 # Distance to this neighbor
                 if(d<closest_squared_distances[k]):
-                    u = self.optical_flow_contribution(current_position,neighbor_position,current_direction,current_vel, neighbor_velocity,mr)
+                    u = self.optical_flow_contribution(current_position,neighbor_position,current_direction,current_vel,neighbor_velocity,mr)
                     flow[k]                      = u
                     closest_squared_distances[k] = d
                     visible_neighbors[k,:]       = neighbor_position
@@ -179,43 +178,45 @@ class OpticalFlowSimulator_obstacles(object):
                         visible_neighbors[k+1,:]       = neighbor_position
 
         # Test for ray casting: first check if some polygons do intersect the ray.
-        visible_obstacles = np.Inf*np.ones((nlen,2))
-        for o,obst in enumerate(obstacles):
-            for i in np.arange(0,obst.shape[0]):
-                p1       = obst[i,:]
-                p2       = obst[(i+1)%obst.shape[0],:]
-                dx       = p2[0]-p1[0]
-                dy       = p2[1]-p1[1]
-                bearingm = norm_angle((math.atan2(p1[1]-current_position[1],p1[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
-                bearingp = norm_angle((math.atan2(p2[1]-current_position[1],p2[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
-                km       = int(nlen/2.-bearingm/self.delta)
-                kp       = int(nlen/2.-bearingp/self.delta)
-                # One of the two ends should be visible
-                if (km>=0 and km<self.num_rays) or (kp>=0 and kp<self.num_rays):
-                    if bearingm>math.pi/2:
-                        if bearingm-bearingp>math.pi:
-                            km = self.num_rays
-                        else:
-                            km = 0
-                    if bearingp>math.pi/2:
-                        if bearingp-bearingm>math.pi:
-                            kp = self.num_rays
-                        else:
-                            kp = 0
-                    # For all the rays in the range
-                    for k in range(min(km,kp),max(km,kp)):
-                        if k>=0 and k<self.num_rays:
-                            # Compute intersection with line
-                            sk= np.sin(theta-self.delta*(k-nlen/2))
-                            ck= np.cos(theta-self.delta*(k-nlen/2))
-                            A = np.array([[ck,-dx],[sk,-dy]])
-                            B = np.array([p1[0]-current_position[0],p1[1]-current_position[1]])
-                            l = np.linalg.solve(A, B)
-                            if l[0]>=0.0 and l[1]>=-self.epsilon and l[1]<=1.0+self.epsilon and l[0]*l[0]<closest_squared_distances[k]:
-                                closest_squared_distances[k] = l[0]*l[0]
-                                visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
-                                visible_neighbors[k,:]       = [np.Inf,np.Inf]
-                                flow[k]                      = self.optical_flow_contribution(current_position,visible_obstacles[k,:],current_direction,current_vel,[0,0],mr)
+        visible_obstacles = None
+        if self.obstacles:
+            visible_obstacles = np.Inf*np.ones((nlen,2))
+            for o,obst in enumerate(obstacles):
+                for i in np.arange(0,obst.shape[0]):
+                    p1       = obst[i,:]
+                    p2       = obst[(i+1)%obst.shape[0],:]
+                    dx       = p2[0]-p1[0]
+                    dy       = p2[1]-p1[1]
+                    bearingm = norm_angle((math.atan2(p1[1]-current_position[1],p1[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
+                    bearingp = norm_angle((math.atan2(p2[1]-current_position[1],p2[0]-current_position[0])-math.atan2(current_direction[1],current_direction[0])))
+                    km       = int(nlen/2.-bearingm/self.delta)
+                    kp       = int(nlen/2.-bearingp/self.delta)
+                    # One of the two ends should be visible
+                    if (km>=0 and km<self.num_rays) or (kp>=0 and kp<self.num_rays):
+                        if bearingm>math.pi/2:
+                            if bearingm-bearingp>math.pi:
+                                km = self.num_rays
+                            else:
+                                km = 0
+                        if bearingp>math.pi/2:
+                            if bearingp-bearingm>math.pi:
+                                kp = self.num_rays
+                            else:
+                                kp = 0
+                        # For all the rays in the range
+                        for k in range(min(km,kp),max(km,kp)):
+                            if k>=0 and k<self.num_rays:
+                                # Compute intersection with line
+                                sk= np.sin(theta-self.delta*(k-nlen/2))
+                                ck= np.cos(theta-self.delta*(k-nlen/2))
+                                A = np.array([[ck,-dx],[sk,-dy]])
+                                B = np.array([p1[0]-current_position[0],p1[1]-current_position[1]])
+                                l = np.linalg.solve(A, B)
+                                if l[0]>=0.0 and l[1]>=-self.epsilon and l[1]<=1.0+self.epsilon and l[0]*l[0]<closest_squared_distances[k]:
+                                    closest_squared_distances[k] = l[0]*l[0]
+                                    visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
+                                    visible_neighbors[k,:]       = [np.Inf,np.Inf]
+                                    flow[k]                      = self.optical_flow_contribution(current_position,visible_obstacles[k,:],current_direction,current_vel,[0,0],mr)
 
         return flow,visible_neighbors,visible_obstacles
 
@@ -240,30 +241,25 @@ class OpticalFlowSimulator_obstacles(object):
         # Output
         optical_flow     = np.zeros((sequence_length,self.num_rays), dtype='float')
         visible_neighbors= np.zeros((sequence_length,self.num_rays,2), dtype='float')
-        visible_obstacles= np.zeros((sequence_length,self.num_rays,2), dtype='float')
-        
+        if self.obstacles:
+            visible_obstacles= np.zeros((sequence_length,self.num_rays,2), dtype='float')
+        else:
+            visible_obstacles= None
         frame_pos = neighbors[1,:,:]
         x_after, y_after = obs_traj[1][0], obs_traj[1][1]
-        v_obser = [ x_after-obs_traj[0][0], y_after-obs_traj[0][1] ]
-        # only is use when we work with all neigbors
+        v_obser = [x_after-obs_traj[0][0],y_after-obs_traj[0][1]]
+        # Only used when we work with all neigbors
         vel_before_neighbors = np.zeros((mnp,2), dtype='float')
 
         # Scan the sequence along time
         for i in range(sequence_length):
             # Current neighbors frame is [mnp,3]
             frame = neighbors[i,:,:]
-
-            # Extract next/previous frames
-            #if(i==0):
-            #        frame_pos = neighbors[i+1,:,:]
-            #else:
-            #        frame_ant = neighbors[i-1,:,:]
-
             # Extract the trajectory of interest (Id)
             person_sec = frame[frame[:,0]== Id,:][0]
             # Current position in the trajectory of interest
             x_current, y_current = obs_traj[i][0], obs_traj[i][1]
-            
+
             if(i!=0):
                 #This is for compute the velocity of the neighbor
                 frame_ant = neighbors[i-1,:,:]
@@ -271,7 +267,6 @@ class OpticalFlowSimulator_obstacles(object):
                 x_after, y_after = obs_traj[i-1][0], obs_traj[i-1][1]
                 v_obser = [x_current-x_after, y_current-y_after]
 
-                
             # List of neighbors
             p_veci     = []
             vel_p_veci = []
@@ -289,17 +284,17 @@ class OpticalFlowSimulator_obstacles(object):
                 # Beginning of the trajectory
                 if(i==0):
                     # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
-                    if(frame_pos[other_ped_index,0]==0):#if(other_x_pos==0.0 and other_y_pos==0.0):
+                    if(frame_pos[other_ped_index,0]==0):
                         vel_other = [0,0]
                         vel_before_neighbors[other_ped_index,:]= vel_other
                     else:
                         other_x_pos = frame_pos[other_ped_index,1]
                         other_y_pos = frame_pos[other_ped_index,2]
-                        vel_other = [ other_x_pos - other_x, other_y_pos - other_y]
+                        vel_other = [other_x_pos-other_x,other_y_pos-other_y]
                         vel_before_neighbors[other_ped_index,:]= vel_other
                 # Inside the sequence
                 else:
-                    if(frame_ant[other_ped_index,0]==0):#if(other_x_ant ==0.0 and other_y_ant == 0.0):
+                    if(frame_ant[other_ped_index,0]==0):
                         vel_other = vel_before_neighbors[other_ped_index,:]
                         vel_before_neighbors[other_ped_index,:] = vel_other
                     else:
@@ -313,7 +308,10 @@ class OpticalFlowSimulator_obstacles(object):
                 # Keep the set of positions
                 p_veci.append([other_x,other_y])
             # Evaluate the flow from the sets of neigbors
-            optical_flow[i,:], visible_neighbors[i,:,:], visible_obstacles[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
+            if self.obstacles:
+                optical_flow[i,:], visible_neighbors[i,:,:], visible_obstacles[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
+            else:
+                optical_flow[i,:], visible_neighbors[i,:,:], __ = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
         return optical_flow, visible_neighbors, visible_obstacles
 
     # Main function for optical flow computation
