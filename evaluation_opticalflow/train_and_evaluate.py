@@ -7,6 +7,7 @@ warnings.filterwarnings('ignore')
 import tensorflow as tf
 print('Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
+import random
 
 from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
@@ -27,7 +28,7 @@ dataset_paths  = "../data1/"
 dataset_name = 'ucy-zara02'
 recompute_opticalflow = False
 # To test obstacle-related functions
-from obstacles import image_to_world_xy,raycast,generate_obstacle_polygons,load_image_obstacle_polygons, load_world_obstacle_polygons
+from obstacles import image_to_world_xy,generate_obstacle_polygons,load_world_obstacle_polygons
 import matplotlib.pyplot as plt
 
 # Determine a list of obstacles for this dataset, from the semantic map and save the results
@@ -74,9 +75,7 @@ if recompute_opticalflow==True:
 
 # Load the optical flow
 optical_flow = np.load(optical_flow_file)
-optical_flow.shape
 
-import random
 # Select a random sequence
 idSample = random.sample(range(1,optical_flow.shape[0]), 1)
 
@@ -91,7 +90,6 @@ OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_nei
 data.update({"obs_flow": optical_flow})
 
 # Seed
-import random
 random.seed(0)
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
@@ -119,9 +117,7 @@ training_data = {
      "pred_traj":     data["pred_traj"][idx_train],
      "pred_traj_rel": data["pred_traj_rel"][idx_train],
      "key_idx":       data["key_idx"][[idx_train]],
-     "obs_flow":      data["obs_flow"][idx_train],
-     #"pred_kp": data_pets["pred_kp"][idx_train],
-     #"obs_person": data_pets["obs_person"][idx_train],
+     "obs_flow":      data["obs_flow"][idx_train]
 }
 
 # Test set
@@ -131,9 +127,7 @@ test_data = {
      "pred_traj":    data["pred_traj"][idx_test],
      "pred_traj_rel":data["pred_traj_rel"][idx_test],
      "key_idx":      data["key_idx"][[idx_test]],
-     "obs_flow":     data["obs_flow"][idx_test],
-     #"pred_kp": data_pets["pred_kp"][idx_test],
-     #"obs_person": data_pets["obs_person"][idx_test]
+     "obs_flow":     data["obs_flow"][idx_test]
 }
 
 # Validation set
@@ -143,9 +137,7 @@ validation_data ={
      "pred_traj":    data["pred_traj"][idx_val],
      "pred_traj_rel":data["pred_traj_rel"][idx_val],
      "key_idx":      data["key_idx"][[idx_val]],
-     "obs_flow":     data["obs_flow"][idx_val],
-     #"pred_kp": data_pets["pred_kp"][idx_val],
-     #"obs_person": data_pets["obs_person"][idx_val],
+     "obs_flow":     data["obs_flow"][idx_val]
 }
 
 
@@ -156,7 +148,7 @@ print("validation data: "+ str(len(validation_data[list(validation_data.keys())[
 import matplotlib.pyplot as plt
 
 # Plot ramdomly a subset of the training data (spatial data only)
-nSamples = min(20,training)
+nSamples = min(30,training)
 samples  = random.sample(range(1,training), nSamples)
 plt.subplots(1,1,figsize=(10,10))
 plt.subplot(1,1,1)
@@ -334,6 +326,7 @@ for (gt,obs,pred) in zip(traj_gt_set,traj_obs_set,traj_pred_set):
     plt.plot(gt[:,0],gt[:,1],color='blue')
     plt.plot([obs[-1,0],pred[0,0]],[obs[-1,1],pred[0,1]],color='green')
     plt.plot(pred[:,0],pred[:,1],color='green')
+plt.show()
 
 # Best model
 path_model = 'models/'+dataset_name+'/model_best.ckpt-0'
@@ -357,3 +350,4 @@ for (gt,obs,pred) in zip(traj_gt_set,traj_obs_set,traj_pred_set):
     plt.plot(gt[:,0],gt[:,1],color='blue')
     plt.plot([obs[-1,0],pred[0,0]],[obs[-1,1],pred[0,1]],color='green')
     plt.plot(pred[:,0],pred[:,1],color='green')
+plt.show()
