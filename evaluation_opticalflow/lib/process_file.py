@@ -342,7 +342,7 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
                     fidxykp = line.strip().split(delim)
                     key = fidxykp[0] + "_" +fidxykp[1]
                     kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)
-        # Read obstacles
+        # Read obstacles (if needed)
         if args.obstacles:
             t = directory.split('/')
             data_paths = t[0]+'/'+t[1]+'/'
@@ -350,7 +350,7 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
             obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
         else:
             obstacles_world = None
-            
+
         # Trajectory coordinates
         data = []
         with open(sub_data, "r") as traj_file:

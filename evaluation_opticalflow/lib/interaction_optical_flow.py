@@ -102,8 +102,6 @@ class OpticalFlowSimulator(object):
         plt.suptitle(title)
         plt.savefig('./of-sample.pdf')
         plt.show()
-        print('Saving...')
-
 
     """
     Receives:
@@ -126,7 +124,6 @@ class OpticalFlowSimulator(object):
 
         # Transforms the relative position of the neighbor in the rotated frame
         relative_position_l = np.array( [rotation_matrix[0,0]*relative_position_w[0]+rotation_matrix[0,1]*relative_position_w[1],rotation_matrix[1,0]*relative_position_w[0]+rotation_matrix[1,1]*relative_position_w[1]])
-
 
         # Process in the same way to express the relative velocity in the rotated frame
         current_vel = np.array(current_vel)
@@ -332,7 +329,7 @@ class OpticalFlowSimulator(object):
         # Scan the neighbors_batch tensor
         vec_flow  = np.zeros((t,obs_len,self.num_rays))
         vis_neigh = np.zeros((t,obs_len,self.num_rays,2))
-        if obstacles is not None:
+        if obstacles is None:
             vis_obst  = None
         else:
             vis_obst  = np.zeros((t,obs_len,self.num_rays,2))
