@@ -3,6 +3,9 @@ from tqdm import tqdm
 import glob
 import numpy as np
 from interaction_optical_flow import OpticalFlowSimulator 
+from interaction_cuadro_optical_flow import OpticalFlowSimulator1
+from interaction_optical_flow_obstacles import OpticalFlowSimulator_obstacles
+from obstacles import load_world_obstacle_polygons
 
 # En todas estas  cuando se usa el modo add_social solo se toma en cuenta a los vecinos 
 # que permanecen en toda la secuencia
@@ -27,21 +30,29 @@ def process_file_modif_inter(directory, args, delim):
     kp_list_rel  = []
     
     #Estas listas tienen la informacion de frames de todas las sucesiones de tamano seq_len
-    seq_list_person = []
+    seq_list_person     = []
     seq_list_person_rel = []
-
+    
     # Load other features if necessary
     # Esta lista tendra los Id_person de las personas de cada secuencia seq_len que se puedan hacer
     key_idx = []
     kp_feats = {}  # "frameidx_personId"#  To use keypoints, we open then from a file
 
     if args.add_kp:
-        with open(args.kp_path, "r") as f:
+        kp_path = os.path.join(directory,'kp_box.csv')
+        print(kp_path)
+        with open(kp_path, "r") as f:
             for line in f:
                 fidxykp = line.strip().split(delim)
                 key = fidxykp[0] + "_" +fidxykp[1]
-                #key_idx.append(key)
-                kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)     
+                kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) 
+    #obstacles
+    if args.obstacles:
+        t = directory.split('/')
+        data_paths = t[0]+'/'+t[1]+'/'
+        dataset_name = t[2]
+        obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
+    
     # Trayectory coordinates
     path_file = os.path.join(directory, 'mundo/mun_pos.csv')
     print(path_file)
@@ -90,10 +101,10 @@ def process_file_modif_inter(directory, args, delim):
         #Es por si vamos a agregar informacion de pose "keypoints"
         if args.add_kp:
             #Coordenadas pixel de forma absoluta
-            kp_feat = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 2),
+            kp_feat = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 3),
                         dtype="float32")
             #desplazamientos
-            kp_feat_rel = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 2),
+            kp_feat_rel = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 3),
                             dtype="float32")
         #Es por si vamos a agregar informacion del contexto    
         if args.add_social:
@@ -188,14 +199,15 @@ def process_file_modif_inter(directory, args, delim):
                     key = "%d_%d" % (frame_idx, person_id)
                     #print(key)
                     # ignore the kp logits
-                    kp_feat[count_person, i, :, :] = kp_feats[key][:, :2] 
+                    kp_feat[count_person, i, :, :] = kp_feats[key][:, :3] 
                 
                 # puse un 1 por que al inicio no se a movido asi que si estamos seguro de 
                 # que el desplazamiento del peaton sea cero en todos sus keypoints
                 #kp_feat_rel[count_person, 0, :, 3]= 1.0
 
-                kp_feat_rel[count_person, 1:, :, :] = \
-                    kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
+                kp_feat_rel[count_person, 1:, :, :2] = kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
+                kp_feat_rel[count_person, 1:, :,  2] = kp_feat[count_person, 1:, :,  2] * kp_feat[count_person, :-1, :, 2]
+                kp_feat_rel[count_person,  0, :,  2] = np.ones((18,))
             count_person += 1
         # El numero de personas que cumplieron que su secuencia fuera de longitud seq_len
         # de la secuencia de frames
@@ -278,7 +290,7 @@ def process_file_modif_inter(directory, args, delim):
         })
 
     if args.add_kp:
-        # [N*K, seq_len, 17, 2]
+        # [N*K, seq_len, 18, 3]
         kp_list = np.concatenate(kp_list, axis=0)
         kp_list_rel = np.concatenate(kp_list_rel, axis=0)
 
@@ -291,18 +303,26 @@ def process_file_modif_inter(directory, args, delim):
             "obs_kp_rel": obs_kp_rel,
             #"pred_kp": pred_kp,
         })
+    if args.obstacles:
+        data.update({
+            "obstacles":obstacles_world,
+        })
     return data
 
 
 
 
 
-def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
+def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim, lim=[]):
 
     datasets = range(len(list_max_person))
     datasets = list(datasets)
     datasets.remove(args.ind_test)
-    list_max_person.remove(list_max_person[args.ind_test]) 
+    list_max_person = np.delete(list_max_person, args.ind_test) 
+    
+    if(len(lim)!=0):
+        lim = np.delete(lim, args.ind_test,axis=0)
+        lim = np.reshape(lim,(4,5))
 
     #Las direcciones del conjunto de entrenamiento
     used_data_dirs = [data_dirs[x] for x in datasets]
@@ -326,8 +346,8 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
     kp_list_rel = []
     
     #seq_list_person=[] 
-    todo_flujo =[]
-
+    todo_flujo = []
+    
     for indi,directory in enumerate(used_data_dirs):
         
         seq_list_person_indi = []
@@ -336,19 +356,24 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
         #se obtiene el nombre del archivo sin importar del punto txt, csv,etc.
         #name_sub_data = os.path.splitext(os.path.basename(sub_data))[0]
         #print(name_sub_data)
-        sub_data= os.path.join(directory, 'mundo/mun_pos.csv')
+        sub_data = os.path.join(directory, 'mundo/mun_pos.csv')
         print(sub_data)
+        
+        if args.obstacles:
+            t = directory.split('/')
+            data_paths = t[0]+'/'+t[1]+'/'
+            dataset_name = t[2]
+            obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
 
         kp_feats = {} # "frameidx_personId"
         if args.add_kp:
-            kp_file_path= os.path.join(directory,'keypoints.csv')
-
+            kp_file_path = os.path.join(directory,'kp_box.csv')
             with open(kp_file_path, "r") as f:
 
                 for line in f:
                     fidxykp = line.strip().split(delim)
                     key = fidxykp[0] + "_" +fidxykp[1]
-                    kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) # TODO: MOdificar segun la prob
+                    kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)
 
         # Trayectory coordinates
         data = np.genfromtxt(sub_data, delimiter= delim)
@@ -364,11 +389,11 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
             #la secuencia de frames de size seq_len=obs+pred
             cur_seq_data = frame_data[idx:idx + seq_len]
 
-            nf_ped_ids= reduce(set.intersection,
+            nf_ped_ids = reduce(set.intersection,
                                    [set(nf_ped_ids[:,1]) for nf_ped_ids in
                                    cur_seq_data])
 
-            nf_ped_ids= sorted(list(nf_ped_ids))
+            nf_ped_ids = sorted(list(nf_ped_ids))
 
             cur_seq_data = np.concatenate(cur_seq_data,axis=0)
 
@@ -395,10 +420,10 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
             
             if args.add_kp:
                 # absolute pixel
-                kp_feat = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 2),
+                kp_feat = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 3),
                         dtype="float32")
                 # velocity
-                kp_feat_rel = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 2),
+                kp_feat_rel = np.zeros((num_ped_in_frame, seq_len, args.kp_num, 3),
                             dtype="float32")
 
             if args.add_social:
@@ -426,7 +451,7 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
                 # esto se inicializa cada que cambiamos de una sucesion de seq_len
                 if args.add_social:
 
-                    con_iguales=0
+                    con_iguales = 0
                     for n in range(obs_len-1):
                         if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
                             con_iguales +=1
@@ -486,8 +511,10 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
                     for i, frame_idx in enumerate(frame_idxs):
                         key = "%d_%d" % (frame_idx, person_id)
                         # ignore the kp logits
-                        kp_feat[count_person, i, :, :] = kp_feats[key][:, :2]
-                    kp_feat_rel[count_person, 1:, :, :] = kp_feat[count_person, 1:, :, :] - kp_feat[count_person, :-1, :, :]
+                        kp_feat[count_person, i, :, :] = kp_feats[key][:, :3]
+                    kp_feat_rel[count_person, 1:, :, :2] = kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
+                    kp_feat_rel[count_person, 1:, :,  2] = kp_feat[count_person, 1:, :,  2] * kp_feat[count_person, :-1, :,  2]
+                    kp_feat_rel[count_person, 0, :,   2] = np.ones((18,))
                 count_person += 1
 
             # Es el vector de que cuenta por cada sucesion de frames cuantas personas por cada sucesion si
@@ -535,8 +562,17 @@ def process_file_modif_varios_inter(data_dirs, list_max_person, args, delim):
             #print(vec['obs_person'].shape)
             #print(vec['key_idx'].shape)
             #print(vec['obs_traj'].shape)
-            fo = OpticalFlowSimulator()
-            flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len)
+            if args.neighborhood:
+                fo = OpticalFlowSimulator1()
+                flujo,vis_neigh = fo.compute_opticalflow_batch_with_neighborhood(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len,lim[indi,:])
+            else:
+                if args.obstacles:
+                    fo = OpticalFlowSimulator_obstacles()
+                    flujo,vis_neigh,vis_obst = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'], args.obs_len,obstacles_world)
+
+                else:
+                    fo = OpticalFlowSimulator()
+                    flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len)
             todo_flujo.append(flujo)
             #if(indi==0):
             #    print(flujo)

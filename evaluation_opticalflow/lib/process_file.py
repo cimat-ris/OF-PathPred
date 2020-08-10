@@ -3,6 +3,9 @@ from tqdm import tqdm
 import glob
 import numpy as np
 from interaction_optical_flow import OpticalFlowSimulator
+from interaction_cuadro_optical_flow import OpticalFlowSimulator1
+from interaction_optical_flow_obstacles import OpticalFlowSimulator_obstacles
+from obstacles import load_world_obstacle_polygons
 
 # En todas estas funciones cuando se usa el modo add_social
 # se contempla a los vecinos que pueden no permanecer en toda la secuencia
@@ -25,7 +28,7 @@ def process_file_modif(path_file, args, delim):
     seq_list     = []
     seq_list_rel = []
     seq_frames   = []
-    kp_list      = []  # [N, seq_len, 17, 2]
+    kp_list      = []  # [N, seq_len, 18, 3]
     kp_list_rel  = []
 
     #Estas listas tienen la informacion de frames de todas las sucesiones de tamano seq_len
@@ -38,15 +41,23 @@ def process_file_modif(path_file, args, delim):
     kp_feats = {}  # "frameidx_personId"
     # To use keypoints, we open then from a file
     if args.add_kp:
-        with open(args.kp_path, "r") as f:
+        kp_path = os.path.join(path_file, 'kp_box.csv')
+        with open(kp_path, "r") as f:
             for line in f:
                 fidxykp = line.strip().split(delim)
                 key     = fidxykp[0] + "_" +fidxykp[1]
-                kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) # TODO: MOdificar segun la prob
+                #key_idx.append(key)
+                kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) 
+    # Read obstacles
+    if args.obstacles:
+        t = path_file.split('/')
+        data_paths = t[0]+'/'+t[1]+'/'
+        dataset_name = t[2]
+        obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
 
-    # Raw trajectories coordinates
-    raw_traj_data = []
-    with open(path_file, "r") as traj_file:
+    # Trajectory coordinates
+    path_file_com = os.path.join(path_file, 'mundo/mun_pos.csv')
+    with open(path_file_com, "r") as traj_file:
         for line in traj_file:
             # Format is: id_frame, id_person, x, y
             fidx, pid, x, y = line.strip().split(delim)
@@ -176,11 +187,11 @@ def process_file_modif(path_file, args, delim):
                 for i, frame_idx in enumerate(frame_idxs):
                     key = "%d_%d" % (frame_idx, person_id)
                     # ignore the kp logits
-                    kp_feat[count_person, i, :, :] = kp_feats[key][:, :2]
+                    kp_feat[count_person, i, :, :] = kp_feats[key][:, :3]
 
-                kp_feat_rel[count_person, 1:, :, :] = \
-                    kp_feat[count_person, 1:, :, :] - kp_feat[count_person, :-1, :, :]
-
+                kp_feat_rel[count_person, 1:, :, :2] = kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
+                kp_feat_rel[count_person, 1:, :,  2] = kp_feat[count_person, 1:, :,  2] * kp_feat[count_person, :-1, :,  2]
+                kp_feat_rel[count_person, 0,  :,  2] = np.ones((18,))
             count_person += 1
 
         # Number of persons getting a sequence starting at this frame
@@ -256,7 +267,7 @@ def process_file_modif(path_file, args, delim):
         })
 
     if args.add_kp:
-        # [N*K, seq_len, 17, 2]
+        # [N*K, seq_len, 18, 3]
         kp_list = np.concatenate(kp_list, axis=0)
         kp_list_rel = np.concatenate(kp_list_rel, axis=0)
 
@@ -269,6 +280,10 @@ def process_file_modif(path_file, args, delim):
             "obs_kp_rel": obs_kp_rel,
             #"pred_kp": pred_kp,
         })
+    if args.obstacles:
+        data.update({
+            "obstacles:" obstacles_world,
+        })
 
     return data
 
@@ -279,12 +294,16 @@ def process_file_modif(path_file, args, delim):
    of the array of direcctions,  arg: obs_len, pred_len, ind_test, delim
   return: a  dictionary with obs_traj, obs_traj_rel, obs_person, key_idx, obs_kp_rel, obs_flujo
 """
-def process_file_modif_varios(data_dirs, list_max_person, args, delim):
+def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
 
     datasets = range(len(list_max_person))
     datasets = list(datasets)
     datasets.remove(args.ind_test)
-    list_max_person.remove(list_max_person[args.ind_test])
+    list_max_person = np.delete(list_max_person, args.ind_test) 
+
+    if(len(lim)!=0):
+        lim = np.delete(lim, args.ind_test,axis=0)
+        lim = np.reshape(lim,(4,5))
 
     #Las direcciones del conjunto de entrenamiento
     used_data_dirs = [data_dirs[x] for x in datasets]
@@ -298,7 +317,7 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim):
 
     num_person_in_start_frame=[]
 
-    seq_list  = []
+    seq_list     = []
     seq_list_rel = []
 
     kp_list   = []  # [N, seq_len, 18, 2]
@@ -317,14 +336,19 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim):
 
         kp_feats = {} # "frameidx_personId"
         if args.add_kp:
-            kp_file_path= os.path.join(directory,'keypoints.csv')
-
+            kp_file_path= os.path.join(directory,'kp_box.csv')
             with open(kp_file_path, "r") as f:
 
                 for line in f:
                     fidxykp = line.strip().split(delim)
                     key = fidxykp[0] + "_" +fidxykp[1]
-                    kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) # TODO: MOdificar segun la prob
+                    kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)
+        # Read obstacles
+        if args.obstacles:
+            t = directory.split('/')
+            data_paths = t[0]+'/'+t[1]+'/'
+            dataset_name = t[2]
+            obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
 
         # Trajectory coordinates
         data = []
@@ -376,10 +400,10 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim):
 
             if args.add_kp:
                 # absolute pixel
-                kp_feat = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 2),
+                kp_feat = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 3),
                         dtype="float32")
                 # velocity
-                kp_feat_rel = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 2),
+                kp_feat_rel = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 3),
                             dtype="float32")
 
             if args.add_social:
@@ -464,8 +488,10 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim):
                     for i, frame_idx in enumerate(frame_idxs):
                         key = "%d_%d" % (frame_idx, person_id)
                         # ignore the kp logits
-                        kp_feat[count_person, i, :, :] = kp_feats[key][:, :2]
-                    kp_feat_rel[count_person, 1:, :, :] = kp_feat[count_person, 1:, :, :] - kp_feat[count_person, :-1, :, :]
+                        kp_feat[count_person, i, :, :] = kp_feats[key][:, :3]
+                    kp_feat_rel[count_person, 1:, :, :2] = kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
+                    kp_feat_rel[count_person, 1:, :,  2] = kp_feat[count_person, 1:, :,  2] * kp_feat[count_person, :-1, :,  2]
+                    kp_feat_rel[count_person, 0,  :,  2] = np.ones((18,))
                 count_person += 1
 
             # Es el vector de que cuenta por cada sucesion de frames cuantas personas por cada sucesion si
@@ -506,20 +532,22 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim):
                 "key_idx": np.array(key_idx_indi),
                 "obs_traj":  obs_traj
             }
-
-            print(vec['obs_person'].shape)
-            print(vec['key_idx'].shape)
-            print(vec['obs_traj'].shape)
-            fo = OpticalFlowSimulator()
-            flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len)
+            
+            #print(vec['obs_person'].shape)
+            #print(vec['key_idx'].shape)
+            #print(vec['obs_traj'].shape)
+            if args.neighborhood:
+                fo = OpticalFlowSimulator1()
+                flujo,vis_neigh = fo.compute_opticalflow_batch_with_neighborhood(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len,lim[indi,:])
+            else:
+                if args.obstacles:
+                    fo = OpticalFlowSimulator_obstacles()
+                    flujo,vis_neigh,vis_obst = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'], args.obs_len,obstacles_world)  
+                else:
+                    fo = OpticalFlowSimulator()
+                    flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len)
             todo_flujo.append(flujo)
-            print(flujo.shape)
-            if(indi==1):
-                print(flujo)
-                #print(vec['obs_person'])
-                #print(vec['key_idx'])
-                #print(vec['obs_traj'])
-
+          
     # N is numero de secuencias de frames  for each video, K is num_person in each frame
     # el numero total que tendremos es el numero total de personas que hayan cumplido que si tienen secuencia
     seq_list = np.concatenate(seq_list, axis=0)
@@ -637,15 +665,14 @@ def datos_subprocesados_varios(datasets, args, delim):
 
         kp_feats = {} # "frameidx_personId"
         if args.add_kp:
-            kp_file_path= os.path.join(directory,'keypoints.csv')
+            kp_file_path= os.path.join(directory,'kp_box.csv')
 
             with open(kp_file_path, "r") as f:
 
                 for line in f:
                     fidxykp = line.strip().split(delim)
                     key = fidxykp[0] + "_" +fidxykp[1]
-                    kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3) # TODO: MOdificar segun la prob
-
+                    kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)
         data=[]
         with open(sub_data, "r") as traj_file:
             for line in traj_file:
@@ -748,8 +775,10 @@ def datos_subprocesados_varios(datasets, args, delim):
                     for i, frame_idx in enumerate(frame_idxs):
                         key = "%d_%d" % (frame_idx, person_id)
                         # ignore the kp logits
-                        kp_feat[count_person, i, :, :] = kp_feats[key][:, :2]
-                    kp_feat_rel[count_person, 1:, :, :] = kp_feat[count_person, 1:, :, :] - kp_feat[count_person, :-1, :, :]
+                        kp_feat[count_person, i, :, :] = kp_feats[key][:, :3]
+                    kp_feat_rel[count_person, 1:, :, :2] = kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
+                    kp_feat_rel[count_person, 1:, :,  2] = kp_feat[count_person, 1:, :,  2] * kp_feat[count_person, :-1, :,  2]
+                    kp_feat_rel[count_person, 0,  :,  2] = np.ones((18,))
                 count_person += 1
 
             # contador cuenta cuanta subsucesiones hubier+on por cada sud_archivo
