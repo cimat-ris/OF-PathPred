@@ -8,6 +8,7 @@ print('Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 import random
 from datetime import datetime
+random.seed(datetime.now())
 import matplotlib.pyplot as plt
 from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
@@ -31,8 +32,6 @@ parameters = predictor_parameters()
 # Process data specified by the path to get the trajectories with
 data = process_file(data_path, parameters, ',')
 
-# Seed
-random.seed(datetime.now())
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
 training_pc  = 0.7
 test_pc      = 0.2
