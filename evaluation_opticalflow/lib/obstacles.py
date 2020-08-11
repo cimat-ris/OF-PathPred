@@ -21,12 +21,10 @@ def image_to_world_xy(image_xy, H):
 def generate_obstacle_polygons(dataset_paths,dataset_name):
     # Read the map image
     imagenew    = cv2.imread(dataset_paths+dataset_name+'/annotated.png',cv2.IMREAD_GRAYSCALE) # Gray values
-    
+
     # Binarize
     r,binary1   = cv2.threshold(imagenew, 1, 255, cv2.THRESH_BINARY)
     kernel      = np.ones((11,11),np.uint8)
-    print(binary1.shape)
-    print(kernel.shape)
     # Apply dilation, then erosion
     dilatacion1 = cv2.dilate(binary1,kernel,iterations = 1)
     erosion1    = cv2.erode(dilatacion1,kernel,iterations=1)
@@ -131,7 +129,7 @@ def main():
     dataset_paths = '../data1/'
     dataset_name  = 'ucy-univ'
     generate_obstacle_polygons(dataset_paths,dataset_name)
-    
+
 
 if __name__ == '__main__':
     main()
