@@ -13,7 +13,7 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 # Important imports
-from process_file import process_file_modif
+from process_file import process_file
 from process_file import process_file_modif_varios
 import batches_data
 import model
@@ -55,13 +55,15 @@ class parameters:
         # Key point flag
         self.add_kp     = False
         # Obstacles flag
-        self.obstacles  = True
+        self.obstacles    = True
+        self.neighborhood = False
+
 
 # Load the default parameters
 arguments = parameters()
 
 # Process data to get the trajectories
-data = process_file_modif(data_path, arguments, ',')
+data = process_file(data_path, arguments, ',')
 
 # Should be nSamples x sequenceLength x nPersonsMax x PersonDescriptionSize
 print(data['obs_person'].shape)

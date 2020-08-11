@@ -14,7 +14,7 @@ from obstacles import load_world_obstacle_polygons
   input: The direction of file, arg: obs_len, pred_len,etc. , delim
   return: a  dictionary with obs_traj, obs_traj_rel, obs_person, key_idx, obs_kp_rel
 """
-def process_file_modif(path_file, args, delim):
+def process_file(path_file, args, delim):
     # Observation length
     obs_len  = args.obs_len
     # Prediction length
@@ -22,23 +22,23 @@ def process_file_modif(path_file, args, delim):
     # Total sequence length
     seq_len  = obs_len + pred_len
     print("[INF] Sequence length (observation+prediction): ",seq_len)
-    num_person_in_start_frame = []
 
-    seq_list     = []
-    seq_list_rel = []
-    seq_frames   = []
+    num_person_in_start_frame = []
+    seq_list_pos    = []
+    seq_list_rel    = []
+    seq_list_frames = []
     kp_list      = []  # [N, seq_len, 18, 3]
     kp_list_rel  = []
 
-    #Estas listas tienen la informacion de frames de todas las sucesiones de tamano seq_len
+    # Information about all the sequences with size seq_len
     seq_list_person     = []
     seq_list_person_rel = []
 
-    #Load other features if necessary
-    #Esta lista tendra los Id_person de las personas de cada secucuencia seq_len que se puedan hacer
+    # Load other features if necessary
+    # This list holds the person ids for all the persons of any sequence of length seq_len
     key_idx  = []
     kp_feats = {}  # "frameidx_personId"
-    # To use keypoints, we open then from a file
+    # To use keypoints, we extract them from a file
     if args.add_kp:
         kp_path = os.path.join(path_file, 'kp_box.csv')
         with open(kp_path, "r") as f:
@@ -49,10 +49,11 @@ def process_file_modif(path_file, args, delim):
                 kp_feats[key] = np.array(fidxykp[2:]).reshape(args.kp_num,3)
     # Read obstacles
     if args.obstacles:
-        t = path_file.split('/')
-        data_paths = t[0]+'/'+t[1]+'/'
-        dataset_name = t[2]
-        obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
+        print("[INF] Reading obstacle files")
+        t              = path_file.split('/')
+        data_paths     = t[0]+'/'+t[1]+'/'
+        dataset_name   = t[2]
+        obstacles_world= load_world_obstacle_polygons(data_paths,dataset_name)
 
     # Trajectory coordinates
     path_file_com = os.path.join(path_file, 'mundo/mun_pos.csv')
@@ -67,62 +68,60 @@ def process_file_modif(path_file, args, delim):
 
     # We suppose that the frame ids are in ascending order
     frame_ids               = np.unique(raw_traj_data[:, 0]).tolist()  # Determine the unique frames ids
-    raw_traj_data_per_frame = []  # people in frame
+    print("[INF] Total number of frames: ",len(frame_ids))
 
     # Group the spatial pedestrian data frame by frame
     # id_frame, id_person, x, y
-    for frame in frame_ids:
-        raw_traj_data_per_frame.append(raw_traj_data[raw_traj_data[:, 0]==frame, :])
-
-    # Maximum number of persons in a frame sequence
-    print("[INF] Total number of tracked ids: ",len(frame_ids))
+    raw_traj_data_per_frame = []  # People trajectories per frame
+    for frame_id in frame_ids:
+        raw_traj_data_per_frame.append(raw_traj_data[raw_traj_data[:, 0]==frame_id, :])
 
     # Iterate over the frames
-    for idx, frame in enumerate(frame_ids):
+    for idx, frame_id in enumerate(frame_ids):
         # Frame sequence of size seq_len = obs+pred starting at frame
         # id_frame, id_person, x, y por every person present in the frame
-        cur_seq_data = np.concatenate(raw_traj_data_per_frame[idx:idx+seq_len],axis = 0)
-        # Unique indices for the persons in the sequence "cur_seq_data"
-        persons_in_cur_seq = np.unique(cur_seq_data[:,1])
+        raw_seq_data    = np.concatenate(raw_traj_data_per_frame[idx:idx+seq_len],axis = 0)
+        # Unique indices for the persons in the sequence "raw_seq_data"
+        peds_in_cur_seq = np.unique(raw_seq_data[:,1])
         # List of all the persons in this sequence
-        ped_id_list           = list(persons_in_cur_seq)
+        peds_id_list    = list(peds_in_cur_seq)
         # Number of unique persons "cur_seq_data"
-        num_person_in_cur_seq = len(persons_in_cur_seq)
+        num_peds_in_cur_seq = len(peds_in_cur_seq)
 
         # The following two arrays have the same shape
-        # "cur_seq" contains all the absolute positions of all the pedestrians in the sequence
+        # "pos_seq_data" contains all the absolute positions of all the pedestrians in the sequence
         # and he information is encoded in an absolute frame (no transformation)
-        cur_seq       = np.zeros((num_person_in_cur_seq, seq_len, 2), dtype="float32")
+        pos_seq_data = np.zeros((num_peds_in_cur_seq, seq_len, 2), dtype="float32")
         # Same, with only the displacements
-        cur_seq_rel   = np.zeros((num_person_in_cur_seq, seq_len, 2), dtype="float32")
+        rel_seq_data = np.zeros((num_peds_in_cur_seq, seq_len, 2), dtype="float32")
         # In this array, we'll have the sequence of id_person for all the persons in the sequence frames
         # This will be useful to identify neighbors
-        cur_seq_frame = np.zeros((num_person_in_cur_seq, seq_len),    dtype="int32")
+        ped_ids_seq_data   = np.zeros((num_peds_in_cur_seq, seq_len),    dtype="int32")
         # List of frames of any person_id in this sequence
-        frame_idxs = frame_ids[idx:idx+seq_len]
-
+        frame_ids_seq_data = np.zeros((num_peds_in_cur_seq, seq_len),    dtype="int32")
+        frame_ids_seq      = frame_ids[idx:idx+seq_len]
         # When using "keypoints" information
         if args.add_kp:
             # Pixel coordinates, in image absolute coordinates
-            kp_feat      = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 2),dtype="float32")
+            kp_feat      = np.zeros((num_peds_in_cur_seq, seq_len, args.kp_num, 2),dtype="float32")
             # Pixel coordinates, in image relative coordinates
-            kp_feat_rel = np.zeros((num_person_in_cur_seq,  seq_len, args.kp_num, 2),dtype="float32")
+            kp_feat_rel = np.zeros((num_peds_in_cur_seq,  seq_len, args.kp_num, 2),dtype="float32")
 
         # When using social context information
         if args.add_social:
             person_max     = args.person_max
             # absolute pixel-based data: id_person, x, y
-            neighbors_data = np.zeros((num_person_in_cur_seq, seq_len, person_max, 3),dtype="float32")
+            neighbors_data = np.zeros((num_peds_in_cur_seq, seq_len, person_max, 3),dtype="float32")
 
-        # This counter is reinitialized every time we move to a new frame
-        count_person = 0
+        # This counter is reinitialized every time we move to a new frame/sequence
+        count_ped = 0
         # For all the persons appearing in this sequence that starts at frame
         # We will make one entry in the sequences list
-        for person_id in persons_in_cur_seq:
-            # Get the information about person_id, in the whole sequence
-            cur_person_seq = cur_seq_data[cur_seq_data[:, 1] == person_id,:]
+        for ped_id in peds_in_cur_seq:
+            # Get the information about ped_id, in the whole sequence
+            ped_seq_data = raw_seq_data[raw_seq_data[:, 1] == ped_id,:]
             # We want pedestrians whose number of observations inside this sequence is exactly seq_len
-            if len(cur_person_seq) != seq_len:
+            if len(ped_seq_data) != seq_len:
                 # We do not have enough observations for this person
                 continue
             # Social context information is extracted here
@@ -134,109 +133,98 @@ def process_file_modif(path_file, args, delim):
                 # -----------------------------------------------------------------------
                 equal_positions = 0
                 for n in range(obs_len-1):
-                    if((cur_person_seq[n,2]==cur_person_seq[n+1,2]) and (cur_person_seq[n,3]==cur_person_seq[n+1,3])):
+                    if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
                         equal_positions +=1
                 if (equal_positions==obs_len-1):
                     continue
-
-                #  To keep neighbors data for the person person_id
-                neighbors_person_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
-
-                seq_frame = 0
+                # To keep neighbors data for the person ped_id
+                neighbors_ped_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
                 # Scan all the frames of the sequence
-                for num_frame in np.unique(cur_seq_data[:,0]).tolist():
+                for frame_idx,frame_id in enumerate(np.unique(raw_seq_data[:,0]).tolist()):
                     # Information of frame "num_frame"
-                    sseq_frame_data = cur_seq_data[cur_seq_data[:,0] == num_frame,:]
+                    frame_data = raw_seq_data[raw_seq_data[:,0]==frame_id,:]
                     # Id, x, y of the pedestrians of frame "num_frame"
-                    sseq_frame_data = sseq_frame_data[:,1:4]
+                    frame_data = frame_data[:,1:4]
                     # For all the persons in the sequence
-                    for ped in range(num_person_in_cur_seq):
-                        # Get the person Id
-                        ped_id = ped_id_list[ped]
+                    for ped_idx,ped_id in enumerate(peds_id_list):
                         # Get the data of this specific person
-                        sped = sseq_frame_data[sseq_frame_data[:, 0] == ped_id, :]
+                        sped=frame_data[frame_data[:,0]==ped_id,:]
                         # If we have information for this pedestrian, add it to the neighbors struture
                         if sped.size != 0:
-                            neighbors_person_seq[seq_frame,ped,:] = sped
-                    # Increment the array index
-                    seq_frame+=1
-                #
-                neighbors_data[count_person,:,:,:] = neighbors_person_seq
+                            neighbors_ped_seq[frame_idx,ped_idx,:] = sped
+                # Contains the neighbor data for count_person
+                # TODO: Isnt it the same data for all the pedestrians in this sequence?
+                neighbors_data[count_ped,:,:,:] = neighbors_ped_seq
 
             # Spatial data (absolute)
-            cur_person_seq     = cur_person_seq[:, 2:]
+            ped_seq_pos     = ped_seq_data[:, 2:]
             # Spatial data (relative)
-            cur_person_seq_rel = np.zeros_like(cur_person_seq)
+            ped_seq_rel = np.zeros_like(ped_seq_pos)
             # First frame of the relative array is set to zeros
-            cur_person_seq_rel[1:, :] = cur_person_seq[1:, :] - cur_person_seq[:-1, :]
+            ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
             # Absolute x,y and displacements for all person_id
-            cur_seq[count_person, :, :]     = cur_person_seq
-            cur_seq_rel[count_person, :, :] = cur_person_seq_rel
+            pos_seq_data[count_ped, :, :] = ped_seq_pos
+            rel_seq_data[count_ped, :, :] = ped_seq_rel
 
-            # For each tracked person kept in cur_seq_frame
-            # we keep the list of all the persons present in this sequence
-            cur_seq_frame[count_person, :] = frame_idxs
+            # For each tracked person
+            # we keep the list of all the frames in which it is present
+            frame_ids_seq_data[count_ped, :] = frame_ids_seq
 
-            # List of person_ids that had a sequence
-            key_idx.append(person_id)
+            # List of person_ids that had a sequence (may be repeated)
+            key_idx.append(ped_id)
 
             # Keypoints
             if args.add_kp:
                 # get the kp feature from starting frame to seq_len frame)
                 # key_idx.append(person_id)
-                for i, frame_idx in enumerate(frame_idxs):
-                    key = "%d_%d" % (frame_idx, person_id)
+                for i, frame_id in enumerate(frame_ids_seq):
+                    key = "%d_%d" % (frame_id, person_id)
                     # ignore the kp logits
                     kp_feat[count_person, i, :, :] = kp_feats[key][:, :3]
-
                 kp_feat_rel[count_person, 1:, :, :2] = kp_feat[count_person, 1:, :, :2] - kp_feat[count_person, :-1, :, :2]
                 kp_feat_rel[count_person, 1:, :,  2] = kp_feat[count_person, 1:, :,  2] * kp_feat[count_person, :-1, :,  2]
                 kp_feat_rel[count_person, 0,  :,  2] = np.ones((18,))
-            count_person += 1
+
+            # Increment count_person
+            count_ped += 1
 
         # Number of persons getting a sequence starting at this frame
-        num_person_in_start_frame.append(count_person)
-        # only count_person data are preserved
-        seq_list.append(cur_seq[:count_person])
-        seq_list_rel.append(cur_seq_rel[:count_person])
-        seq_frames.append(cur_seq_frame[:count_person])
-
-
+        num_person_in_start_frame.append(count_ped)
+        # Only count_ped data are preserved in the following three arrays
+        seq_list_pos.append(pos_seq_data[:count_ped])
+        seq_list_rel.append(rel_seq_data[:count_ped])
+        seq_list_frames.append(frame_ids_seq_data[:count_ped])
         # Keypoints
         if args.add_kp:
-            kp_list.append(kp_feat[:count_person])
-            kp_list_rel.append(kp_feat_rel[:count_person])
+            kp_list.append(kp_feat[:count_ped])
+            kp_list_rel.append(kp_feat_rel[:count_ped])
         # Social interactions
         if args.add_social:
-            seq_list_person.append(neighbors_data[:count_person])
+            seq_list_person.append(neighbors_data[:count_ped])
 
-    # N is numero de secuencias de frames  for each video, K is num_person in each frame
-    # el numero total que tendremos es el numero total de personas que hayan cumplido que si tienen secuencia
-    seq_list     = np.concatenate(seq_list, axis=0)
-    seq_list_rel = np.concatenate(seq_list_rel, axis=0)
-    seq_frames   = np.concatenate(seq_frames, axis=0)
+    # Concatenate all the content of the lists (pos/relative pos)
+    seq_list_pos    = np.concatenate(seq_list_pos, axis=0)
+    seq_list_rel    = np.concatenate(seq_list_rel, axis=0)
+    seq_list_frames = np.concatenate(seq_list_frames, axis=0)
+    print("[INF] Total number of sample sequences ",len(seq_list_pos))
 
-    print("[INF] Total number of examples ",len(seq_list))
-
-    # we get the obs traj and pred_traj
-    # [total, obs_len, 2]
+    # We get the obs traj and pred_traj
+    # [total, obs_len,  2]
     # [total, pred_len, 2]
-    obs_traj = seq_list[:, :obs_len, :]
-    pred_traj = seq_list[:, obs_len:, :]
-    frames_obs = seq_frames[:,:obs_len]
-
-    obs_traj_rel = seq_list_rel[:, :obs_len, :]
+    obs_traj   = seq_list_pos[:, :obs_len, :]
+    pred_traj  = seq_list_rel[:, obs_len:, :]
+    frames_obs = seq_list_frames[:,:obs_len]
+    obs_traj_rel  = seq_list_rel[:, :obs_len, :]
     pred_traj_rel = seq_list_rel[:, obs_len:, :]
 
-
-    # the starting idx for each frame in the N*K list,
+    # The starting idx for each frame in the N*K list,
     # [num_frame, 2]
     cum_start_idx = [0] + np.cumsum(num_person_in_start_frame).tolist()
     seq_start_end = np.array([
         (start, end) for start, end in zip(cum_start_idx, cum_start_idx[1:])
       ], dtype="int")
 
-    # save the data as a dictionary
+    # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
         "obs_traj_rel": obs_traj_rel,
@@ -245,36 +233,22 @@ def process_file_modif(path_file, args, delim):
         "key_idx": np.array(key_idx),
         "obs_frames": frames_obs
     }
-
-    #obs_person = np.array(seq_list_person_obs)
-    #pred_person = np.array(seq_list_person_pred)
+    # Optional data
     if args.add_social:
         seq_list_person = np.concatenate(seq_list_person, axis = 0)
-        #seq_list_person_rel = np.concatenate(seq_list_person_rel, axis = 0)
-
-        #pred_person = np.array(seq_list_person_pred)
-        obs_person = seq_list_person[:,:obs_len,:,:]
+        obs_person  = seq_list_person[:,:obs_len,:,:]
         pred_person = seq_list_person[:,obs_len:,:,:]
-        #obs_person_rel = seq_list_person_rel[:,:obs_len,:,:]
-        #pred_person_rel = seq_list_person_rel[:,obs_len:,:,:]
-
         data.update({
             "obs_person": obs_person,
             "pred_person": pred_person,
-
-            #"obs_person_rel": obs_person_rel,
-            #"pred_person_rel": pred_person_rel,
         })
-
     if args.add_kp:
         # [N*K, seq_len, 18, 3]
-        kp_list = np.concatenate(kp_list, axis=0)
+        kp_list     = np.concatenate(kp_list, axis=0)
         kp_list_rel = np.concatenate(kp_list_rel, axis=0)
-
-        obs_kp = kp_list[:, :obs_len, :, :]
+        obs_kp  = kp_list[:, :obs_len, :, :]
         pred_kp = kp_list[:, obs_len:, :, :]  # for visualization
         obs_kp_rel = kp_list_rel[:, :obs_len, :, :]
-
         data.update({
             "obs_kp": obs_kp,
             "obs_kp_rel": obs_kp_rel
@@ -283,7 +257,6 @@ def process_file_modif(path_file, args, delim):
         data.update({
             "obstacles": obstacles_world
         })
-
     return data
 
 """
@@ -370,8 +343,6 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
         for frame in frames:
             frame_data.append(data[data[:, 0]==frame, :])
 
-        #contador=0
-
         for idx, frame in enumerate(frames):
             #la secuencia de frames de size seq_len=obs+pred
             cur_seq_data = np.concatenate(frame_data[idx:idx + seq_len],axis=0)
@@ -401,11 +372,9 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
 
             if args.add_kp:
                 # absolute pixel
-                kp_feat = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 3),
-                        dtype="float32")
+                kp_feat = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 3),dtype="float32")
                 # velocity
-                kp_feat_rel = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 3),
-                            dtype="float32")
+                kp_feat_rel = np.zeros((num_person_in_cur_seq, seq_len, args.kp_num, 3),dtype="float32")
 
             if args.add_social:
                 person_max     = list_max_person[indi]
@@ -507,14 +476,13 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
             # esto es para pasarlo a al momento de calcular el flujo optico individual
             seq_list_indi.append(cur_seq[:count_person])
 
-
             # Other characteristics
             if args.add_kp:
                 kp_list.append(kp_feat[:count_person])
                 kp_list_rel.append(kp_feat_rel[:count_person])
             if args.add_social:
                 seq_list_person_indi.append(neighbors_data[:count_person])
-        #aquiiiiiiiiiiiiiiiiiii
+
         if args.add_social:
             # la informacion de los vecinos
             seq_list_person_indi = np.concatenate(seq_list_person_indi, axis = 0)
@@ -534,14 +502,12 @@ def process_file_modif_varios(data_dirs, list_max_person, args, delim, lim =[]):
                 "obs_traj":  obs_traj
             }
 
-            #print(vec['obs_person'].shape)
-            #print(vec['key_idx'].shape)
-            #print(vec['obs_traj'].shape)
             if args.neighborhood:
                 fo = OpticalFlowSimulator1()
                 flujo,vis_neigh = fo.compute_opticalflow_batch_with_neighborhood(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len,lim[indi,:])
             else:
                 fo = OpticalFlowSimulator()
+                print("[INF] Using optical flow")
                 flujo,vis_neigh,vis_obst = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'], args.obs_len,obstacles_world)
             todo_flujo.append(flujo)
 
