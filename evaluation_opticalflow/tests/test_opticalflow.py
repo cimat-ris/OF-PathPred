@@ -12,7 +12,7 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 from interaction_optical_flow import OpticalFlowSimulator
-from process_file import process_file_modif
+from process_file import process_file
 
 import random
 
@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 generate_obstacle_polygons(dataset_paths,dataset_name)
 # Load the saved obstacles
 obstacles_world = load_world_obstacle_polygons(dataset_paths,dataset_name)
-
+print(obstacles_world)
 # Parameters
 class parameters:
     def __init__(self):
@@ -57,12 +57,12 @@ class parameters:
 arguments = parameters()
 
 # Process data to get the trajectories
-data = process_file_modif(data_path, arguments, ',')
+data = process_file(data_path, arguments, ',')
 # Select a random sequence
 idSample = random.sample(range(1,data["obs_traj"].shape[0]), 1)
 # The random sequence selected
-traj_sample   = data["obs_traj"][idSample][0]
-traj_neighbors= data['obs_person'][idSample][0]
+traj_sample   = data['obs_traj'][idSample][0]
+traj_neighbors= data['obs_neighbors'][idSample][0]
 traj_id       = data['key_idx'][idSample]
 OFSimulator          = OpticalFlowSimulator()
 

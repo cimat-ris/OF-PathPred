@@ -30,19 +30,19 @@ def vectores_direccion(data):
     i=1
     # calculamos la primera direccion la i=1
     if((data[0][0]!=data[1][0]) or (data[0][1]!=data[1][1]) ):
-    	direcciones[i] = np.array([data[1][0]-(data[0][0]), data[1][1]-(data[0][1])])
+    	direcciones[i] = np.array([data[1][0]-(data[0][0]),data[1][1]-(data[0][1])])
     else:
         # encuentro las primeras dos posiciones diferentes para asi poder calcular el vector direccion
         for j in range(i,pasos-1):
         	if( (data[j][0]!=data[j+1][0]) or (data[j][1]!=data[j+1][1]) ):
-        		direcciones[i] = np.array([data[j+1][0]-(data[j][0]), data[j+1][1]-(data[j][1])])
+        		direcciones[i] = np.array([data[j+1][0]-(data[j][0]),data[j+1][1]-(data[j][1])])
         		break
 
     direcciones[0] = direcciones[1]
 
     for i in range(2,pasos,1):
         if( (data[i][0]!=data[i-1][0]) or (data[i][1]!=data[i-1][1])):
-            direcciones[i] = np.array([data[i][0]-(data[i-1][0]), data[i][1]-(data[i-1][1])])
+            direcciones[i] = np.array([data[i][0]-(data[i-1][0]),data[i][1]-(data[i-1][1])])
         else:
             direcciones[i] = direcciones[i-1]
 
@@ -50,12 +50,15 @@ def vectores_direccion(data):
 
 # Main class for computing the optical flow
 class OpticalFlowSimulator(object):
-    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64):
+    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, use_bounds=False, width_bound=1.0,height_bound=1.0):
         self.theta0    = theta0
         self.thetaf    = thetaf
         self.delta     = (thetaf-theta0)/num_rays
         self.num_rays  = num_rays
         self.epsilon   = 0.05
+        self.use_bounds  = use_bounds
+        self.width_bound = width_bound
+        self.height_bound= height_bound
 
     def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles,title):
         """ Funcion para graficar y visualizar los vectores y puntos"""
@@ -245,7 +248,7 @@ class OpticalFlowSimulator(object):
         frame_pos = neighbors[1,:,:]
         x_after, y_after = obs_traj[1][0], obs_traj[1][1]
         v_obser = [x_after-obs_traj[0][0],y_after-obs_traj[0][1]]
-        # Only used when we work with all neigbors
+        # Only used when we work with all neighbors
         vel_before_neighbors = np.zeros((mnp,2), dtype='float')
 
         # Scan the sequence along time
@@ -258,8 +261,8 @@ class OpticalFlowSimulator(object):
             x_current, y_current = obs_traj[i][0], obs_traj[i][1]
 
             if(i!=0):
-                #This is for compute the velocity of the neighbor
-                frame_ant = neighbors[i-1,:,:]
+                # This is for computing the velocity of the neighbor
+                prev_frame = neighbors[i-1,:,:]
                 #This is for compute the velocity of the observer agent
                 x_after, y_after = obs_traj[i-1][0], obs_traj[i-1][1]
                 v_obser = [x_current-x_after, y_current-y_after]
@@ -283,7 +286,7 @@ class OpticalFlowSimulator(object):
                 if(i==0):
                     # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
                     if(frame_pos[other_ped_index,0]==0):
-                        vel_other = [0,0]
+                        vel_other = [0.,0.]
                         vel_before_neighbors[other_ped_index,:]= vel_other
                     else:
                         other_x_pos = frame_pos[other_ped_index,1]
@@ -293,15 +296,16 @@ class OpticalFlowSimulator(object):
                         vel_before_neighbors[other_ped_index,:]= vel_other
                 # Inside the sequence
                 else:
-                    if(frame_ant[other_ped_index,0]==0):
+                    if(prev_frame[other_ped_index,0]==0):
                         vel_other = vel_before_neighbors[other_ped_index,:]
                         vel_before_neighbors[other_ped_index,:] = vel_other
                     else:
-                        other_x_ant = frame_ant[other_ped_index,1]
-                        other_y_ant = frame_ant[other_ped_index,2]
+                        other_x_ant = prev_frame[other_ped_index,1]
+                        other_y_ant = prev_frame[other_ped_index,2]
 
                         vel_other = [other_x-other_x_ant, other_y-other_y_ant]
                         vel_before_neighbors[other_ped_index,:]= vel_other
+
                 # Keep the set of velocities
                 vel_p_veci.append(vel_other)
                 # Keep the set of positions

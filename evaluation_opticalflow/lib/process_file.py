@@ -146,16 +146,15 @@ def process_file(path_file, args, delim):
                     # Id, x, y of the pedestrians of frame "num_frame"
                     frame_data = frame_data[:,1:4]
                     # For all the persons in the sequence
-                    for ped_idx,ped_id in enumerate(peds_id_list):
+                    for neighbor_ped_idx,neighbor_ped_id in enumerate(peds_id_list):
                         # Get the data of this specific person
-                        sped=frame_data[frame_data[:,0]==ped_id,:]
+                        sped=frame_data[frame_data[:,0]==neighbor_ped_id,:]
                         # If we have information for this pedestrian, add it to the neighbors struture
                         if sped.size != 0:
-                            neighbors_ped_seq[frame_idx,ped_idx,:] = sped
-                # Contains the neighbor data for count_person
+                            neighbors_ped_seq[frame_idx,neighbor_ped_idx,:] = sped
+                # Contains the neighbor data for count_ped
                 # TODO: Isnt it the same data for all the pedestrians in this sequence?
                 neighbors_data[count_ped,:,:,:] = neighbors_ped_seq
-
             # Spatial data (absolute)
             ped_seq_pos     = ped_seq_data[:, 2:]
             # Spatial data (relative)
@@ -239,8 +238,8 @@ def process_file(path_file, args, delim):
         obs_person  = seq_list_person[:,:obs_len,:,:]
         pred_person = seq_list_person[:,obs_len:,:,:]
         data.update({
-            "obs_person": obs_person,
-            "pred_person": pred_person,
+            "obs_neighbors": obs_person,
+            "pred_neigbors": pred_person,
         })
     if args.add_kp:
         # [N*K, seq_len, 18, 3]
