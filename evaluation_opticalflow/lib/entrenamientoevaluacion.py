@@ -48,7 +48,7 @@ class Trainer(object):
         """One training step."""
         config = self.config
         feed_dict = self.model.get_feed_dict(batch,True)
-        
+
         inputs = [self.loss, self.train_op]#### Diferente
         #loss, train_op,grid= sess.run(inputs, feed_dict = feed_dict)
         loss, train_op = sess.run(inputs, feed_dict = feed_dict)
@@ -120,7 +120,7 @@ class Tester(object):
         Returns:
         Evaluation results.
         """
-       
+
         predicho   = []
         verdadero  = []
         observado  = []
@@ -139,7 +139,7 @@ class Tester(object):
             for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
                 if i >= this_actual_batch_size:
                     break
-     
+
                 this_pred_out = pred_out[i][:, :2]
                 this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
 
@@ -188,9 +188,9 @@ class Tester(object):
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             if i >= this_actual_batch_size:
                 break
+            print(pred_traj_gt)    
             # Conserve the x,y coordinates
             this_pred_out     = pred_out[i][:, :2]
-            print(this_pred_out.shape)
             # Convert it to absolute (starting from the last observed position)
             this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
             # Keep all the trajectories
@@ -212,6 +212,3 @@ def relative_to_abs(rel_traj, start_pos):
     displacement = np.cumsum(rel_traj, axis=0)
     abs_traj = displacement + np.array([start_pos])  # [1,2]
     return abs_traj
-
-
-

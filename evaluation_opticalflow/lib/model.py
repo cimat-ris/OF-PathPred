@@ -339,7 +339,6 @@ class Model(object):
         #this is needed since it is in tf.conf?
         traj_pred_gt = np.zeros([N, T_pred, P], dtype='float')
         feed_dict[self.traj_pred_gt] = traj_pred_gt  # all zero when testing,
-
         feed_dict[self.is_train] = is_train
         #encoder features
         # ------------------------------------- xy input
@@ -351,7 +350,7 @@ class Model(object):
                 traj_obs_gt[i, j, :] = xy
                 traj_obs_gt_mask[i, j] = True
             for j in range(config.pred_len):
-                # used in testing to get the preiction length
+                # used in testing to get the prediction length
                 traj_pred_gt_mask[i, j] = True
 
         # ------------------------------------------------------
@@ -379,7 +378,7 @@ class Model(object):
             for i, (obs_data, pred_data) in enumerate(zip(data['obs_traj_rel'],
                                                     data['pred_traj_rel'])):
                 for j, xy in enumerate(pred_data):
-                    traj_pred_gt[i, j, :] = xy
+                    traj_pred_gt[i, j, :]   = xy
                     traj_pred_gt_mask[i, j] = True
         return feed_dict
 

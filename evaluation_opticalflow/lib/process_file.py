@@ -210,7 +210,7 @@ def process_file(path_file, args, delim):
     # [total, obs_len,  2]
     # [total, pred_len, 2]
     obs_traj   = seq_list_pos[:, :obs_len, :]
-    pred_traj  = seq_list_rel[:, obs_len:, :]
+    pred_traj  = seq_list_pos[:, obs_len:, :]
     frames_obs = seq_list_frames[:,:obs_len]
     obs_traj_rel  = seq_list_rel[:, :obs_len, :]
     pred_traj_rel = seq_list_rel[:, obs_len:, :]
