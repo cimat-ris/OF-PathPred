@@ -13,7 +13,7 @@ class Model(object):
 
         # Get all the dimension here
         # Tensor dimensions, so pylint: disable=g-bad-name
-        N  = self.N  = config.batch_size
+        N  = self.N  = config.batch_size # Batch size
         KP = self.KP = config.kp_size    # Keypoints
         P  = self.P  = 2                 # Spatial coordinates
         T1 = config.obs_len              # Length of the observations
@@ -33,7 +33,7 @@ class Model(object):
         self.obs_kp    = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
         # Info about optical flow
         self.obs_flow  = tf.compat.v1.placeholder('float',[N, None,64],name='obs_flow')
-        # Flag for trainig. Used for drop out switch
+        # Flag for training. Used for drop out switch
         self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
         # Loss function
         self.loss = None
@@ -55,29 +55,29 @@ class Model(object):
                         lambda: tf.constant(config.keep_prob),
                         lambda: tf.constant(1.0))
         # ------------------------- Encoder ------------------------
-        # Trajectory encoder
+        # Trajectory encoder: LSTM, with hidden size config.enc_hidden_size
         enc_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(
             config.enc_hidden_size, state_is_tuple=True, name='enc_traj')
         enc_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_traj, keep_prob)
 
-        # Person pose (keypoints) encoder
+        # Person pose (keypoints) encoder: LSTM, with hidden size config.enc_hidden_size
         if config.add_kp:
             enc_cell_kp = tf.compat.v1.nn.rnn_cell.LSTMCell(config.enc_hidden_size, state_is_tuple=True, name='enc_kp')
             enc_cell_kp = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_kp, keep_prob)
 
-        # Social encoding part (optical flow)
+        # Social encoding part (optical flow): LSTM, with hidden size config.enc_hidden_size
         if config.add_social:
             enc_cell_soc = tf.compat.v1.nn.rnn_cell.LSTMCell(
                 config.enc_hidden_size,state_is_tuple = True,name='enc_social')
             enc_cell_soc = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_soc,keep_prob)
 
         # ------------------------ Decoder
-        if config.multi_decoder:
+        if config.multi_decoder: # Multiple output mode
             dec_cell_traj = [tf.compat.v1.nn.rnn_cell.LSTMCell(
                 config.dec_hidden_size, state_is_tuple=True, name='dec_traj_%s' % i)
                              for i in range(len(config.traj_cats))]
             dec_cell_traj = [tf.compat.v1.nn.rnn_cell.DropoutWrapper(one, keep_prob) for one in dec_cell_traj]
-        else:
+        else: # Simple mode: LSTM, with hidden size config.dec_hidden_size
             dec_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(config.dec_hidden_size, state_is_tuple=True, name='dec_traj')
             dec_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(dec_cell_traj, keep_prob)
 
@@ -90,22 +90,23 @@ class Model(object):
         with tf.compat.v1.variable_scope('person_pred') as top_scope:
             # xy encoder: [N,T1,h_dim]
             obs_length = tf.reduce_sum(tf.cast(self.traj_obs_gt_mask, 'int32'), 1)
-            # Linear embedding
+            # Linear embedding of the observed trajectories
             traj_xy_emb_enc = linear(self.traj_obs_gt,
                                output_size=config.emb_size,
                                activation=config.activation_func,
-                               add_bias = True,
-                               scope = 'enc_xy_emb')
+                               add_bias=True,
+                               scope='enc_xy_emb')
             # Applies the position sequence through the LSTM
             traj_obs_enc_h, traj_obs_enc_last_state = tf.compat.v1.nn.dynamic_rnn(
                 enc_cell_traj, traj_xy_emb_enc, sequence_length = obs_length,
                 dtype='float', scope='encoder_traj')
-            # Get the hidden states and the last hidden state, separately
+            # Get the hidden states and the last hidden state, separately, and add them to the lists
             enc_h_list          = [traj_obs_enc_h]
             enc_last_state_list = [traj_obs_enc_last_state]
 
             # Person pose (keypoints)
             if config.add_kp:
+                # Reshape
                 obs_kp = tf.reshape(self.obs_kp, [N, -1, KP*2])
                 # Linear embedding of the keypoints
                 obs_kp = linear(obs_kp, output_size=config.emb_size, add_bias=True,
@@ -114,7 +115,7 @@ class Model(object):
                 kp_obs_enc_h, kp_obs_enc_last_state = tf.nn.dynamic_rnn(
                     enc_cell_kp, obs_kp, sequence_length=obs_length, dtype='float',
                     scope='encoder_kp')
-                # Get the hidden states and the last hidden state, separately
+                # Get the hidden states and the last hidden state, separately, and add them to the lists
                 enc_h_list.append(kp_obs_enc_h)
                 enc_last_state_list.append(kp_obs_enc_last_state)
 
@@ -127,18 +128,21 @@ class Model(object):
                 soc_obs_enc_h, soc_obs_enc_last_state =tf.nn.dynamic_rnn(
                     enc_cell_soc, obs_soc, sequence_length=obs_length, dtype='float',
                     scope='encoder_soc')
-                # Get the hidden states and the last hidden state, separately
+                # Get the hidden states and the last hidden state, separately, and add them to the lists
                 enc_h_list.append(soc_obs_enc_h)
                 enc_last_state_list.append(soc_obs_enc_last_state)
 
-            # Pack all observed hidden states
-            # [batch,m,obs,h_dim]
+            # Pack all observed hidden states (lists) from all M features into a tensor
+            # The final size should be [N,M,T1,h_dim]
             obs_enc_h          = tf.stack(enc_h_list, axis=1)
+            # Concatenate last states (in the list) from all M features into a tensor
+            # The final size should be [N,M,h_dim]
             obs_enc_last_state = concat_states(enc_last_state_list, axis=1)
 
             # ----------------------------- xy decoder-----------------------------------------
-            # Last observed position
+            # Last observed position from the trajectory
             traj_obs_last = self.traj_obs_gt[:, -1]
+            # Prediction length
             pred_length = tf.reduce_sum(
                 tf.cast(self.traj_pred_gt_mask, 'int32'), 1)  # N
 
@@ -147,16 +151,14 @@ class Model(object):
                 # [N, num_traj_cat] # each is num_traj_cat classification
                 self.traj_class_logits = self.traj_class_head(
                     obs_enc_h, obs_enc_last_state, scope='traj_class_predict')
-
-                # [N]
+                # The class from the classifier [N]
                 traj_class = tf.argmax(self.traj_class_logits, axis=1)
-
                 traj_class_gated = tf.cond(
                     self.is_train,
                     lambda: self.traj_class_gt,
                     lambda: traj_class,
                 )
-
+                # Multiple outputs
                 traj_pred_outs = [
                     self.decoder(
                         traj_obs_last,
@@ -168,20 +170,17 @@ class Model(object):
                         scope='decoder_%s' % traj_cat)
                     for _, traj_cat in config.traj_cats
                 ]
-
                 # [N, num_decoder, T, 2]
                 self.traj_pred_outs = tf.stack(traj_pred_outs, axis=1)
-
                 # [N, 2]
                 indices = tf.stack(
                     [tf.range(N), tf.to_int32(traj_class_gated)], axis=1)
-
                 # [N, T, 2]
                 traj_pred_out = tf.gather_nd(self.traj_pred_outs, indices)
 
             else:
                 # Single decoder called: takes the last observed position, the last encoding state,
-                # the set of all hidden states, the number of prediction steps, and the decoder cell.
+                # the tensor of all hidden states, the number of prediction steps, and the decoder cell.
                 traj_pred_out = self.decoder(traj_obs_last, traj_obs_enc_last_state,
                                              obs_enc_h, pred_length, dec_cell_traj,
                                              top_scope=top_scope, scope='decoder')
@@ -201,8 +200,8 @@ class Model(object):
             with tf.compat.v1.name_scope('prepare_pred_gt_training'):
                 # These input only used during training
                 time_1st_traj_pred = tf.transpose(
-                    self.traj_pred_gt, perm=[1, 0, 2])  # [N,T2,W] -> [T2,N,W]
-                T2 = tf.shape(time_1st_traj_pred)[0]  # T2
+                    self.traj_pred_gt, perm=[1, 0, 2])  # [N,T2,2] -> [T2,N,2]
+                T2 = tf.shape(time_1st_traj_pred)[0]  # Value of T2 (prediction length)
                 traj_pred_gt = tf.TensorArray(size= T2, dtype='float')
                 traj_pred_gt = traj_pred_gt.unstack(
                     time_1st_traj_pred)  # [T2] , [N,W]
@@ -218,8 +217,10 @@ class Model(object):
 
                     # h_{t-1}
                     with tf.compat.v1.name_scope('prepare_next_cell_state'):
+                        # Initial state
                         if cell_output is None:
                             next_cell_state = enc_last_state
+                        # Next states
                         else:
                             next_cell_state = cell_state
                     # x_t
@@ -229,13 +230,14 @@ class Model(object):
                         else:
                             # for testing, construct from this output to be next input
                             next_input_xy = tf.cond(
-                                # first check the sequence finished or not
+                                # first check the sequence finished or not. If finished then input is zero
                                 finished,
                                 lambda: tf.zeros([N, P], dtype='float'),
-                                # pylint: disable=g-long-lambda
+                                # else, in training the input is from the groundtruth (teacher forcing)
+                                # and in testing, from the previous output (cell_ouput mapped by hidden2xy)
                                 lambda: tf.cond(
                                     self.is_train,
-                                    # this will make training faster than testing
+                                    # Teacher forcing: this will make training faster than testing
                                     lambda: traj_pred_gt.read(time),
                                     # hidden vector from last step to coordinates
                                     lambda: self.hidden2xy(cell_output, scope=top_scope,
@@ -248,26 +250,30 @@ class Model(object):
                             scope='xy_emb_dec')
 
                         next_input = xy_emb
+                        # Attention
                         with tf.compat.v1.name_scope('attend_enc'):
                             # [N,h_dim]
+                            # query is next_cell_state.h
+                            # context is enc_h
                             attended_encode_states = focal_attention(
                                 next_cell_state.h, enc_h, use_sigmoid=False,
                                 scope='decoder_attend_encoders')
-
+                            # Concatenate previous xy embedding, attended encoded states
+                            # [N,emb+h_dim]
                             next_input = tf.concat(
                                 [xy_emb, attended_encode_states], axis=1)
                     return elements_finished, next_input, next_cell_state,emit_output, None  # next_loop_state
 
+                # Application of the RNN here
                 decoder_out_ta, _, _ = tf.compat.v1.nn.raw_rnn(
                     rnn_cell, decoder_loop_fn, scope='decoder_rnn')
-            with tf.compat.v1.name_scope('reconstruct_output'):
 
+            with tf.compat.v1.name_scope('reconstruct_output'):
                 decoder_out_h = decoder_out_ta.stack()  # [T2,N,h_dim]
                 # [N,T2,h_dim]
                 decoder_out_h = tf.transpose(decoder_out_h, perm=[1, 0, 2])
             # recompute the output;
             # if use loop_state to save the output, will 10x slower
-
             # use the same hidden2xy for different decoder
             decoder_out = self.hidden2xy(
                 decoder_out_h, scope=top_scope, additional_scope='hidden2xy')
