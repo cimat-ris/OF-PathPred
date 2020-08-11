@@ -246,7 +246,7 @@ class OpticalFlowSimulator(object):
         if obstacles is not None:
             visible_obstacles= np.zeros((sequence_length,self.num_rays,2), dtype='float')
         else:
-            visible_obstacles= None
+            visible_obstacles = None
         frame_pos = neighbors[1,:,:]
         x_after, y_after = obs_traj[1][0], obs_traj[1][1]
         v_obser = [x_after-obs_traj[0][0],y_after-obs_traj[0][1]]
@@ -352,7 +352,7 @@ class OpticalFlowSimulator(object):
             # Person id
             person_id = idx[batch_idx]
             # Compute the optical flow along this trajectory, given the positions of the neighbors
-            if obstacles is not None:
+            if obstacles is None:
                 vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],__ =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
             else:
                 vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
