@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 generate_obstacle_polygons(dataset_paths,dataset_name)
 # Load the saved obstacles
 obstacles_world = load_world_obstacle_polygons(dataset_paths,dataset_name)
-print(obstacles_world)
+
 # Parameters
 class parameters:
     def __init__(self):

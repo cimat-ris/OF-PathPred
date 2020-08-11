@@ -3,7 +3,6 @@ from tqdm import tqdm
 import glob
 import numpy as np
 from interaction_optical_flow import OpticalFlowSimulator
-from interaction_cuadro_optical_flow import OpticalFlowSimulator1
 from obstacles import load_world_obstacle_polygons
 
 # En todas estas funciones cuando se usa el modo add_social

@@ -50,15 +50,17 @@ def vectores_direccion(data):
 
 # Main class for computing the optical flow
 class OpticalFlowSimulator(object):
-    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, use_bounds=False, width_bound=1.0,height_bound=1.0):
+    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, use_bounds=False, lim=[0,0,0,0,1]):
         self.theta0    = theta0
         self.thetaf    = thetaf
         self.delta     = (thetaf-theta0)/num_rays
         self.num_rays  = num_rays
         self.epsilon   = 0.05
         self.use_bounds  = use_bounds
-        self.width_bound = width_bound
-        self.height_bound= height_bound
+        width            = lim[1]-lim[0]
+        height           = lim[3]-lim[2]
+        self.height_bound= height/lim[4]
+        self.width_bound = width/lim[4]
 
     def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles,title):
         """ Funcion para graficar y visualizar los vectores y puntos"""
@@ -263,15 +265,20 @@ class OpticalFlowSimulator(object):
             if(i!=0):
                 # This is for computing the velocity of the neighbor
                 prev_frame = neighbors[i-1,:,:]
-                #This is for compute the velocity of the observer agent
                 x_after, y_after = obs_traj[i-1][0], obs_traj[i-1][1]
                 v_obser = [x_current-x_after, y_current-y_after]
+
+            if self.use_bounds:
+                # The limits of the neighborhood
+                width_low    = x_current-self.width_bound/2.0
+                width_high   = x_current+self.width_bound/2.0
+                height_low   = y_current-self.height_bound/2.0
+                height_high  = y_current+self.height_bound/2.0
 
             # List of neighbors
             p_veci     = []
             vel_p_veci = []
             # Scan the other pedestrians
-
             for other_ped_index in range(mnp):
 
                 # If the neighbor is id==Id or is a no-neighnor (id==0)
@@ -281,6 +288,10 @@ class OpticalFlowSimulator(object):
                 # Position of the possible neighbor
                 other_x = frame[other_ped_index, 1]
                 other_y = frame[other_ped_index, 2]
+
+                # This is to verify that the pedestrian is not in the neighborhood
+                if self.use_bounds and ((other_x >= width_high) or (other_x< width_low) or (other_y >= height_high) or (other_y < height_low)):
+                    continue
 
                 # Beginning of the trajectory
                 if(i==0):
