@@ -10,7 +10,7 @@ from obstacles import load_world_obstacle_polygons
 
 # Predictor parameters
 class predictor_parameters:
-    def __init__(self):
+    def __init__(self,add_social=False):
         # Maximum number of persons in a frame
         self.person_max = 42 # 8   # Univ: 42  Hotel: 28
         # Observation length (trajlet size)
@@ -18,7 +18,7 @@ class predictor_parameters:
         # Prediction length
         self.pred_len   = 12
         # Flag to consider social interactions
-        self.add_social = False
+        self.add_social = add_social
         # Number of key points
         self.kp_num     = 18
         # Key point flag
