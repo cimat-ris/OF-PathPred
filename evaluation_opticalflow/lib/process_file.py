@@ -8,6 +8,25 @@ from obstacles import load_world_obstacle_polygons
 # En todas estas funciones cuando se usa el modo add_social
 # se contempla a los vecinos que pueden no permanecer en toda la secuencia
 
+# Predictor parameters
+class predictor_parameters:
+    def __init__(self):
+        # Maximum number of persons in a frame
+        self.person_max = 42 # 8   # Univ: 42  Hotel: 28
+        # Observation length (trajlet size)
+        self.obs_len    = 8
+        # Prediction length
+        self.pred_len   = 12
+        # Flag to consider social interactions
+        self.add_social = False
+        # Number of key points
+        self.kp_num     = 18
+        # Key point flag
+        self.add_kp     = False
+        # Obstacles flag
+        self.obstacles    = False
+        self.neighborhood = False
+
 """
   Process the data from the given path_file, of only one dataset
   input: The direction of file, arg: obs_len, pred_len,etc. , delim
