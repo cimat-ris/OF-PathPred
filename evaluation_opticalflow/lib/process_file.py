@@ -6,10 +6,11 @@ from interaction_optical_flow import OpticalFlowSimulator
 from obstacles import load_world_obstacle_polygons
 
 # Predictor parameters
+#Este es cuando solo se procesa un solo archivo y sin interseccion
 class predictor_parameters:
     def __init__(self,add_social=False):
         # Maximum number of persons in a frame
-        self.person_max = 42 # 8   # Univ: 42  Hotel: 28
+        self.person_max = 42   # eth-Univ: 42  eth-Hotel: 28
         # Observation length (trajlet size)
         self.obs_len    = 8
         # Prediction length
@@ -25,9 +26,38 @@ class predictor_parameters:
         self.neighborhood = False
         self.intersection = False
 
+#Este es cuando se procesa varios archivos y sin interseccion
+class predictor_parameters_varios:
+    def __init__(self,add_social=False):
+        # Maximum number of persons in a frame
+        # Is the person max in test set ("example Ucy-Zara02")
+        self.person_max = 28  # Eth-Univ: 42  Eth-Hotel: 28  Ucy-Zara02: 26
+        # Indice of the test set in data_dirs array
+        #data_dirs = ['../data1/eth-univ', '../data1/eth-hotel',
+        #     '../data1/ucy-zara01', '../data1/ucy-zara02',
+        #     '../data1/ucy-univ']
+
+        self.ind_test   = 1
+        # Observation length (trajlet size)
+        self.obs_len    = 8
+        # Prediction length
+        self.pred_len   = 12
+        # Flag to consider social interactions
+        self.add_social = add_social
+        # Number of key points
+        self.kp_num     = 18
+        # Key point flag
+        self.add_kp     = False
+        # Obstacles flag
+        self.obstacles    = False
+        self.neighborhood = False
+        self.intersection = False
+
+
+
 # En todas estas funciones cuando se usa el modo add_social
 # se contempla a los vecinos que pueden no permanecer en toda la secuencia
-# y tambien cuando solo nos quedamos con los que siemṕre permanecen
+# y tambien cuando solo nos quedamos con los que siempre permanecen
 
 def process_file(directory, args, delim):
     
