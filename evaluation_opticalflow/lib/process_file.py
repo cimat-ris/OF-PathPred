@@ -31,13 +31,13 @@ class predictor_parameters_varios:
     def __init__(self,add_social=False):
         # Maximum number of persons in a frame
         # Is the person max in test set ("example Ucy-Zara02")
-        self.person_max = 28  # Eth-Univ: 42  Eth-Hotel: 28  Ucy-Zara02: 26
+        self.person_max = 26 # Eth-Univ: 42  Eth-Hotel: 28  Ucy-Zara02: 26
         # Indice of the test set in data_dirs array
         #data_dirs = ['../data1/eth-univ', '../data1/eth-hotel',
         #     '../data1/ucy-zara01', '../data1/ucy-zara02',
         #     '../data1/ucy-univ']
 
-        self.ind_test   = 1
+        self.ind_test   = 3
         # Observation length (trajlet size)
         self.obs_len    = 8
         # Prediction length
