@@ -8,6 +8,8 @@ import tensorflow as tf
 print('Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 import random
+from datetime import datetime
+random.seed(datetime.now())
 
 from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
@@ -37,7 +39,7 @@ generate_obstacle_polygons(dataset_paths,dataset_name)
 obstacles_world = load_world_obstacle_polygons(dataset_paths,dataset_name)
 
 # File of trajectories coordinates. Coordinates are in world frame
-data_path = '../data1/'+dataset_name
+data_path = dataset_paths+dataset_name
 
 # Parameters
 class parameters:
@@ -62,7 +64,7 @@ class parameters:
 # Load the default parameters
 arguments = parameters()
 
-# Process data to get the trajectories
+# Process data specified by the path to get the trajectories with
 data = process_file(data_path, arguments, ',')
 
 # Should be nSamples x sequenceLength x nPersonsMax x PersonDescriptionSize
@@ -81,9 +83,6 @@ if recompute_opticalflow==True:
 # Load the optical flow
 optical_flow = np.load(optical_flow_file)
 data.update({"obs_flow": optical_flow})
-
-# Seed
-random.seed(0)
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
 training_pc  = 0.7
@@ -138,8 +137,6 @@ print("training data: "+ str(len(training_data[list(training_data.keys())[0]])))
 print("test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
-import matplotlib.pyplot as plt
-
 # Plot ramdomly a subset of the training data (spatial data only)
 nSamples = min(30,training)
 samples  = random.sample(range(1,training), nSamples)
@@ -173,7 +170,7 @@ pickle.dump(validation, pickle_out, protocol=2)
 pickle_out.close()
 
 class model_parameters:
-    def __init__(self, train_num_examples, add_kp = False, add_social = False):
+    def __init__(self, train_num_examples, add_kp = arguments.add_kp, add_social = arguments.add_social):
         # -----------------
         # Observation/prediction lengths
         self.obs_len  = 8
@@ -185,14 +182,8 @@ class model_parameters:
         # Key points
         self.kp_num = 18
         self.kp_size = 18
-        #self.maxNumPed = 8
-        #self.grid_size = 4
-        #self.neighborhood_size = 32
-        #self.dimensions = [768,576]
-        #self.limites=[-15.88,11.56,-19.09,5.99]
-        #self.bound=[0.7,0.5]
         # ------------------
-        self.num_epochs = 100
+        self.num_epochs = 30
         self.batch_size = 20 # batch size
         self.validate   = 300
         self.P          = 2 # Dimension
@@ -205,10 +196,8 @@ class model_parameters:
         self.seq_len = self.obs_len + self.pred_len
         self.reverse_xy = False
 
-        self.activation_func = tf.nn.tanh
+        self.activation_func  = tf.nn.tanh
         self.activation_func1 = tf.nn.relu
-        self.is_train = True
-        self.is_test = False
         self.multi_decoder = False
         self.modelname = 'gphuctl'
 
@@ -229,18 +218,16 @@ import math
 import model
 tf.reset_default_graph()
 
-arguments = model_parameters(train_num_examples=len(training_data['obs_traj']),add_kp = False, add_social = True,)
+arguments = model_parameters(train_num_examples=len(training_data['obs_traj']),add_kp = False)
 model     = model.Model(arguments)
-
-train_data = batches_data.Dataset(training_data,arguments)
-val_data   = batches_data.Dataset(validation_data,arguments)
+train_data= batches_data.Dataset(training_data,arguments)
+val_data  = batches_data.Dataset(validation_data,arguments)
 
 saver     = tf.train.Saver(max_to_keep = 2)
 bestsaver = tf.train.Saver(max_to_keep = 2)
 
-
-trainer = entrenamientoevaluacion.Trainer(model,arguments)
-tester  = entrenamientoevaluacion.Tester(model, arguments)
+trainer   = entrenamientoevaluacion.Trainer(model,arguments)
+tester    = entrenamientoevaluacion.Tester(model, arguments)
 
 # Global variables are initialized
 init = tf.global_variables_initializer()
@@ -256,11 +243,12 @@ is_start  = True
 num_steps = int(math.ceil(train_data.num_examples/float(arguments.batch_size)))
 loss_list = []
 
+print("[INF] Training")
 # Epochs
 for i in range(arguments.num_epochs):
     # Cycle over batches
     for idx, batch in tqdm(train_data.get_batches(arguments.batch_size,num_steps = num_steps),total=num_steps):
-
+        # Increment global step
         sess.run(increment_global_step_op)
         global_step = sess.run(model.global_step)
 
@@ -300,10 +288,12 @@ saver.save(sess,checkpoint_path_model , global_step = 0)
 # Load the last model that was saved
 path_model = 'models/'+dataset_name+'/lastmodel.ckpt-0'
 saver.restore(sess=sess, save_path=path_model)
+
+
+# TESTING
+print("[INF] Testing")
 test_batches_data = batches_data.Dataset(test_data, arguments)
 results           = tester.evaluate(test_batches_data,sess)
-print(results)
-
 nBatches = int(math.ceil(test_batches_data.num_examples / float(arguments.batch_size)))
 batchId  = random.sample(range(1,nBatches), 1)
 
@@ -329,7 +319,6 @@ saver.restore(sess=sess, save_path=path_model)
 
 test_batches_data = batches_data.Dataset(test_data, arguments)
 results  = tester.evaluate(test_batches_data,sess)
-print(results)
 
 # Apply the best model
 nBatches = int(math.ceil(test_batches_data.num_examples / float(arguments.batch_size)))
