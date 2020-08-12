@@ -3,6 +3,50 @@ import functools
 import operator
 import numpy as np
 
+class Model_Parameters(object):
+    """Model parameters.
+    """
+    def __init__(self, train_num_examples, add_kp = False, add_social = False):
+        # -----------------
+        # Observation/prediction lengths
+        self.obs_len  = 8
+        self.pred_len = 12
+
+        self.add_kp             = add_kp
+        self.train_num_examples = train_num_examples
+        self.add_social         = add_social
+        # Key points
+        self.kp_num = 18
+        self.kp_size = 18
+        # For training
+        self.num_epochs = 30
+        self.batch_size = 20 # batch size
+        self.validate   = 300
+        # Network architecture
+        self.P          = 2 # Dimension
+        self.enc_hidden_size = 64 # el nombre lo dice
+        self.dec_hidden_size = 64
+        self.emb_size        = 64
+        self.keep_prob       = 0.7 # dropout
+
+        self.min_ped      = 1
+        self.seq_len      = self.obs_len + self.pred_len
+        self.reverse_xy   = False
+
+        self.activation_func  = tf.nn.tanh
+        self.activation_func1 = tf.nn.relu
+        self.multi_decoder = False
+        self.modelname = 'gphuctl'
+
+        self.init_lr = 0.002 # 0.01
+        self.learning_rate_decay = 0.85
+        self.num_epoch_per_decay = 2.0
+        self.optimizer = 'adam'
+        self.emb_lr = 1.0
+        # To save the best model
+        self.load_best = True
+
+
 class Model(object):
     """Model graph definitions.
     """
@@ -299,21 +343,13 @@ class Model(object):
     def build_loss(self):
         """Model loss."""
         config = self.config
-        losses = []
         # N,T,W
         # L2 loss
         # [N,T2,W]
-        traj_pred_out = self.traj_pred_out
-        traj_pred_gt = self.traj_pred_gt
-        diff = traj_pred_out - traj_pred_gt
-
-        xyloss = tf.pow(diff, 2)  # [N,T2,2]
-        xyloss = tf.reduce_mean(xyloss)
-        self.xyloss = xyloss
-
-        losses.append(xyloss)
-        #self.loss = tf.add_n(losses, name='total_losses')
-        self.loss = self.xyloss
+        diff      = self.traj_pred_out - self.traj_pred_gt
+        xyloss    = tf.pow(diff, 2)  # [N,T2,2]
+        xyloss    = tf.reduce_mean(xyloss)
+        self.loss = xyloss
 
     def get_feed_dict(self, data, is_train):
         """Given a batch of data, construct the feed dict."""
@@ -323,8 +359,6 @@ class Model(object):
         N = self.N
         P = self.P
         KP = self.KP ####
-        #MNP = self.MNP
-
         T_in = config.obs_len
         T_pred = config.pred_len
 

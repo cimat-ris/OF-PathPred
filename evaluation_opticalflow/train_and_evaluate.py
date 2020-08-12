@@ -16,9 +16,8 @@ device_lib.list_local_devices()
 
 # Important imports
 from process_file import process_file
-from process_file import process_file_modif_varios
 import batches_data
-import model
+from model import Model, Model_Parameters
 import entrenamientoevaluacion
 from interaction_optical_flow import OpticalFlowSimulator
 
@@ -59,6 +58,7 @@ class parameters:
         # Obstacles flag
         self.obstacles    = False
         self.neighborhood = False
+        self.intersection = False
 
 
 # Load the default parameters
@@ -90,7 +90,7 @@ test_pc      = 0.2
 
 # Count how many data we have (sub-sequences of length 8, in pred_traj)
 ndata      = len(data[list(data.keys())[2]])
-idx        = random.sample(range(ndata), ndata)
+idx        = np.random.permutation(ndata)
 training   = int(ndata*training_pc)
 test       = int(ndata*test_pc)
 validation = int(ndata-training-test)
@@ -169,47 +169,6 @@ pickle_out = open('validation_data_'+dataset_name+'.pickle',"wb")
 pickle.dump(validation, pickle_out, protocol=2)
 pickle_out.close()
 
-class model_parameters:
-    def __init__(self, train_num_examples, add_kp = arguments.add_kp, add_social = arguments.add_social):
-        # -----------------
-        # Observation/prediction lengths
-        self.obs_len  = 8
-        self.pred_len = 12
-
-        self.add_kp             = add_kp
-        self.train_num_examples = train_num_examples
-        self.add_social         = add_social
-        # Key points
-        self.kp_num = 18
-        self.kp_size = 18
-        # ------------------
-        self.num_epochs = 30
-        self.batch_size = 20 # batch size
-        self.validate   = 300
-        self.P          = 2 # Dimension
-        self.enc_hidden_size = 64 # el nombre lo dice
-        self.dec_hidden_size = 64
-        self.emb_size        = 64
-        self.keep_prob      = 0.7 # dropout
-
-        self.min_ped = 1
-        self.seq_len = self.obs_len + self.pred_len
-        self.reverse_xy = False
-
-        self.activation_func  = tf.nn.tanh
-        self.activation_func1 = tf.nn.relu
-        self.multi_decoder = False
-        self.modelname = 'gphuctl'
-
-        self.init_lr = 0.002 # 0.01
-        self.learning_rate_decay = 0.85
-        self.num_epoch_per_decay = 2.0
-        self.optimizer = 'adam'
-        self.emb_lr = 1.0
-        #self.clip_gradient_norm = 10.0
-        #Para cuando entreno y quiero guardar el mejor modelo
-        self.load_best = True
-
 
 import os
 from tqdm import tqdm
@@ -218,7 +177,7 @@ import math
 import model
 tf.reset_default_graph()
 
-arguments = model_parameters(train_num_examples=len(training_data['obs_traj']),add_kp = False)
+arguments = Model_Parameters(train_num_examples=len(training_data['obs_traj']),add_kp = False, add_social=False)
 model     = model.Model(arguments)
 train_data= batches_data.Dataset(training_data,arguments)
 val_data  = batches_data.Dataset(validation_data,arguments)
@@ -323,7 +282,7 @@ results  = tester.evaluate(test_batches_data,sess)
 # Apply the best model
 nBatches = int(math.ceil(test_batches_data.num_examples / float(arguments.batch_size)))
 traj_obs_set,traj_gt_set,traj_pred_set = tester.apply_on_batch(test_batches_data,batchId,sess)
-
+print(len(traj_pred_set))
 plt.subplots(1,1,figsize=(10,10))
 plt.subplot(1,1,1)
 plt.axis('equal')
