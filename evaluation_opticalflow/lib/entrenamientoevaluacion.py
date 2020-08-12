@@ -6,15 +6,14 @@ from tqdm import tqdm
 class Trainer(object):
     """Trainer class for model."""
     def __init__(self, model, config):
-        self.config = config
-        self.model = model  # this is a Model instance
-        self.global_step = model.global_step
-        self.learning_rate = config.init_lr
+        self.config       = config
+        self.model        = model  # this is a Model instance
+        self.global_step  = model.global_step
+        self.learning_rate= config.init_lr
 
         if config.learning_rate_decay is not None:
             decay_steps = int(config.train_num_examples /
                         config.batch_size * config.num_epoch_per_decay)
-
             self.learning_rate = tf.compat.v1.train.exponential_decay(
                 config.init_lr,
                 self.global_step,
@@ -25,20 +24,15 @@ class Trainer(object):
         if config.optimizer == 'momentum':
             opt_emb = tf.train.MomentumOptimizer(
                 self.learning_rate*config.emb_lr, momentum=0.9)
-            #opt_rest = tf.train.MomentumOptimizer(self.learning_rate, momentum=0.9)
         elif config.optimizer == 'adadelta':
             opt_emb = tf.train.AdadeltaOptimizer(self.learning_rate*config.emb_lr)
-            #opt_rest = tf.train.AdadeltaOptimizer(self.learning_rate)
         elif config.optimizer == 'adam':
             opt_emb = tf.compat.v1.train.AdamOptimizer(self.learning_rate*config.emb_lr)
-            #opt_rest = tf.train.AdamOptimizer(self.learning_rate)
         else:
             raise Exception('Optimizer not implemented')
 
         # losses
-        #self.xyloss = model.xyloss
         self.loss = model.loss  # get the loss funcion
-        #self.grid_data = model.grid_data  # get the vector_ID value
         self.train_op = opt_emb.minimize(self.loss) #### Diferente
 
     def get_lr(self):
@@ -46,12 +40,11 @@ class Trainer(object):
 
     def step(self, sess, batch):
         """One training step."""
-        config = self.config
+        config    = self.config
         feed_dict = self.model.get_feed_dict(batch,True)
-
-        inputs = [self.loss, self.train_op]#### Diferente
-        #loss, train_op,grid= sess.run(inputs, feed_dict = feed_dict)
+        inputs    = [self.loss, self.train_op]
         loss, train_op = sess.run(inputs, feed_dict = feed_dict)
+        pred_out = sess.run(self.traj_pred_out, feed_dict = feed_dict)
         return loss, train_op
 
 
@@ -68,7 +61,7 @@ class Tester(object):
     def step(self,batch,sess):
         """One inference step."""
         # Give one batch of Dataset, use model to get the result,
-        feed_dict = self.model.get_feed_dict(batch, is_train = False)
+        feed_dict = self.model.get_feed_dict(batch,False)
         pred_out = sess.run(self.traj_pred_out, feed_dict = feed_dict)
         return pred_out
 
@@ -110,7 +103,7 @@ class Tester(object):
         fde = [o[-1] for o in l2dis] # final displacement
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
-    def evaluate_new(dataset, tester,sess):
+    def evaluate_new(dataset, tester, sess):
         """Evaluate the dataset using the tester model.
         Args:
         dataset: the Dataset instance
@@ -126,7 +119,7 @@ class Tester(object):
         observado  = []
 
         config = tester.config
-        l2dis = []
+        l2dis  = []
         num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
 
         for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
@@ -188,7 +181,6 @@ class Tester(object):
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             if i >= this_actual_batch_size:
                 break
-            print(pred_traj_gt)    
             # Conserve the x,y coordinates
             this_pred_out     = pred_out[i][:, :2]
             # Convert it to absolute (starting from the last observed position)
