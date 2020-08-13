@@ -1,7 +1,7 @@
 # Imports
 import sys,os
 sys.path.append('./lib')
-import numpy as np
+import math,numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
@@ -169,16 +169,11 @@ pickle_out = open('validation_data_'+dataset_name+'.pickle',"wb")
 pickle.dump(validation, pickle_out, protocol=2)
 pickle_out.close()
 
-
-import os
 from tqdm import tqdm
-import tensorflow as tf
-import math
-import model
 tf.reset_default_graph()
 
 arguments = Model_Parameters(train_num_examples=len(training_data['obs_traj']),add_kp = False, add_social=False)
-model     = model.Model(arguments)
+model     = Model(arguments)
 train_data= batches_data.Dataset(training_data,arguments)
 val_data  = batches_data.Dataset(validation_data,arguments)
 
@@ -244,20 +239,20 @@ plt.show()
 # Keep the last model
 checkpoint_path_model = os.path.join('models/'+dataset_name, 'lastmodel.ckpt')
 saver.save(sess,checkpoint_path_model , global_step = 0)
-# Load the last model that was saved
-path_model = 'models/'+dataset_name+'/lastmodel.ckpt-0'
-saver.restore(sess=sess, save_path=path_model)
-
 
 # TESTING
+# Load the last model that was saved
 print("[INF] Testing")
 test_batches_data = batches_data.Dataset(test_data, arguments)
-results           = tester.evaluate(test_batches_data,sess)
 nBatches = int(math.ceil(test_batches_data.num_examples / float(arguments.batch_size)))
-batchId  = random.sample(range(1,nBatches), 1)
+batchId  = random.randint(1,nBatches)
 
+# Last model
+path_model = 'models/'+dataset_name+'/lastmodel.ckpt-0'
+saver.restore(sess=sess, save_path=path_model)
+results           = tester.evaluate(test_batches_data,sess)
+# Qualitative evaluation: test on batch batchId
 traj_obs_set,traj_gt_set,traj_pred_set = tester.apply_on_batch(test_batches_data,batchId,sess)
-
 plt.subplots(1,1,figsize=(10,10))
 plt.subplot(1,1,1)
 plt.axis('equal')
@@ -275,14 +270,9 @@ plt.show()
 # Best model
 path_model = 'models/'+dataset_name+'/model_best.ckpt-0'
 saver.restore(sess=sess, save_path=path_model)
-
-test_batches_data = batches_data.Dataset(test_data, arguments)
-results  = tester.evaluate(test_batches_data,sess)
-
-# Apply the best model
-nBatches = int(math.ceil(test_batches_data.num_examples / float(arguments.batch_size)))
+results           = tester.evaluate(test_batches_data,sess)
+# Qualitative evaluation: test on batch batchId
 traj_obs_set,traj_gt_set,traj_pred_set = tester.apply_on_batch(test_batches_data,batchId,sess)
-print(len(traj_pred_set))
 plt.subplots(1,1,figsize=(10,10))
 plt.subplot(1,1,1)
 plt.axis('equal')
