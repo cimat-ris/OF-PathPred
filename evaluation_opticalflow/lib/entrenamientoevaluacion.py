@@ -44,7 +44,6 @@ class Trainer(object):
         feed_dict = self.model.get_feed_dict(batch,True)
         inputs    = [self.loss, self.train_op]
         loss, train_op = sess.run(inputs, feed_dict = feed_dict)
-        pred_out = sess.run(self.traj_pred_out, feed_dict = feed_dict)
         return loss, train_op
 
 
@@ -125,8 +124,6 @@ class Tester(object):
         for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
 
             pred_out = tester.step(batch,sess)
-            cont +=1
-
             this_actual_batch_size = batch["original_batch_size"]
             d = []
             for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
@@ -164,31 +161,29 @@ class Tester(object):
             traj_obs,traj_gt,traj_pred.
         """
         config = self.config
-        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
         traj_obs = []
         traj_gt  = []
         traj_pred= []
-        # Get the batches
-        batches = dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False)
         # Scan all the batches and simply stop when we reach the one with Id batchId
-        for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
-                if idx==batchId:
+        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
+        for count, (idx, batch) in enumerate(dataset.get_batches(config.batch_size,num_steps = num_batches_per_epoch)):
+                if count==batchId:
+                    # Apply the network to this batch
+                    pred_out  = self.step(batch,sess)
+                    this_actual_batch_size = batch["original_batch_size"]
+                    # For all the trajectories in the batch
+                    for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+                        if i >= this_actual_batch_size:
+                            break
+                        # Conserve the x,y coordinates
+                        this_pred_out     = pred_out[i][:, :2]
+                        # Convert it to absolute (starting from the last observed position)
+                        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                        # Keep all the trajectories
+                        traj_obs.append(obs_traj_gt)
+                        traj_gt.append(pred_traj_gt)
+                        traj_pred.append(this_pred_out_abs)
                     break
-        # Apply the network to this batch
-        pred_out               = self.step(batch,sess)
-        this_actual_batch_size = batch["original_batch_size"]
-        # For all the trajectories in the batch
-        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            if i >= this_actual_batch_size:
-                break
-            # Conserve the x,y coordinates
-            this_pred_out     = pred_out[i][:, :2]
-            # Convert it to absolute (starting from the last observed position)
-            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-            # Keep all the trajectories
-            traj_obs.append(obs_traj_gt)
-            traj_gt.append(pred_traj_gt)
-            traj_pred.append(this_pred_out_abs)
         return traj_obs,traj_gt,traj_pred
 
 def relative_to_abs(rel_traj, start_pos):
