@@ -74,9 +74,8 @@ class Tester(object):
             Evaluation results.
         """
         config = self.config
-
         l2dis = []
-        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
+        num_batches_per_epoch = dataset.get_num_batches()
         for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
             #
             pred_out               = self.step(batch,sess)
@@ -119,8 +118,7 @@ class Tester(object):
 
         config = tester.config
         l2dis  = []
-        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
-
+        num_batches_per_epoch = dataset.get_num_batches()
         for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
 
             pred_out = tester.step(batch,sess)
@@ -165,7 +163,7 @@ class Tester(object):
         traj_gt  = []
         traj_pred= []
         # Scan all the batches and simply stop when we reach the one with Id batchId
-        num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
+        num_batches_per_epoch = dataset.get_num_batches()
         for count, (idx, batch) in enumerate(dataset.get_batches(config.batch_size,num_steps = num_batches_per_epoch,shuffle = False)):
                 if count==batchId:
                     # Apply the network to this batch

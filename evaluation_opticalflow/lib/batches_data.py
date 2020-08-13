@@ -12,10 +12,10 @@ def grouper(lst, num):
 class Dataset(object):
     """Class for batching during training and testing."""
     def __init__(self, data, config):
-        self.data = data
-        self.valid_idxs = range(self.get_data_size())
+        self.data         = data
+        self.valid_idxs   = range(self.get_data_size())
         self.num_examples = len(self.valid_idxs)#4441
-        self.config = config
+        self.config       = config
 
     def get_data_size(self):
         #num of examples
@@ -28,6 +28,10 @@ class Dataset(object):
                 out[key] = []
             out[key].extend(val[idx] for idx in idxs)
         return out
+
+    def get_num_batches(self):
+        """ Number of batches."""
+        return int(math.ceil(self.num_examples / float(self.config.batch_size)))
 
     def get_batches(self, batch_size, num_steps = 0, shuffle = True, full = False):
         """Iterator to get batches.

@@ -241,13 +241,12 @@ checkpoint_path_model = os.path.join('models/'+dataset_name, 'lastmodel.ckpt')
 saver.save(sess,checkpoint_path_model , global_step = 0)
 
 # TESTING
-# Load the last model that was saved
 print("[INF] Testing")
+# Select one random batch
 test_batches_data = batches_data.Dataset(test_data, arguments)
-nBatches = int(math.ceil(test_batches_data.num_examples / float(arguments.batch_size)))
-batchId  = random.randint(1,nBatches)
+batchId  = random.randint(1,test_batches_data.get_num_batches())
 
-# Last model
+# Load the last model that was saved
 path_model = 'models/'+dataset_name+'/lastmodel.ckpt-0'
 saver.restore(sess=sess, save_path=path_model)
 results           = tester.evaluate(test_batches_data,sess)
