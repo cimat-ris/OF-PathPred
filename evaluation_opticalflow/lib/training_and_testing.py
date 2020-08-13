@@ -166,7 +166,7 @@ class Tester(object):
         traj_pred= []
         # Scan all the batches and simply stop when we reach the one with Id batchId
         num_batches_per_epoch = int(math.ceil(dataset.num_examples / float(config.batch_size)))
-        for count, (idx, batch) in enumerate(dataset.get_batches(config.batch_size,num_steps = num_batches_per_epoch)):
+        for count, (idx, batch) in enumerate(dataset.get_batches(config.batch_size,num_steps = num_batches_per_epoch,shuffle = False)):
                 if count==batchId:
                     # Apply the network to this batch
                     pred_out  = self.step(batch,sess)

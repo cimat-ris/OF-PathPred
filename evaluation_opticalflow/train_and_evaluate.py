@@ -18,7 +18,7 @@ device_lib.list_local_devices()
 from process_file import process_file
 import batches_data
 from model import Model, Model_Parameters
-import entrenamientoevaluacion
+from training_and_testing import Trainer,Tester
 from interaction_optical_flow import OpticalFlowSimulator
 
 # Dataset to be tested
@@ -180,8 +180,8 @@ val_data  = batches_data.Dataset(validation_data,arguments)
 saver     = tf.train.Saver(max_to_keep = 2)
 bestsaver = tf.train.Saver(max_to_keep = 2)
 
-trainer   = entrenamientoevaluacion.Trainer(model,arguments)
-tester    = entrenamientoevaluacion.Tester(model, arguments)
+trainer   = Trainer(model,arguments)
+tester    = Tester(model, arguments)
 
 # Global variables are initialized
 init = tf.global_variables_initializer()
