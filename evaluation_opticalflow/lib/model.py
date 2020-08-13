@@ -382,7 +382,6 @@ class Model(object):
         feed_dict[self.is_train] = is_train
         #encoder features
         # ------------------------------------- xy input
-
         assert len(data['obs_traj_rel']) == N
         for i, (obs_data, pred_data) in enumerate(zip(data['obs_traj_rel'],
                                                   data['pred_traj_rel'])):

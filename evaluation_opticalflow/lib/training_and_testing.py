@@ -160,7 +160,7 @@ class Tester(object):
         Returns:
             traj_obs,traj_gt,traj_pred.
         """
-        config = self.config
+        config   = self.config
         traj_obs = []
         traj_gt  = []
         traj_pred= []
