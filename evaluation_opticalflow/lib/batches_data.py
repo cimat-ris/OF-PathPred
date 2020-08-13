@@ -80,8 +80,5 @@ class Dataset(object):
 
             # get the actual data based on idx
             batch_data = self.get_by_idxs(batch_idxs)
-
-            batch_data.update({"original_batch_size": original_batch_size,})
-            config = self.config
-
+            batch_data.update({"original_batch_size": original_batch_size})
             yield batch_idxs, batch_data
