@@ -121,7 +121,7 @@ class Tester(object):
         fde = [o[-1] for o in l2dis] # final displacement
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
-    def evaluate_new(dataset, tester, sess):
+    def evaluate_new(self,dataset, sess):
         """Evaluate the dataset using the tester model.
         Args:
         dataset: the Dataset instance
@@ -136,12 +136,13 @@ class Tester(object):
         verdadero  = []
         observado  = []
 
-        config = tester.config
+        config = self.config
         l2dis  = []
         num_batches_per_epoch = dataset.get_num_batches()
+
         for idx, batch in tqdm(dataset.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
 
-            pred_out = tester.step(batch,sess)
+            pred_out = self.step(batch,sess)
             this_actual_batch_size = batch["original_batch_size"]
             d = []
             for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
@@ -166,8 +167,8 @@ class Tester(object):
 
         ade = [t for o in l2dis for t in o] # average displacement
         fde = [o[-1] for o in l2dis] # final displacement
-        p = { "ade": np.mean(ade), "fde": np.mean(fde),"error_prom":prom/len(error_prom)}
-        return p,predicho, verdadero
+        p = { "ade": np.mean(ade), "fde": np.mean(fde)}
+        return p,observado, verdadero, predicho
 
     def apply_on_batch(self,dataset,batchId,sess):
         """Evaluate a dataset batch using the tester model.
@@ -184,6 +185,7 @@ class Tester(object):
         traj_pred= []
         # Scan all the batches and simply stop when we reach the one with Id batchId
         num_batches_per_epoch = dataset.get_num_batches()
+        
         for count, (idx, batch) in enumerate(dataset.get_batches(config.batch_size,num_steps = num_batches_per_epoch,shuffle = False)):
                 if count==batchId:
                     # Apply the network to this batch
