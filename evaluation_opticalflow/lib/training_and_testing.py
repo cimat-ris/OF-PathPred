@@ -3,6 +3,26 @@ import numpy as np
 import math
 from tqdm import tqdm
 
+# Parameters
+class Experiment_Parameters:
+    def __init__(self,add_social=False,add_kp=False,obstacles=False):
+        # Maximum number of persons in a frame
+        self.person_max = 42 # 8   # Univ: 42  Hotel: 28
+        # Observation length (trajlet size)
+        self.obs_len    = 8
+        # Prediction length
+        self.pred_len   = 12
+        # Flag to consider social interactions
+        self.add_social = add_social
+        # Number of key points
+        self.kp_num     = 18
+        # Key point flag
+        self.add_kp     = add_kp
+        # Obstacles flag
+        self.obstacles    = obstacles
+        self.neighborhood = False
+        self.intersection = False
+
 class Trainer(object):
     """Trainer class for model."""
     def __init__(self, model, config):

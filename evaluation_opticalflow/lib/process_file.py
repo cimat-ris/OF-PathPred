@@ -301,6 +301,7 @@ def process_file(directory, args, delim):
     }
     # Optional data
     if args.add_social:
+        print("[INF] Add social interaction data")
         seq_list_person = np.concatenate(seq_list_person, axis = 0)
         obs_person = seq_list_person[:,:obs_len,:,:]
         pred_person = seq_list_person[:,obs_len:,:,:]
@@ -328,6 +329,7 @@ def process_file(directory, args, delim):
 
 
     if args.add_kp:
+        print("[INF] Add appearance data")
         # [N*K, seq_len, 18, 3]
         kp_list     = np.concatenate(kp_list, axis=0)
         kp_list_rel = np.concatenate(kp_list_rel, axis=0)
