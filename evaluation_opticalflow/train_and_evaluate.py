@@ -50,7 +50,7 @@ class parameters:
         # Prediction length
         self.pred_len   = 12
         # Flag to consider social interactions
-        self.add_social = False
+        self.add_social = True
         # Number of key points
         self.kp_num     = 18
         # Key point flag
@@ -172,16 +172,16 @@ pickle_out.close()
 from tqdm import tqdm
 tf.reset_default_graph()
 
-arguments = Model_Parameters(train_num_examples=len(training_data['obs_traj']),add_kp = False, add_social=False)
-model     = Model(arguments)
-train_data= batches_data.Dataset(training_data,arguments)
-val_data  = batches_data.Dataset(validation_data,arguments)
+model_parameters = Model_Parameters(train_num_examples=len(training_data['obs_traj']),add_kp = arguments.add_kp, add_social=arguments.add_social)
+model            = Model(model_parameters)
+train_data       = batches_data.Dataset(training_data,model_parameters)
+val_data         = batches_data.Dataset(validation_data,model_parameters)
 
 saver     = tf.train.Saver(max_to_keep = 2)
 bestsaver = tf.train.Saver(max_to_keep = 2)
 
-trainer   = Trainer(model,arguments)
-tester    = Tester(model, arguments)
+trainer   = Trainer(model,model_parameters)
+tester    = Tester(model, model_parameters)
 
 # Global variables are initialized
 init = tf.global_variables_initializer()
@@ -194,20 +194,20 @@ val_perf  = []
 loss      = -1
 best      = {'ade':999999, 'fde':0, 'step':-1}
 is_start  = True
-num_steps = int(math.ceil(train_data.num_examples/float(arguments.batch_size)))
+num_steps = int(math.ceil(train_data.num_examples/float(model_parameters.batch_size)))
 loss_list = []
 
 print("[INF] Training")
 # Epochs
-for i in range(arguments.num_epochs):
+for i in range(model_parameters.num_epochs):
     # Cycle over batches
-    for idx, batch in tqdm(train_data.get_batches(arguments.batch_size,num_steps = num_steps),total=num_steps):
+    for idx, batch in tqdm(train_data.get_batches(model_parameters.batch_size,num_steps = num_steps),total=num_steps):
         # Increment global step
         sess.run(increment_global_step_op)
         global_step = sess.run(model.global_step)
 
         # Evaluation on validation data
-        if((global_step%arguments.validate==0) or (arguments.load_best and is_start)):
+        if((global_step%model_parameters.validate==0) or (model_parameters.load_best and is_start)):
             checkpoint_path_model = os.path.join('models/'+dataset_name, 'model.ckpt')
             saver.save(sess,checkpoint_path_model , global_step = global_step)
             # Evaluation on th validation set
@@ -225,7 +225,7 @@ for i in range(arguments.num_epochs):
         loss, train_op = trainer.step(sess, batch)
         loss_list.append(loss)
 
-if((global_step % arguments.validate)!=0):
+if((global_step % model_parameters.validate)!=0):
   checkpoint_path_model = os.path.join('models/'+dataset_name, 'model.ckpt')
   saver.save(sess,checkpoint_path_model , global_step = global_step)
 
@@ -243,7 +243,7 @@ saver.save(sess,checkpoint_path_model , global_step = 0)
 # TESTING
 print("[INF] Testing")
 # Select one random batch
-test_batches_data = batches_data.Dataset(test_data, arguments)
+test_batches_data = batches_data.Dataset(test_data, model_parameters)
 batchId  = random.randint(1,test_batches_data.get_num_batches())
 
 # Load the last model that was saved

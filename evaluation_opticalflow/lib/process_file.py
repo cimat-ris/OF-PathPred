@@ -68,12 +68,12 @@ def process_file(directory, args, delim):
     print("[INF] Sequence length (observation+prediction):", seq_len)
     num_person_in_start_frame = []
 
-    seq_list_pos     = []
-    seq_list_rel = []
-    seq_list_frames   = []
+    seq_list_pos   = []
+    seq_list_rel   = []
+    seq_list_frames= []
     kp_list      = []  # [N, seq_len, 18, 3]
     kp_list_rel  = []
-
+    all_flow     = []
     # Information about all the sequences with size seq_len
     seq_list_person     = []
     seq_list_person_rel = []
@@ -265,7 +265,6 @@ def process_file(directory, args, delim):
             seq_list_person.append(neighbors_data [:count_ped])
             #seq_list_person_rel.append(neighbors_data _rel[:count_ped])
         #hasta aqui
-
     #print(" maximo numero de personas que permanecen en toda una secuencia de frames")
     #print(max_p)
     #print("max_person long")
@@ -305,27 +304,51 @@ def process_file(directory, args, delim):
         seq_list_person = np.concatenate(seq_list_person, axis = 0)
         obs_person = seq_list_person[:,:obs_len,:,:]
         pred_person = seq_list_person[:,obs_len:,:,:]
+        # Neighbors information
         data.update({
             "obs_neighbors": obs_person,
             "pred_neighbors": pred_person,
         })
+        vec = {
+            "obs_neighbors": obs_person,
+            "key_idx": np.array(key_idx),
+            "obs_traj":  obs_traj
+        }
+        if args.neighborhood:
+            of_sim = OpticalFlowSimulator(use_bounds = True, lim=lim[indi,:])
+            flow,vis_neigh = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
+        else:
+            if args.obstacles:
+                of_sim = OpticalFlowSimulator()
+                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'], args.obs_len,obstacles_world)
+            else:
+                of_sim = OpticalFlowSimulator()
+                flow,vis_neigh,_ = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,None)
+        all_flow.append(flow)
+
+
     if args.add_kp:
         # [N*K, seq_len, 18, 3]
-        kp_list = np.concatenate(kp_list, axis=0)
+        kp_list     = np.concatenate(kp_list, axis=0)
         kp_list_rel = np.concatenate(kp_list_rel, axis=0)
 
-        obs_kp = kp_list[:, :obs_len, :, :]
-        pred_kp = kp_list[:, obs_len:, :, :]  # for visualization
+        obs_kp     = kp_list[:, :obs_len, :, :]
+        pred_kp    = kp_list[:, obs_len:, :, :]  # for visualization
         obs_kp_rel = kp_list_rel[:, :obs_len, :, :]
 
         data.update({
             "obs_kp": obs_kp,
-            "obs_kp_rel": obs_kp_rel,
-            #"pred_kp": pred_kp,
+            "obs_kp_rel": obs_kp_rel
+        })
+    # Optical flow
+    if args.add_social:
+        all_flow = np.concatenate(all_flow ,axis=0)
+        data.update({
+            "obs_flow": all_flow
         })
     if args.obstacles:
         data.update({
-            "obstacles":obstacles_world,
+            "obstacles": obstacles_world
         })
     return data
 
