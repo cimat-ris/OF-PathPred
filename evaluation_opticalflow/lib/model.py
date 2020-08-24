@@ -16,8 +16,9 @@ class Model_Parameters(object):
         self.train_num_examples = train_num_examples
         self.add_social         = add_social
         # Key points
-        self.kp_num = 18
         self.kp_size = 18
+        # optical flow
+        self.flow_size = 64
         # For training
         self.num_epochs = 30
         self.batch_size = 20 # batch size
@@ -59,6 +60,7 @@ class Model(object):
         # Tensor dimensions, so pylint: disable=g-bad-name
         N  = self.N  = config.batch_size # Batch size
         KP = self.KP = config.kp_size    # Keypoints
+        OF = self.OF = config.flow_size
         P  = self.P  = 2                 # Spatial coordinates
         T1 = config.obs_len              # Length of the observations
 
@@ -76,7 +78,7 @@ class Model(object):
         # Info about keypoints
         self.obs_kp    = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
         # Info about optical flow
-        self.obs_flow  = tf.compat.v1.placeholder('float',[N, None,64],name='obs_flow')
+        self.obs_flow  = tf.compat.v1.placeholder('float',[N, None, OF],name='obs_flow')
         # Flag for training. Used for drop out switch
         self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
         # Loss function
@@ -358,7 +360,8 @@ class Model(object):
         # Tensor dimensions, so pylint: disable=g-bad-name
         N = self.N
         P = self.P
-        KP = self.KP ####
+        KP = self.KP 
+        OF = self.OF
         T_in = config.obs_len
         T_pred = config.pred_len
 
@@ -395,8 +398,7 @@ class Model(object):
         # ------------------------------------------------------
         # Social component (through optical flow)
         if config.add_social:
-            # TODO: pass the 64 as a parameter
-            obs_flow = np.zeros((N, T_in, 64),dtype ='float')
+            obs_flow = np.zeros((N, T_in, OF),dtype ='float')
             feed_dict[self.obs_flow] = obs_flow
             # each batch
             for i, flow_seq in enumerate(data['obs_flow']):
