@@ -99,7 +99,7 @@ def process_file(directory, args, delim):
         dataset_name = t[2]
         obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
     else:
-         obstacles_world = None
+        obstacles_world = None
 
     # Trayectory coordinates
     path_file = os.path.join(directory, 'mundo/mun_pos.csv')
