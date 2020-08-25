@@ -115,17 +115,17 @@ import pickle
 
 # Training dataset
 pickle_out = open('training_data_'+dataset_name+'.pickle',"wb")
-pickle.dump(training, pickle_out, protocol=2)
+pickle.dump(training_data, pickle_out, protocol=2)
 pickle_out.close()
 
 # Test dataset
 pickle_out = open('test_data_'+dataset_name+'.pickle',"wb")
-pickle.dump(test, pickle_out, protocol=2)
+pickle.dump(test_data, pickle_out, protocol=2)
 pickle_out.close()
 
 # Validation dataset
 pickle_out = open('validation_data_'+dataset_name+'.pickle',"wb")
-pickle.dump(validation, pickle_out, protocol=2)
+pickle.dump(validation_data, pickle_out, protocol=2)
 pickle_out.close()
 
 from tqdm import tqdm
