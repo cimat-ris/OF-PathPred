@@ -4,6 +4,8 @@ import math
 from tqdm import tqdm
 
 # Parameters
+# The only datasets that can use add_social are those of ETH/UCY
+# The only datasets that can use add_kp are PETS2009-S2L1, TOWN-CENTRE 
 class Experiment_Parameters:
     def __init__(self,add_social=False,add_kp=False,obstacles=False):
         # Maximum number of persons in a frame
@@ -22,6 +24,42 @@ class Experiment_Parameters:
         self.obstacles    = obstacles
         self.neighborhood = False
         self.intersection = False
+
+# the
+class Experiment_Parameters_Various:
+    def __init__(self,intersection= True,add_social=False, obstacles = False, neighborhood= False, ind_test=0):
+         
+        self.intersection = intersection
+        self.data_dirs = ['../data1/eth-univ', '../data1/eth-hotel',
+             '../data1/ucy-zara01', '../data1/ucy-zara02',
+             '../data1/ucy-univ']
+        if self.intersection:
+            self.list_max_person = [5,8,14,14,40]
+        else:
+            self.list_max_person = [42,28,22,26,68]
+    
+        #el indice del conjunto de test
+        self.ind_test = ind_test
+        #the max number of people of the  test set 
+        self.person_max = self.list_max_person[ind_test]
+        # The direction of the test set
+        self.dir_test     = self.data_dirs[ind_test]
+
+        self.obs_len = 8
+        self.pred_len = 12
+        self.kp_num = 18
+
+        self.add_social   = add_social
+        self.neighborhood = neighborhood
+        self.lim          = [[-7.69,14.42,-3.17,13.21,4], [-3.2881,4.3802,-10.2537,4.316,2], 
+        [-0.139538367682,15.4805506734,-0.37469588555,12.3864436051, 3],
+        [-0.357790686363,15.558422764,-0.273742790271,13.9427441591, 3],
+        [-0.174686040989,15.4369843957,-0.222192273533,13.8542013734, 3]]
+       
+        self.obstacles    = obstacles
+        self.add_kp       = False
+
+
 
 class Trainer(object):
     """Trainer class for model."""
