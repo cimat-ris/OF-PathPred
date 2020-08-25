@@ -32,7 +32,6 @@ class Model_Parameters(object):
 
         self.min_ped      = 1
         self.seq_len      = self.obs_len + self.pred_len
-        self.reverse_xy   = False
 
         self.activation_func  = tf.nn.tanh
         self.activation_func1 = tf.nn.relu
