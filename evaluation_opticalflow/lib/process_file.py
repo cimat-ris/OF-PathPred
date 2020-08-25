@@ -316,8 +316,8 @@ def process_file(directory, args, delim):
             "obs_traj":  obs_traj
         }
         if args.neighborhood:
-            of_sim = OpticalFlowSimulator(use_bounds = True, lim=lim[indi,:])
-            flow,vis_neigh = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
+            of_sim = OpticalFlowSimulator(use_bounds = True, lim=args.lim[args.ind_test])
+            flow,vis_neigh,_ = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
         else:
             if args.obstacles:
                 of_sim = OpticalFlowSimulator()
@@ -355,6 +355,7 @@ def process_file(directory, args, delim):
     return data
 
 def process_file_varios(data_dirs, list_max_person, args, delim, lim=[]):
+    
     datasets = range(len(list_max_person))
     datasets = list(datasets)
     datasets.remove(args.ind_test)
@@ -404,7 +405,7 @@ def process_file_varios(data_dirs, list_max_person, args, delim, lim=[]):
             dataset_name = t[2]
             obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
         else:
-            obstacles_world=None
+            obstacles_world = None
 
         #  To use keypoints, we open then from a file
         kp_feats = {} # "frameidx_personId"
@@ -599,7 +600,7 @@ def process_file_varios(data_dirs, list_max_person, args, delim, lim=[]):
             #print(vec['obs_traj'].shape)
             if args.neighborhood:
                 fo = OpticalFlowSimulator(use_bounds = True, lim=lim[indi,:])
-                flujo,vis_neigh = fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
+                flujo,vis_neigh,_= fo.compute_opticalflow_batch(vec['obs_person'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
             else:
                 if args.obstacles:
                     fo = OpticalFlowSimulator()
@@ -671,7 +672,7 @@ obstacles_world)
         todo_flujo = np.concatenate(todo_flujo,axis=0)
         #print(todo_flujo.shape)
         data.update({
-            "obs_flujo": todo_flujo,
+            "obs_flow": todo_flujo,
         })
 
     return data
