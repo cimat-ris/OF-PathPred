@@ -15,12 +15,12 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 # Important imports
-from process_file import process_file,process_file_varios, 
+from process_file import process_file,process_file_varios
 import batches_data
 from model import Model, Model_Parameters
 from training_and_testing import Trainer,Tester, Experiment_Parameters_Various
 import matplotlib.pyplot as plt
-
+from interaction_optical_flow import OpticalFlowSimulator
 
 # Of the 5 dataset, zara02 will be the test set 
 experiment_parameters = Experiment_Parameters_Various(intersection= True, add_social= True, obstacles= False, neighborhood= True, ind_test=2 )
@@ -30,6 +30,16 @@ data_train_and_val = process_file_varios(experiment_parameters.data_dirs, experi
 
 data_test = process_file(experiment_parameters.dir_test, experiment_parameters,',')
 
+idSample = random.sample(range(1,data_test["obs_traj"].shape[0]), 1)
+
+# The random sequence selected of the test set
+traj_sample   = data_test['obs_traj'][idSample][0]
+traj_neighbors= data_test['obs_neighbors'][idSample][0]
+traj_id       = data_test['key_idx'][idSample]
+of_sim = OpticalFlowSimulator(use_bounds = True, lim=experiment_parameters.lim[experiment_parameters.ind_test])
+flow,vis_neigh,_ = of_sim.compute_opticalflow_seq(traj_id, traj_sample, traj_neighbors,None)
+#Plot a sample of flow with neighboorhood
+of_sim.plot_flow(traj_sample,traj_neighbors,flow,vis_neigh,None,None,"Flujo optico con vecindad")
 
 # Should be nSamples x sequenceLength x nPersonsMax x PersonDescriptionSize
 if experiment_parameters.add_social:
@@ -40,7 +50,6 @@ if experiment_parameters.add_social:
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion 
 
 import random
-random.seed(0)
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
 # porcentaje para el conjunto de train
@@ -245,5 +254,4 @@ for (gt,obs,pred) in zip(traj_gt_set,traj_obs_set,traj_pred_set):
     plt.plot([obs[-1,0],pred[0,0]],[obs[-1,1],pred[0,1]],color='green')
     plt.plot(pred[:,0],pred[:,1],color='green')
 plt.show()
-
 
