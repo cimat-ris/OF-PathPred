@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+import cv2
 
 def norm_angle(angle):
     if angle<-math.pi/2.0:
@@ -85,9 +86,19 @@ class OpticalFlowSimulator(object):
                             plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
             # Plot the observer agent
             plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=14)
+        
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
+            if self.use_bounds:
+                width_low    = current_position[0]-self.width_bound/2.0
+                width_high   = current_position[0]+self.width_bound/2.0
+                height_low   = current_position[1]-self.height_bound/2.0
+                height_high  = current_position[1]+self.height_bound/2.0
+                plt.plot([width_low,width_high],[height_low,height_low], "#ff7700")
+                plt.plot([width_low,width_low],[height_low ,height_high], "#ff7700")
+                plt.plot([width_high,width_high],[height_low,height_high], "#ff7700")
+                plt.plot([width_low,width_high],[height_high,height_high], "#ff7700")    
             if visible_obstacles is not None:
                 # Plot the visible obstacles
                 for vobs in visible_obstacles[seq_pos]:
