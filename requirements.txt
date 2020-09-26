@@ -1,4 +1,4 @@
-tensorflow==1.15.2
+tensorflow==1.15.4
 notebook==6.0
 tqdm==4.45.0
 matplotlib==3.2.1
