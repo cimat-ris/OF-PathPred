@@ -1,10 +1,11 @@
-tensorflow==1.15.2
+tensorflow>=2.2.0
 notebook==6.0
 tqdm==4.45.0
 matplotlib==3.2.1
-gast==0.2.2
+gast>=0.4.0
 pandas==1.0.3
 Pillow==7.1.1
 scipy==1.2.3
 keras==2.2.5
 scikit-learn==0.22.2
+opencv-python>=4.0.0
