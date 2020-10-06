@@ -73,6 +73,8 @@ class TrajectoryEncoder(layers.Layer):
         x = self.traj_xy_emb_enc(traj_inputs)
         # Dropout
         x = self.dropout(x)
+        print("Encoder")
+        print(x.shape)
         # Applies the position sequence through the LSTM
         return self.lstm(x)
 
@@ -118,79 +120,40 @@ class TrajectoryDecoder(layers.Layer):
                 dropout= 1.0-config.keep_prob,
                 recurrent_dropout=1.0-config.keep_prob,
                 name='traj_dec')
+        self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True)
+
         # Linear embedding of the observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
 
+        # Mapping from h to positions
+        self.h_to_xy = tf.keras.layers.Dense(config.P,
+            activation=tf.identity,
+            name='h_to_xy')
 
-    def call(self,first_input, enc_last_state, enc_h, traj_pred_gt):
-        # Ground truth trajectory
-        time_1st_traj_pred = tf.transpose(traj_pred_gt, perm=[1, 0, 2])  #[N,T2,2]->[T2,N,2]
-        T2 = tf.shape(time_1st_traj_pred)[0]  # Value of T2 (prediction length)
-        traj_pred_gt = tf.TensorArray(size= T2, dtype='float')
-        traj_pred_gt = traj_pred_gt.unstack(time_1st_traj_pred)  # [T2] , [N,2]
-
-        # Function for the RNN internal loop
-        def decoder_loop_fn(time, cell_output, cell_state, loop_state):
-            """RNN loop function for the decoder."""
-            emit_output       = cell_output  # == None for time==0
-            elements_finished = time >= T2
-            finished          = tf.reduce_all(elements_finished)
-
-            # Initial state
-            if cell_output is None:
-                next_cell_state = enc_last_state
-            # Next states
-            else:
-                next_cell_state = cell_state
-            # x_t
-            if cell_output is None:  # first time
-                next_input_xy = first_input  # the last observed x,y as input
-            else:
-                # for testing, construct from this output to be next input
-                next_input_xy = tf.cond(
-                    # first check the sequence finished or not. If finished then input is zero
-                    finished,
-                    lambda: tf.zeros([N, P], dtype='float'),
-                    # else, in training the input is from the groundtruth (teacher forcing)
-                    # and in testing, from the previous output (cell_ouput mapped by hidden2xy)
-                    lambda: tf.cond(
-                        self.is_train,
-                            # Teacher forcing: this will make training faster than testing
-                            lambda: traj_pred_gt.read(time),
-                            # hidden vector from last step to coordinates
-                            lambda: self.hidden2xy(cell_output, scope=top_scope,
-                                                           additional_scope='hidden2xy'))
-                        )
-            # Spatial embedding
-            # [N,emb]
-            xy_emb = self.traj_xy_emb_dec(next_input_xy)
-            # Next input is the predicted position
-            next_input = xy_emb
-            # Attention
-            # [N,h_dim]
-            # query is next_cell_state.h
-            # context is enc_h
-            # TODO
-            # attended_encode_states = focal_attention(next_cell_state.h, enc_h)
-            # Concatenate previous xy embedding, attended encoded states
-            # [N,emb+h_dim]
-            # TODO
-            # next_input = tf.concat([xy_emb, attended_encode_states], axis=1)
-            next_input = xy_emb
-            print(tf.shape(next_input))
-            return elements_finished, next_input, next_cell_state,emit_output, None  # next_loop_state
-
-        # Application of the RNN: cell is dec_cell_traj, function to apply is decoder_loop_fn
-        # (emit_ta, final_state, final_loop_state)
-        decoder_out_ta, _, _ = tf.compat.v1.nn.raw_rnn(self.dec_cell_traj, decoder_loop_fn)
+    # Call to the decoder
+    def call(self, first_input, enc_last_state, enc_h, decoder_inputs):
+        print("Inputs of the decoder")
+        print(first_input.shape)
+        print(enc_last_state.shape)
+        print(enc_h.shape)
+        print(decoder_inputs.shape)
+        print("--------------")
+        # Decoder inputs: gound truth trajectory (training)
+        T_pred = tf.shape(decoder_inputs)[1]  # Value of T2 (prediction length)
+        # Embedding
+        decoder_inputs_emb = self.traj_xy_emb_dec(decoder_inputs)
+        # Application of the RNN
+        print("Applying Rnn")
+        decoder_out_h = self.recurrentLayer(decoder_inputs_emb)
+        print(decoder_out_h.shape)
         # [T2,N,dec_hidden_size]
-        decoder_out_h        = decoder_out_ta.stack()
+        # decoder_out_h        = decoder_out_ta.stack()
         # [N,T2,dec_hidden_size]
-        decoder_out_h = tf.transpose(decoder_out_h, perm=[1, 0, 2])
         # Mapping to positions
-        decoder_out   = self.hidden2xy(decoder_out_h)
+        # decoder_out   = self.hidden2xy(decoder_out_h)
+        decoder_out   = self.h_to_xy(decoder_out_h)
         return decoder_out
 
 # The main class of the model
@@ -203,7 +166,7 @@ class TrajectoryEncoderDecoder(layers.Layer):
         self.add_social   = config.add_social
         self.multi_decoder= config.multi_decoder
 
-    def call(self,traj_inputs,traj_pred_gt,soc_inputs=None):
+    def call(self,traj_inputs,traj_pred_gt):
         # ----------------------------------------------------------
         # the obs part is the same for training and testing
         # obs_out is only used in training
@@ -219,12 +182,12 @@ class TrajectoryEncoderDecoder(layers.Layer):
         enc_last_state_list = [traj_obs_enc_last_state]
 
         # Social interaccion (through optical flow)
-        if self.add_social and soc_inputs is not None:
+        # if self.add_social and soc_inputs is not None:
             # Applies the person pose (keypoints) sequence through the LSTM
-            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
-            # Get hidden states and the last hidden state, separately, and add them to the lists
-            enc_h_list.append(soc_obs_enc_h)
-            enc_last_state_list.append(soc_obs_enc_last_state)
+        #     soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
+        #    # Get hidden states and the last hidden state, separately, and add them to the lists
+        #    enc_h_list.append(soc_obs_enc_h)
+        #    enc_last_state_list.append(soc_obs_enc_last_state)
 
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
