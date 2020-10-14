@@ -94,30 +94,25 @@ print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[
 print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
+# Model
 model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=True)
-# x is NxTx2 (simulation of a batch of trajectories)
+# x is NxT_obsx2 (simulation of a batch of trajectories)
 x = tf.ones((3,10,2))
+# y is NxT_predx2 (simulation of a batch of trajectories)
 y = tf.cumsum(tf.ones((3,12,2)),axis=1)
-# x is NxTx20 (simulation of a batch of social features)
+# x is NxT_obsx20 (simulation of a batch of social features)
 s = tf.ones((3,10,20))
 tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
-xp     = tj_enc_dec(x,y)
+tj_enc_dec.build(input_shape=[(None,10,model_parameters.P),(None,12,model_parameters.P)])
+tj_enc_dec.compile(optimizer='Adam', loss="mse", metrics=["mae"])
+tj_enc_dec.summary()
+xp     = tj_enc_dec([x,y])
 
-# Define the model that will turn
-# `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
-# Define an input sequence and process it.
-encoder_inputs = layers.Input(shape=(None, model_parameters.P))
-# Set up the decoder, using `encoder_states` as initial state.
-decoder_inputs = layers.Input(shape=(None, model_parameters.P))
-decoder_outputs = tj_enc_dec(encoder_inputs,decoder_inputs)
-model = models.Model([encoder_inputs, decoder_inputs], decoder_outputs)
-model.summary()
 
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
 
 # Run training
-model.compile(optimizer='Adam', loss="mse", metrics=["mae"])
 #model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
 #          batch_size=batch_size,
 #          epochs=epochs,

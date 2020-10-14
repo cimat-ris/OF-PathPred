@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras import models
 
 class Model_Parameters(object):
     """Model parameters.
@@ -51,8 +52,8 @@ class Model_Parameters(object):
 class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
         # xy encoder: [N,T1,h_dim]
-        super(TrajectoryEncoder, self).__init__(name="traj_encoder")
-        # Linear embedding of the observed trajectories
+        super(TrajectoryEncoder, self).__init__(name="traj_enc")
+        # Linear embedding of the observed trajectories (for each x,y)
         self.traj_xy_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
@@ -64,6 +65,7 @@ class TrajectoryEncoder(layers.Layer):
             dropout= 1.0-config.keep_prob,
             recurrent_dropout=1.0-config.keep_prob)
         # Recurrent neural network using the previous cell
+        # Initial state is zero
         self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
             return_sequences=True,
             return_state=True)
@@ -73,8 +75,6 @@ class TrajectoryEncoder(layers.Layer):
         x = self.traj_xy_emb_enc(traj_inputs)
         # Dropout
         x = self.dropout(x)
-        print("Encoder")
-        print(x.shape)
         # Applies the position sequence through the LSTM
         return self.lstm(x)
 
@@ -107,19 +107,19 @@ class SocialEncoder(layers.Layer):
 
 class TrajectoryDecoder(layers.Layer):
     def __init__(self, config):
-        super(TrajectoryDecoder, self).__init__(name="traj_decoder")
-        if config.multi_decoder: # Multiple output mode
-            self.dec_cell_traj = [tf.keras.layers.LSTMCell.LSTMCell(
-                config.dec_hidden_size,
-                dropout= 1.0-config.keep_prob,
-                recurrent_dropout=1.0-config.keep_prob,
-                name='traj_dec_%s' % i)
-                for i in range(len(config.traj_cats))]
-        else: # Simple mode: LSTM, with hidden size config.dec_hidden_size
-            self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
-                dropout= 1.0-config.keep_prob,
-                recurrent_dropout=1.0-config.keep_prob,
-                name='traj_dec')
+        super(TrajectoryDecoder, self).__init__(name="traj_dec")
+        #if config.multi_decoder: # Multiple output mode
+        #    self.dec_cell_traj = [tf.keras.layers.LSTMCell.LSTMCell(
+        #        config.dec_hidden_size,
+        #        dropout= 1.0-config.keep_prob,
+        #        recurrent_dropout=1.0-config.keep_prob,
+        #        name='traj_dec_%s' % i)
+        #        for i in range(len(config.traj_cats))]
+        #else: # Simple mode: LSTM, with hidden size config.dec_hidden_size
+        self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
+            dropout= 1.0-config.keep_prob,
+            recurrent_dropout=1.0-config.keep_prob,
+            name='traj_dec')
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True)
 
         # Linear embedding of the observed trajectories
@@ -141,7 +141,7 @@ class TrajectoryDecoder(layers.Layer):
         print(decoder_inputs.shape)
         print("--------------")
         # Decoder inputs: gound truth trajectory (training)
-        T_pred = tf.shape(decoder_inputs)[1]  # Value of T2 (prediction length)
+        # T_pred = tf.shape(decoder_inputs)[1]  # Value of T2 (prediction length)
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(decoder_inputs)
         # Application of the RNN
@@ -156,17 +156,21 @@ class TrajectoryDecoder(layers.Layer):
         decoder_out   = self.h_to_xy(decoder_out_h)
         return decoder_out
 
-# The main class of the model
-class TrajectoryEncoderDecoder(layers.Layer):
+
+# The model
+class TrajectoryEncoderDecoder(models.Model):
     def __init__(self, config):
         super(TrajectoryEncoderDecoder, self).__init__(name="traj_encoder_decoder")
         self.traj_enc     = TrajectoryEncoder(config)
-        self.soc_enc      = SocialEncoder(config)
+        #self.soc_enc      = SocialEncoder(config)
         self.traj_dec     = TrajectoryDecoder(config)
         self.add_social   = config.add_social
         self.multi_decoder= config.multi_decoder
 
-    def call(self,traj_inputs,traj_pred_gt):
+    def call(self,inputs):
+        traj_inputs  = inputs[0]
+        print(traj_inputs.shape)
+        traj_pred_gt = inputs[1]
         # ----------------------------------------------------------
         # the obs part is the same for training and testing
         # obs_out is only used in training
