@@ -97,21 +97,22 @@ print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.ke
 # Model
 model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=True)
 # x is NxT_obsx2 (simulation of a batch of trajectories)
-x = tf.ones((3,10,2))
+x = tf.ones((3,model_parameters.obs_len,model_parameters.P))
 # y is NxT_predx2 (simulation of a batch of trajectories)
-y = tf.cumsum(tf.ones((3,12,2)),axis=1)
+y = tf.cumsum(tf.ones((3,model_parameters.pred_len,model_parameters.P)),axis=1)
 # x is NxT_obsx20 (simulation of a batch of social features)
 s = tf.ones((3,10,20))
-tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
-tj_enc_dec.build(input_shape=[(None,10,model_parameters.P),(None,12,model_parameters.P)])
+tj_enc_dec = TrajectoryEncoderDecoder(model_parameters,input_shape=[(model_parameters.obs_len,model_parameters.P),(model_parameters.pred_len,model_parameters.P)])
+#tj_enc_dec.build(input_shape=[(None,model_parameters.obs_len,model_parameters.P),(None,model_parameters.pred_len,model_parameters.P)])
 tj_enc_dec.compile(optimizer='Adam', loss="mse", metrics=["mae"])
 tj_enc_dec.summary()
-xp     = tj_enc_dec([x,y])
-
+xp     = tj_enc_dec.predict([x,y])
+print(xp)
 
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
 
+# TODO!
 # Run training
 #model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
 #          batch_size=batch_size,

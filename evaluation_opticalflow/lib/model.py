@@ -134,20 +134,12 @@ class TrajectoryDecoder(layers.Layer):
 
     # Call to the decoder
     def call(self, first_input, enc_last_state, enc_h, decoder_inputs):
-        print("Inputs of the decoder")
-        print(first_input.shape)
-        print(enc_last_state.shape)
-        print(enc_h.shape)
-        print(decoder_inputs.shape)
-        print("--------------")
         # Decoder inputs: gound truth trajectory (training)
         # T_pred = tf.shape(decoder_inputs)[1]  # Value of T2 (prediction length)
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(decoder_inputs)
         # Application of the RNN
-        print("Applying Rnn")
         decoder_out_h = self.recurrentLayer(decoder_inputs_emb)
-        print(decoder_out_h.shape)
         # [T2,N,dec_hidden_size]
         # decoder_out_h        = decoder_out_ta.stack()
         # [N,T2,dec_hidden_size]
@@ -159,24 +151,30 @@ class TrajectoryDecoder(layers.Layer):
 
 # The model
 class TrajectoryEncoderDecoder(models.Model):
-    def __init__(self, config):
+    def __init__(self,config,input_shape):
         super(TrajectoryEncoderDecoder, self).__init__(name="traj_encoder_decoder")
+        # Add input layer
+        self.input_layer1 = layers.Input(input_shape[0])
+        self.input_layer2 = layers.Input(input_shape[1])
         self.traj_enc     = TrajectoryEncoder(config)
         #self.soc_enc      = SocialEncoder(config)
         self.traj_dec     = TrajectoryDecoder(config)
         self.add_social   = config.add_social
         self.multi_decoder= config.multi_decoder
+        # Get output layer with `call` method
+        self.out = self.call([self.input_layer1,self.input_layer2])
+        # Reinitial
+        super(TrajectoryEncoderDecoder, self).__init__(
+            inputs=[self.input_layer1,self.input_layer2],
+            outputs=self.out)
 
-    def call(self,inputs):
+
+    def call(self,inputs,training=False):
         traj_inputs  = inputs[0]
-        print(traj_inputs.shape)
         traj_pred_gt = inputs[1]
         # ----------------------------------------------------------
         # the obs part is the same for training and testing
         # obs_out is only used in training
-        # encoder, decoder
-        # top_scope is used for variable inside
-        # encode and decode if want to share variable across
         # xy encoder: [N,T1,h_dim]
 
         # Applies the position sequence through the LSTM
@@ -206,12 +204,12 @@ class TrajectoryEncoderDecoder(models.Model):
         traj_obs_last = traj_inputs[:, -1]
 
         # Multiple decoder
-        if self.multi_decoder:
+        #if self.multi_decoder:
             # [N, num_traj_cat] # each is num_traj_cat classification
             # TODO
-            pass
-        else:
-            # Single decoder called: takes the last observed position, the last encoding state,
-            # the tensor of all hidden states, the number of prediction steps
-            traj_pred_out = self.traj_dec(traj_obs_last,traj_obs_enc_last_state,obs_enc_h,traj_pred_gt)
+        #    pass
+        #else:
+        # Single decoder called: takes the last observed position, the last encoding state,
+        # the tensor of all hidden states, the number of prediction steps
+        traj_pred_out = self.traj_dec(traj_obs_last,traj_obs_enc_last_state,obs_enc_h,traj_pred_gt)
         return traj_pred_out
