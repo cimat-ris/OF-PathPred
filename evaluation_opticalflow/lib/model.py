@@ -20,7 +20,7 @@ class Model_Parameters(object):
         self.add_social         = add_social
         # Key points
         self.kp_size = 18
-        # optical flow
+        # Optical flow
         self.flow_size = 64
         # For training
         self.num_epochs = 30
@@ -157,39 +157,50 @@ class TrajectoryEncoderDecoder(models.Model):
         self.input_layer1 = layers.Input(input_shape[0])
         self.input_layer2 = layers.Input(input_shape[1])
         self.traj_enc     = TrajectoryEncoder(config)
-        #self.soc_enc      = SocialEncoder(config)
+        self.soc_enc      = SocialEncoder(config)
         self.traj_dec     = TrajectoryDecoder(config)
         self.add_social   = config.add_social
+        if (self.add_social):
+            self.input_layer3 = layers.Input(input_shape[2])
+            # Get output layer with `call` method
+            self.out = self.call([self.input_layer1,self.input_layer2,self.input_layer3])
+        else:
+            # Get output layer with `call` method
+            self.out = self.call([self.input_layer1,self.input_layer2])
         self.multi_decoder= config.multi_decoder
-        # Get output layer with `call` method
-        self.out = self.call([self.input_layer1,self.input_layer2])
         # Reinitial
         super(TrajectoryEncoderDecoder, self).__init__(
-            inputs=[self.input_layer1,self.input_layer2],
+            inputs=tf.cond(self.add_social, lambda: [self.input_layer1,self.input_layer2,self.input_layer3], lambda: [self.input_layer1,self.input_layer2]),
             outputs=self.out)
 
 
     def call(self,inputs,training=False):
-        traj_inputs  = inputs[0]
-        traj_pred_gt = inputs[1]
-        # ----------------------------------------------------------
         # the obs part is the same for training and testing
-        # obs_out is only used in training
-        # xy encoder: [N,T1,h_dim]
+        # traj_pred_gt is only used in training
+        traj_obs_inputs  = inputs[0]
+        traj_pred_gt     = inputs[1]
+        if self.add_social:
+            soc_inputs     = inputs[2]
 
-        # Applies the position sequence through the LSTM
-        traj_obs_enc_h, traj_obs_enc_last_state, __ = self.traj_enc(traj_inputs)
+        # ----------------------------------------------------------
+        # Encoding
+        # ----------------------------------------------------------
+        # Applies the position sequence through the LSTM: [N,T1,h_dim]
+        traj_obs_enc_h, traj_obs_enc_last_state, __ = self.traj_enc(traj_obs_inputs)
         # Get the hidden states and the last hidden state, separately, and add them to the lists
         enc_h_list          = [traj_obs_enc_h]
         enc_last_state_list = [traj_obs_enc_last_state]
 
+        # ----------------------------------------------------------
         # Social interaccion (through optical flow)
-        # if self.add_social and soc_inputs is not None:
+        # ----------------------------------------------------------
+        if self.add_social:
             # Applies the person pose (keypoints) sequence through the LSTM
-        #     soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
-        #    # Get hidden states and the last hidden state, separately, and add them to the lists
-        #    enc_h_list.append(soc_obs_enc_h)
-        #    enc_last_state_list.append(soc_obs_enc_last_state)
+            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
+            # Get hidden states and the last hidden state, separately, and add them to the lists
+            enc_h_list.append(soc_obs_enc_h)
+            enc_last_state_list.append(soc_obs_enc_last_state)
+            print(soc_obs_enc_h.shape)
 
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
@@ -201,7 +212,7 @@ class TrajectoryEncoderDecoder(models.Model):
 
         # ----------------------------- xy decoder-----------------------------------------
         # Last observed position from the trajectory
-        traj_obs_last = traj_inputs[:, -1]
+        traj_obs_last = traj_obs_inputs[:, -1]
 
         # Multiple decoder
         #if self.multi_decoder:
