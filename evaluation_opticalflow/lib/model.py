@@ -49,6 +49,8 @@ class Model_Parameters(object):
         # To save the best model
         self.load_best = True
 
+""" Trajectory encoder through embedding+RNN.
+"""
 class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
         # xy encoder: [N,T1,h_dim]
@@ -78,6 +80,8 @@ class TrajectoryEncoder(layers.Layer):
         # Applies the position sequence through the LSTM
         return self.lstm(x)
 
+""" Social encoding through embedding+RNN.
+"""
 class SocialEncoder(layers.Layer):
     def __init__(self, config):
         super(SocialEncoder, self).__init__(name="social_encoder")
@@ -105,6 +109,69 @@ class SocialEncoder(layers.Layer):
         # Applies the position sequence through the LSTM
         return self.lstm(x)
 
+""" Focal attention layer.
+"""
+class FocalAttention(layers.Layer):
+    def __init__(self):
+        super(FocalAttention, self).__init__(name="focal_attention")
+
+    def call(self,query, context):
+        # query  : [N,D1]
+        # context: [N,M,T,D2]
+        print("*** focal attention ***")
+        # Tensor dimensions
+        _, D1       = query.get_shape().as_list()
+        _, K, T, D2 = context.get_shape().as_list()
+        assert d == d2
+        # [N,d] -> [N,K,T,d]
+        query_aug = tf.tile(tf.expand_dims(tf.expand_dims(query, 1), 1), [1, K, T, 1])
+        # cosine simi
+        query_aug_norm = tf.nn.l2_normalize(query_aug, -1)
+        context_norm   = tf.nn.l2_normalize(context, -1)
+        # [N, K, T]
+        a_logits = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
+        a_logits_maxed = tf.reduce_max(a_logits, 2)  # [N,K]
+        print(a_logits_maxed)
+        return a_logits_maxed
+        #attended_context = softsel(softsel(context, a_logits), a_logits_maxed)
+        #return attended_context
+
+""" Custom LSTM cell class for our decoder
+"""
+class DecoderLSTMCell(tf.keras.layers.LSTMCell):
+    def __init__(self, units, **kwargs):
+        # Constructor of tf.contrib.rnn.BasicLSTMCell
+        super(DecoderLSTMCell, self).__init__(units,**kwargs)
+        # Forget bias (should be unit)
+        self._forget_bias= 1.0
+
+    # Overload the call function
+    def call(self, inputs, states, training=None):
+        # Get memory and carry state
+        h_tm1 = states[0]
+        c_tm1 = states[1]
+        #tf.print(inputs.shape, output_stream=sys.stderr)
+        z  = tf.matmul(inputs, self.kernel)
+        z += tf.matmul(h_tm1, self.recurrent_kernel)
+        z  = tf.nn.bias_add(z, self.bias)
+
+        # Split the z vector
+        z0 = z[:, :self.units]
+        z1 = z[:, self.units: 2 * self.units]
+        z2 = z[:, 2 * self.units: 3 * self.units]
+        z3 = z[:, 3 * self.units:]
+
+        i = tf.sigmoid(z0)
+        f = tf.sigmoid(z1)
+        # New carry
+        c = f * c_tm1 + i * self.activation(z2)
+        o = tf.sigmoid(z3)
+        # New state
+        h = o * self.activation(c)
+        return h, [h, c]
+
+""" Trajectory decoder.
+"""
 class TrajectoryDecoder(layers.Layer):
     def __init__(self, config):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
@@ -116,7 +183,11 @@ class TrajectoryDecoder(layers.Layer):
         #        name='traj_dec_%s' % i)
         #        for i in range(len(config.traj_cats))]
         #else: # Simple mode: LSTM, with hidden size config.dec_hidden_size
-        self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
+        #self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
+        #    dropout= 1.0-config.keep_prob,
+        #    recurrent_dropout=1.0-config.keep_prob,
+        #    name='traj_dec')
+        self.dec_cell_traj  = DecoderLSTMCell(config.dec_hidden_size,
             dropout= 1.0-config.keep_prob,
             recurrent_dropout=1.0-config.keep_prob,
             name='traj_dec')
@@ -126,6 +197,9 @@ class TrajectoryDecoder(layers.Layer):
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
+
+        # Attention mechanism
+        self.focal_attention = FocalAttention()
 
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
@@ -138,14 +212,18 @@ class TrajectoryDecoder(layers.Layer):
         # T_pred = tf.shape(decoder_inputs)[1]  # Value of T2 (prediction length)
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(decoder_inputs)
-        # Application of the RNN
+        # Application of the RNN: [N,T2,dec_hidden_size]
         decoder_out_h = self.recurrentLayer(decoder_inputs_emb)
-        # [T2,N,dec_hidden_size]
-        # decoder_out_h        = decoder_out_ta.stack()
-        # [N,T2,dec_hidden_size]
         # Mapping to positions
-        # decoder_out   = self.hidden2xy(decoder_out_h)
         decoder_out   = self.h_to_xy(decoder_out_h)
+         # Attention
+        # [N,h_dim]
+        # query is next_cell_state.h
+        # context is enc_h
+        # attended_encode_states = self.focal_attention(next_cell_state.h, enc_h)
+        # Concatenate previous xy embedding, attended encoded states
+        # [N,emb+h_dim]
+        # next_input = tf.concat([xy_emb, attended_encode_states], axis=1)
         return decoder_out
 
 
@@ -205,7 +283,6 @@ class TrajectoryEncoderDecoder(models.Model):
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
         obs_enc_h          = tf.stack(enc_h_list, axis=1)
-
         # Concatenate last states (in the list) from all M features into a tensor
         # The final size should be [N,M,h_dim]
         obs_enc_last_state = tf.stack(enc_last_state_list, axis=1)
@@ -224,3 +301,18 @@ class TrajectoryEncoderDecoder(models.Model):
         # the tensor of all hidden states, the number of prediction steps
         traj_pred_out = self.traj_dec(traj_obs_last,traj_obs_enc_last_state,obs_enc_h,traj_pred_gt)
         return traj_pred_out
+
+#def softmax(logits, scope=None):
+#    """a flatten and reconstruct version of softmax."""
+#    flat_logits = flatten(logits, 1)
+#    flat_out = tf.nn.softmax(flat_logits)
+#    out = reconstruct(flat_out, logits, 1)
+#    return out
+
+#def softsel(target, logits, use_sigmoid=False, scope=None):
+#    """Apply attention weights."""
+#    a = softmax(logits)  # shape is the same
+#    target_rank = len(target.get_shape().as_list())
+#    # [N,M,JX,JQ,2d] elem* [N,M,JX,JQ,1]
+#    # second last dim
+#    return tf.reduce_sum(tf.expand_dims(a, -1)*target, target_rank-2)
