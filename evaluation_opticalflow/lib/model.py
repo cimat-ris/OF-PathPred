@@ -175,6 +175,7 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
 class TrajectoryDecoder(layers.Layer):
     def __init__(self, config):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
+        # TODO: multiple decoder to be done
         #if config.multi_decoder: # Multiple output mode
         #    self.dec_cell_traj = [tf.keras.layers.LSTMCell.LSTMCell(
         #        config.dec_hidden_size,
@@ -198,7 +199,7 @@ class TrajectoryDecoder(layers.Layer):
             activation=config.activation_func,
             name='traj_enc_emb')
 
-        # Attention mechanism
+        # Attention layer
         self.focal_attention = FocalAttention()
 
         # Mapping from h to positions
@@ -231,33 +232,37 @@ class TrajectoryDecoder(layers.Layer):
 class TrajectoryEncoderDecoder(models.Model):
     def __init__(self,config,input_shape):
         super(TrajectoryEncoderDecoder, self).__init__(name="traj_encoder_decoder")
-        # Add input layer
-        self.input_layer1 = layers.Input(input_shape[0])
+        self.add_social   = config.add_social
+        self.multi_decoder= config.multi_decoder
+        # Input layers
+        self.input_layer1 = layers.Input(input_shape[0],)
         self.input_layer2 = layers.Input(input_shape[1])
+        # Encoding: Positions
         self.traj_enc     = TrajectoryEncoder(config)
+        # Encoding: Social interactions
         self.soc_enc      = SocialEncoder(config)
         self.traj_dec     = TrajectoryDecoder(config)
-        self.add_social   = config.add_social
         if (self.add_social):
+            # In the case of handling social interactions, add a third input
             self.input_layer3 = layers.Input(input_shape[2])
-            # Get output layer with `call` method
+            # Get output layer now with `call` method
             self.out = self.call([self.input_layer1,self.input_layer2,self.input_layer3])
         else:
-            # Get output layer with `call` method
+            # Get output layer now with `call` method
             self.out = self.call([self.input_layer1,self.input_layer2])
-        self.multi_decoder= config.multi_decoder
-        # Reinitial
+        # Call init again
         super(TrajectoryEncoderDecoder, self).__init__(
             inputs=tf.cond(self.add_social, lambda: [self.input_layer1,self.input_layer2,self.input_layer3], lambda: [self.input_layer1,self.input_layer2]),
             outputs=self.out)
 
 
     def call(self,inputs,training=False):
-        # the obs part is the same for training and testing
-        # traj_pred_gt is only used in training
+        # inputs[0] is the observed part
+        # inputs[1] is the ground truth continuation, it is only used in training
         traj_obs_inputs  = inputs[0]
         traj_pred_gt     = inputs[1]
         if self.add_social:
+            # inputs[2] are the social interaction features
             soc_inputs     = inputs[2]
 
         # ----------------------------------------------------------
@@ -278,7 +283,6 @@ class TrajectoryEncoderDecoder(models.Model):
             # Get hidden states and the last hidden state, separately, and add them to the lists
             enc_h_list.append(soc_obs_enc_h)
             enc_last_state_list.append(soc_obs_enc_last_state)
-            print(soc_obs_enc_h.shape)
 
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
@@ -291,10 +295,10 @@ class TrajectoryEncoderDecoder(models.Model):
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
 
+        # TODO
         # Multiple decoder
         #if self.multi_decoder:
             # [N, num_traj_cat] # each is num_traj_cat classification
-            # TODO
         #    pass
         #else:
         # Single decoder called: takes the last observed position, the last encoding state,
