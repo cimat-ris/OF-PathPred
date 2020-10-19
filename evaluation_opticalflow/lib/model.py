@@ -188,7 +188,11 @@ class TrajectoryDecoder(layers.Layer):
         #    dropout= 1.0-config.keep_prob,
         #    recurrent_dropout=1.0-config.keep_prob,
         #    name='traj_dec')
-        self.dec_cell_traj  = DecoderLSTMCell(config.dec_hidden_size,
+        #self.dec_cell_traj  = DecoderLSTMCell(config.dec_hidden_size,
+        #    dropout= 1.0-config.keep_prob,
+        #    recurrent_dropout=1.0-config.keep_prob,
+        #    name='traj_dec')
+        self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
             dropout= 1.0-config.keep_prob,
             recurrent_dropout=1.0-config.keep_prob,
             name='traj_dec')
@@ -239,18 +243,18 @@ class TrajectoryEncoderDecoder(models.Model):
         self.input_layer2 = layers.Input(input_shape[1])
         # Encoding: Positions
         self.traj_enc     = TrajectoryEncoder(config)
-        # Encoding: Social interactions
-        self.soc_enc      = SocialEncoder(config)
         self.traj_dec     = TrajectoryDecoder(config)
         if (self.add_social):
             # In the case of handling social interactions, add a third input
             self.input_layer3 = layers.Input(input_shape[2])
+            # Encoding: Social interactions
+            self.soc_enc      = SocialEncoder(config)
             # Get output layer now with `call` method
             self.out = self.call([self.input_layer1,self.input_layer2,self.input_layer3])
         else:
             # Get output layer now with `call` method
             self.out = self.call([self.input_layer1,self.input_layer2])
-        # Call init again
+        # Call init again. This is a workaround for being able to use summary
         super(TrajectoryEncoderDecoder, self).__init__(
             inputs=tf.cond(self.add_social, lambda: [self.input_layer1,self.input_layer2,self.input_layer3], lambda: [self.input_layer1,self.input_layer2]),
             outputs=self.out)
@@ -268,9 +272,10 @@ class TrajectoryEncoderDecoder(models.Model):
         # ----------------------------------------------------------
         # Encoding
         # ----------------------------------------------------------
-        # Applies the position sequence through the LSTM: [N,T1,h_dim]
+        # Applies the position sequence through the LSTM: [N,T1,H]
         traj_obs_enc_h, traj_obs_enc_last_state, __ = self.traj_enc(traj_obs_inputs)
-        # Get the hidden states and the last hidden state, separately, and add them to the lists
+        # Get the hidden states and the last hidden state,
+        # separately, and add them to the lists
         enc_h_list          = [traj_obs_enc_h]
         enc_last_state_list = [traj_obs_enc_last_state]
 
@@ -287,6 +292,7 @@ class TrajectoryEncoderDecoder(models.Model):
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
         obs_enc_h          = tf.stack(enc_h_list, axis=1)
+
         # Concatenate last states (in the list) from all M features into a tensor
         # The final size should be [N,M,h_dim]
         obs_enc_last_state = tf.stack(enc_last_state_list, axis=1)

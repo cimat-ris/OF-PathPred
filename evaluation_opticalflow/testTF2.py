@@ -76,12 +76,8 @@ recompute_opticalflow = False
 data_path = dataset_paths+dataset_name
 
 # Process data specified by the path to get the trajectories with
-print('[INF] Extracting data from the ddatasets')
+print('[INF] Extracting data from thedatasets')
 data = process_file(data_path, experiment_parameters, ',')
-
-# Should be nSamples x sequenceLength x nPersonsMax x PersonDescriptionSize
-if experiment_parameters.add_social:
-    print(data['obs_neighbors'].shape)
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
 training_pc  = 0.7
@@ -137,7 +133,7 @@ print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
 # Model
-model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=True)
+model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=False)
 # x is NxT_obsx2 (simulation of a batch of trajectories)
 x = tf.ones((3,model_parameters.obs_len,model_parameters.P))
 # y is NxT_predx2 (simulation of a batch of trajectories)
@@ -167,8 +163,10 @@ loss_fn = keras.losses.MeanSquaredError()
 optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
 num_batches_per_epoch = train_data.get_num_batches()
 print("[INF] Training")
+train_loss_results = []
 # Epochs
 for epoch in range(model_parameters.num_epochs):
+    epoch_loss_avg = tf.keras.metrics.Mean()
     # Cycle over batches
     for step, batch in enumerate(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=False)):
         # Format the data
@@ -180,7 +178,6 @@ for epoch in range(model_parameters.num_epochs):
             batch_preds = tj_enc_dec(batch_inputs, training=True)  # Logits for this minibatch
             # Compute the loss value for this minibatch.
             loss_value = loss_fn(batch_targets, batch_preds)
-        print(tj_enc_dec.trainable_weights)    
         # Get the gradients
         grads = g.gradient(loss_value, tj_enc_dec.trainable_weights)
         # Run one step of gradient descent
@@ -196,9 +193,5 @@ for epoch in range(model_parameters.num_epochs):
 
     # End epoch
     train_loss_results.append(epoch_loss_avg.result())
-    train_accuracy_results.append(epoch_accuracy.result())
-
     if epoch % 50 == 0:
-        print("Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(epoch,
-                                                                epoch_loss_avg.result(),
-                                                                epoch_accuracy.result()))
+        print("Epoch {:03d}: Loss: {:.3f}".format(epoch,epoch_loss_avg.result()))
