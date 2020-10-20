@@ -24,11 +24,11 @@ class Model_Parameters(object):
         self.flow_size = 64
         # For training
         self.num_epochs = 30
-        self.batch_size = 20 # batch size
+        self.batch_size = 64 # batch size
         self.validate   = 300
         # Network architecture
         self.P               = 2 # Dimension
-        self.enc_hidden_size = 64 # el nombre lo dice
+        self.enc_hidden_size = 64 #
         self.dec_hidden_size = 64
         self.emb_size        = 64
         self.keep_prob       = 0.7 # dropout
@@ -327,10 +327,11 @@ class TrajectoryEncoderDecoder():
             for t in range(1, batch_targets.shape[1]):
                 # ----------------------------- xy decoder-----------------------------------------
                 # passing enc_output to the decoder
-                batch_preds, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
+                t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
+                t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss for
-                loss_value += loss_fn(batch_targets[:, t], batch_preds)
-                # using teacher forcing [Nx1xK]
+                loss_value += loss_fn(t_target, t_pred)
+                # Using teacher forcing [Nx1xK]
                 dec_input = tf.expand_dims(batch_targets[:, t], 1)
                 traj_obs_enc_last_state1 = dec_hidden1
                 traj_obs_enc_last_state2 = dec_hidden2
