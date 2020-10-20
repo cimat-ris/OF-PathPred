@@ -136,6 +136,65 @@ class FocalAttention(layers.Layer):
         #attended_context = softsel(softsel(context, a_logits), a_logits_maxed)
         #return attended_context
 
+""" Custom model class for the encoding part (trajectory and context)
+"""
+class TrajectoryAndContextEncoder(tf.keras.Model):
+    def __init__(self,config):
+        super(TrajectoryAndContextEncoder, self).__init__(name="traj_ctxt_enc")
+        self.add_social   = config.add_social
+        # Input layers
+        obs_shape  = (config.obs_len,config.P)
+        soc_shape  = (config.obs_len,config.flow_size)
+        self.input_layer_traj = layers.Input(obs_shape)
+        # Encoding: Positions
+        self.traj_enc     = TrajectoryEncoder(config)
+        if (self.add_social):
+            # In the case of handling social interactions, add a third input
+            self.input_layer_social = layers.Input(soc_shape)
+            # Encoding: Social interactions
+            self.soc_enc            = SocialEncoder(config)
+            # Get output layer now with `call` method
+            self.out = self.call([self.input_layer_traj,self.input_layer_social])
+        else:
+            # Get output layer now with `call` method
+            self.out = self.call([self.input_layer_traj])
+        # Call init again. This is a workaround for being able to use summary
+        super(TrajectoryAndContextEncoder, self).__init__(
+            inputs=tf.cond(self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
+            outputs=self.out)
+
+    def call(self,inputs,training=False):
+        # inputs[0] is the observed part
+        traj_obs_inputs  = inputs[0]
+        if self.add_social:
+            # inputs[1] are the social interaction features
+            soc_inputs     = inputs[1]
+        # ----------------------------------------------------------
+        # Encoding
+        # ----------------------------------------------------------
+        # Applies the position sequence through the LSTM: [N,T1,H]
+        traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs)
+        # Get the hidden states and the last hidden state,
+        # separately, and add them to the lists
+        enc_h_list          = [traj_obs_enc_h]
+        enc_last_state_list = [traj_obs_enc_last_state1]
+        # ----------------------------------------------------------
+        # Social interaccion (through optical flow)
+        # ----------------------------------------------------------
+        if self.add_social:
+            # Applies the person pose (keypoints) sequence through the LSTM
+            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
+            # Get hidden states and the last hidden state, separately, and add them to the lists
+            enc_h_list.append(soc_obs_enc_h)
+            enc_last_state_list.append(soc_obs_enc_last_state)
+        # Pack all observed hidden states (lists) from all M features into a tensor
+        # The final size should be [N,M,T_obs,h_dim]
+        obs_enc_h          = tf.stack(enc_h_list, axis=1)
+        # Concatenate last states (in the list) from all M features into a tensor
+        # The final size should be [N,M,h_dim]
+        obs_enc_last_state = tf.stack(enc_last_state_list, axis=1)
+        return traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h
+
 """ Custom LSTM cell class for our decoder
 """
 class DecoderLSTMCell(tf.keras.layers.LSTMCell):
@@ -171,146 +230,119 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
         return h, [h, c]
 
 """ Trajectory decoder.
+    Generates the next position
 """
-class TrajectoryDecoder(layers.Layer):
+class TrajectoryDecoder(tf.keras.Model):
     def __init__(self, config):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
+        self.add_social   = config.add_social
         # TODO: multiple decoder to be done
-        #if config.multi_decoder: # Multiple output mode
-        #    self.dec_cell_traj = [tf.keras.layers.LSTMCell.LSTMCell(
-        #        config.dec_hidden_size,
-        #        dropout= 1.0-config.keep_prob,
-        #        recurrent_dropout=1.0-config.keep_prob,
-        #        name='traj_dec_%s' % i)
-        #        for i in range(len(config.traj_cats))]
-        #else: # Simple mode: LSTM, with hidden size config.dec_hidden_size
-        #self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
-        #    dropout= 1.0-config.keep_prob,
-        #    recurrent_dropout=1.0-config.keep_prob,
-        #    name='traj_dec')
-        #self.dec_cell_traj  = DecoderLSTMCell(config.dec_hidden_size,
-        #    dropout= 1.0-config.keep_prob,
-        #    recurrent_dropout=1.0-config.keep_prob,
-        #    name='traj_dec')
-        self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
-            dropout= 1.0-config.keep_prob,
-            recurrent_dropout=1.0-config.keep_prob,
-            name='traj_dec')
-        self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True)
-
         # Linear embedding of the observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
-
+        # RNN cell
+        self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
+            recurrent_initializer='glorot_uniform',
+            dropout= 1.0-config.keep_prob,
+            recurrent_dropout=1.0-config.keep_prob,
+            name='traj_dec')
+        self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         # Attention layer
         self.focal_attention = FocalAttention()
-
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
             activation=tf.identity,
             name='h_to_xy')
+        # Input layers
+        dec_input_shape      = (1,config.P)
+        self.input_layer_pos = layers.Input(dec_input_shape)
+        enc_last_state_shape = (config.dec_hidden_size)
+        self.input_layer_hid1= layers.Input(enc_last_state_shape)
+        self.input_layer_hid2= layers.Input(enc_last_state_shape)
+        M = 1
+        if (self.add_social):
+            M=M+1
+        # [N,M,T1,h_dim]
+        ctxt_shape = (M,config.obs_len,config.enc_hidden_size)
+        self.input_layer_ctxt = layers.Input(ctxt_shape)
+        self.out = self.call(self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt)
+        # Call init again. This is a workaround for being able to use summary
+        super(TrajectoryDecoder, self).__init__(
+                    inputs= [self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt],
+                    outputs=self.out)
 
     # Call to the decoder
-    def call(self, first_input, enc_last_state, enc_h, decoder_inputs):
-        # Decoder inputs: gound truth trajectory (training)
-        # T_pred = tf.shape(decoder_inputs)[1]  # Value of T2 (prediction length)
+    def call(self, dec_input, enc_last_state1, enc_last_state2, context, firstCall=False,training=False):
+        # Decoder inputs: position
         # Embedding
-        decoder_inputs_emb = self.traj_xy_emb_dec(decoder_inputs)
+        decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
         # Application of the RNN: [N,T2,dec_hidden_size]
-        decoder_out_h = self.recurrentLayer(decoder_inputs_emb)
+        decoder_out = self.recurrentLayer(decoder_inputs_emb,initial_state=(enc_last_state1, enc_last_state2))
+        decoder_out_h      = decoder_out[0]
+        decoder_out_states1= decoder_out[1]
+        decoder_out_states2= decoder_out[2]
         # Mapping to positions
-        decoder_out   = self.h_to_xy(decoder_out_h)
+        decoder_out_xy = self.h_to_xy(decoder_out_h)
          # Attention
         # [N,h_dim]
+        attention_weights = None
         # query is next_cell_state.h
-        # context is enc_h
         # attended_encode_states = self.focal_attention(next_cell_state.h, enc_h)
         # Concatenate previous xy embedding, attended encoded states
         # [N,emb+h_dim]
         # next_input = tf.concat([xy_emb, attended_encode_states], axis=1)
-        return decoder_out
+        return decoder_out_xy, decoder_out_states1, decoder_out_states2
 
 
-# The model
-class TrajectoryEncoderDecoder(models.Model):
-    def __init__(self,config,input_shape):
-        super(TrajectoryEncoderDecoder, self).__init__(name="traj_encoder_decoder")
+# The main class
+class TrajectoryEncoderDecoder():
+    def __init__(self,config):
         self.add_social   = config.add_social
         self.multi_decoder= config.multi_decoder
-        # Input layers
-        self.input_layer1 = layers.Input(input_shape[0],)
-        self.input_layer2 = layers.Input(input_shape[1])
-        # Encoding: Positions
-        self.traj_enc     = TrajectoryEncoder(config)
-        self.traj_dec     = TrajectoryDecoder(config)
-        if (self.add_social):
-            # In the case of handling social interactions, add a third input
-            self.input_layer3 = layers.Input(input_shape[2])
-            # Encoding: Social interactions
-            self.soc_enc      = SocialEncoder(config)
-            # Get output layer now with `call` method
-            self.out = self.call([self.input_layer1,self.input_layer2,self.input_layer3])
-        else:
-            # Get output layer now with `call` method
-            self.out = self.call([self.input_layer1,self.input_layer2])
-        # Call init again. This is a workaround for being able to use summary
-        super(TrajectoryEncoderDecoder, self).__init__(
-            inputs=tf.cond(self.add_social, lambda: [self.input_layer1,self.input_layer2,self.input_layer3], lambda: [self.input_layer1,self.input_layer2]),
-            outputs=self.out)
+        # Encoding: Positions and context
+        self.enc = TrajectoryAndContextEncoder(config)
+        self.enc.summary()
+        self.dec = TrajectoryDecoder(config)
+        self.dec.summary()
+        # Instantiate an optimizer to train the models.
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
 
 
-    def call(self,inputs,training=False):
-        # inputs[0] is the observed part
-        # inputs[1] is the ground truth continuation, it is only used in training
-        traj_obs_inputs  = inputs[0]
-        traj_pred_gt     = inputs[1]
-        if self.add_social:
-            # inputs[2] are the social interaction features
-            soc_inputs     = inputs[2]
-
-        # ----------------------------------------------------------
-        # Encoding
-        # ----------------------------------------------------------
-        # Applies the position sequence through the LSTM: [N,T1,H]
-        traj_obs_enc_h, traj_obs_enc_last_state, __ = self.traj_enc(traj_obs_inputs)
-        # Get the hidden states and the last hidden state,
-        # separately, and add them to the lists
-        enc_h_list          = [traj_obs_enc_h]
-        enc_last_state_list = [traj_obs_enc_last_state]
-
-        # ----------------------------------------------------------
-        # Social interaccion (through optical flow)
-        # ----------------------------------------------------------
-        if self.add_social:
-            # Applies the person pose (keypoints) sequence through the LSTM
-            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
-            # Get hidden states and the last hidden state, separately, and add them to the lists
-            enc_h_list.append(soc_obs_enc_h)
-            enc_last_state_list.append(soc_obs_enc_last_state)
-
-        # Pack all observed hidden states (lists) from all M features into a tensor
-        # The final size should be [N,M,T_obs,h_dim]
-        obs_enc_h          = tf.stack(enc_h_list, axis=1)
-
-        # Concatenate last states (in the list) from all M features into a tensor
-        # The final size should be [N,M,h_dim]
-        obs_enc_last_state = tf.stack(enc_last_state_list, axis=1)
-
-        # ----------------------------- xy decoder-----------------------------------------
+    def train_step(self, batch_inputs, batch_targets):
+        traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
+        # Open a GradientTape to record the operations run
+        # during the forward pass, which enables auto-differentiation.
+        loss_value = 0
+        # Loss function
+        loss_fn = keras.losses.MeanSquaredError()
+        with tf.GradientTape() as g:
+            # Apply trajectory and context encoding
+            traj_obs_enc_last_state1, traj_obs_enc_last_state2, obs_enc_h = self.enc(batch_inputs, training=True)
+            # The first input to the decoder is the last observed position [Nx1xK]
+            dec_input = tf.expand_dims(traj_obs_last, 1)
+            # Teacher forcing - feeding the target as the next input
+            for t in range(1, batch_targets.shape[1]):
+                # ----------------------------- xy decoder-----------------------------------------
+                # passing enc_output to the decoder
+                batch_preds, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
+                # Loss for
+                loss_value += loss_fn(batch_targets[:, t], batch_preds)
+                # using teacher forcing [Nx1xK]
+                dec_input = tf.expand_dims(batch_targets[:, t], 1)
+                traj_obs_enc_last_state1 = dec_hidden1
+                traj_obs_enc_last_state2 = dec_hidden2
 
-        # TODO
-        # Multiple decoder
-        #if self.multi_decoder:
-            # [N, num_traj_cat] # each is num_traj_cat classification
-        #    pass
-        #else:
-        # Single decoder called: takes the last observed position, the last encoding state,
-        # the tensor of all hidden states, the number of prediction steps
-        traj_pred_out = self.traj_dec(traj_obs_last,traj_obs_enc_last_state,obs_enc_h,traj_pred_gt)
-        return traj_pred_out
+        variables = self.enc.trainable_weights + self.dec.trainable_weights
+        # Get the gradients
+        grads = g.gradient(loss_value, variables)
+        # Run one step of gradient descent
+        self.optimizer.apply_gradients(zip(grads, variables))
+        # Average loss over the predicted times
+        batch_loss = (loss_value / int(batch_targets.shape[1]))
+        return batch_loss
 
 #def softmax(logits, scope=None):
 #    """a flatten and reconstruct version of softmax."""

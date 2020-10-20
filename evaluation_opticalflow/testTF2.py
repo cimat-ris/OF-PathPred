@@ -40,8 +40,7 @@ def get_batch(batch_data, config, train=False):
         for j, xy in enumerate(pred_data):
             traj_pred_gt[i, j, :]   = xy
     returned_inputs.append(traj_obs_gt)
-    if train:
-        returned_inputs.append(traj_pred_gt)
+
     # ------------------------------------------------------
     # Social component (through optical flow)
     if config.add_social:
@@ -144,11 +143,10 @@ s = tf.ones((3,model_parameters.obs_len,model_parameters.flow_size))
 obs_shape  = (model_parameters.obs_len,model_parameters.P)
 gt_shape   = (model_parameters.pred_len,model_parameters.P)
 soc_shape  = (model_parameters.obs_len,model_parameters.flow_size)
-tj_enc_dec = TrajectoryEncoderDecoder(model_parameters,input_shape=[obs_shape,gt_shape,soc_shape])
+tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 #tj_enc_dec.compile(optimizer='Adam', loss="mse", metrics=["mae"])
-tj_enc_dec.summary()
-xp     = tj_enc_dec.predict([x,y,s])
-print(xp)
+# xp     = tj_enc_dec.predict([x,y,s])
+# print(xp)
 
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
@@ -157,10 +155,6 @@ val_data         = batches_data.Dataset(validation_data,model_parameters)
 #          batch_size=batch_size,
 #          epochs=epochs,
 #          validation_split=0.2)
-# Loss function
-loss_fn = keras.losses.MeanSquaredError()
-# Instantiate an optimizer to train the model.
-optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
 num_batches_per_epoch = train_data.get_num_batches()
 print("[INF] Training")
 train_loss_results = []
@@ -171,18 +165,9 @@ for epoch in range(model_parameters.num_epochs):
     for step, batch in enumerate(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=False)):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
-        # Open a GradientTape to record the operations run
-        # during the forward pass, which enables auto-differentiation.
-        with tf.GradientTape() as g:
-            # Run the forward pass of the layer.
-            batch_preds = tj_enc_dec(batch_inputs, training=True)  # Logits for this minibatch
-            # Compute the loss value for this minibatch.
-            loss_value = loss_fn(batch_targets, batch_preds)
-        # Get the gradients
-        grads = g.gradient(loss_value, tj_enc_dec.trainable_weights)
-        # Run one step of gradient descent
-        optimizer.apply_gradients(zip(grads, tj_enc_dec.trainable_weights))
-
+        # Run the forward pass of the layer.
+        # Compute the loss value for this minibatch.
+        loss_value = tj_enc_dec.train_step(batch_inputs, batch_targets)  # Logits for this minibatch
         # Log every 200 batches.
         if step % 200 == 0:
             print("[INF] Training loss (for one batch) at step %d: %.4f"
