@@ -3,7 +3,7 @@ import sys,os
 sys.path.append('./lib')
 import math,numpy as np
 import warnings
-import tqdm
+from tqdm import tqdm
 warnings.filterwarnings('ignore')
 import tensorflow as tf
 print('Tensorflow version: ',tf.__version__)
@@ -62,7 +62,7 @@ def get_batch(batch_data, config, train=False):
     return returned_inputs,traj_pred_gt
 
 # Load the default parameters
-experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=True)
+experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=True)
 
 # Dataset to be tested
 dataset_paths  = "../data1/"
@@ -102,9 +102,10 @@ training_data = {
      "obs_traj_rel":  data["obs_traj_rel"][idx_train],
      "pred_traj":     data["pred_traj"][idx_train],
      "pred_traj_rel": data["pred_traj_rel"][idx_train],
-     "key_idx":       data["key_idx"][[idx_train]],
-     "obs_flow":      data["obs_flow"][idx_train]
+     "key_idx":       data["key_idx"][idx_train]
 }
+if experiment_parameters.add_social:
+    training_data["obs_flow"]=data["obs_flow"][idx_train]
 
 # Test set
 test_data = {
@@ -112,9 +113,10 @@ test_data = {
      "obs_traj_rel": data["obs_traj_rel"][idx_test],
      "pred_traj":    data["pred_traj"][idx_test],
      "pred_traj_rel":data["pred_traj_rel"][idx_test],
-     "key_idx":      data["key_idx"][[idx_test]],
-     "obs_flow":     data["obs_flow"][idx_test]
+     "key_idx":      data["key_idx"][idx_test]
 }
+if experiment_parameters.add_social:
+    test_data["obs_flow"]=data["obs_flow"][idx_test]
 
 # Validation set
 validation_data ={
@@ -122,10 +124,10 @@ validation_data ={
      "obs_traj_rel": data["obs_traj_rel"][idx_val],
      "pred_traj":    data["pred_traj"][idx_val],
      "pred_traj_rel":data["pred_traj_rel"][idx_val],
-     "key_idx":      data["key_idx"][[idx_val]],
-     "obs_flow":     data["obs_flow"][idx_val]
+     "key_idx":      data["key_idx"][idx_val]
 }
-
+if experiment_parameters.add_social:
+    validation_data["obs_flow"]=data["obs_flow"][idx_val]
 
 print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
 print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
@@ -151,10 +153,6 @@ tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
 
-#model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
-#          batch_size=batch_size,
-#          epochs=epochs,
-#          validation_split=0.2)
 num_batches_per_epoch = train_data.get_num_batches()
 print("[INF] Training")
 train_loss_results = []
@@ -162,9 +160,11 @@ train_loss_results = []
 for epoch in range(model_parameters.num_epochs):
     epoch_loss_avg = tf.keras.metrics.Mean()
     # Cycle over batches
-    for step, batch in enumerate(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=False)):
+    num_batches_per_epoch = train_data.get_num_batches()
+    for step, batch in tqdm(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=False), total = num_batches_per_epoch, ascii = True):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
+        print(batch_targets.shape)
         # Run the forward pass of the layer.
         # Compute the loss value for this minibatch.
         loss_value = tj_enc_dec.train_step(batch_inputs, batch_targets)  # Logits for this minibatch
