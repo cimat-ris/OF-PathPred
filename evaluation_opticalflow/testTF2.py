@@ -152,24 +152,16 @@ print("[INF] Training")
 train_loss_results = []
 # Epochs
 for epoch in range(model_parameters.num_epochs):
-    epoch_loss_avg = tf.keras.metrics.Mean()
     # Cycle over batches
+    total_loss = 0
     num_batches_per_epoch = train_data.get_num_batches()
     for idx, batch in tqdm(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
         # Run the forward pass of the layer.
         # Compute the loss value for this minibatch.
-        loss_value = tj_enc_dec.train_step(batch_inputs, batch_targets)  # Logits for this minibatch
-        # Log every 200 batches.
-        #if step % 200 == 0:
-    #        print("[INF] Training loss (for one batch) at step %d: %.4f"
-    #            % (step, float(loss_value))
-    #            )
-    #        print("[INF] Seen so far: %s samples" % ((step + 1) * 64))
-
-
+        batch_loss = tj_enc_dec.train_step(batch_inputs, batch_targets)
+        total_loss+= batch_loss
     # End epoch
-    train_loss_results.append(epoch_loss_avg.result())
-    if epoch % 50 == 0:
-        print("Epoch {:03d}: Loss: {:.3f}".format(epoch,epoch_loss_avg.result()))
+    train_loss_results.append(total_loss)
+    print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss / num_batches_per_epoch))
