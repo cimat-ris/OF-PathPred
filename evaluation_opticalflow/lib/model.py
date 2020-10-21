@@ -1,5 +1,8 @@
 import functools
 import operator
+from plot_utils import plot_gt_preds
+from traj_utils import relative_to_abs
+from batches_data import get_batch
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
@@ -368,3 +371,26 @@ class TrajectoryEncoderDecoder():
             traj_obs_enc_last_state1 = dec_hidden1
             traj_obs_enc_last_state2 = dec_hidden2
         return tf.squeeze(tf.stack(traj_pred, axis=1))
+
+
+    def qualitative_evaluation(self,dataset,config,n_trajectories):
+        traj_obs = []
+        traj_gt  = []
+        traj_pred= []
+        # Select
+        trajIds  = np.random.randint(dataset.get_data_size(),size=n_trajectories)
+        batch    = dataset.get_by_idxs(trajIds)
+        # Qualitative evaluation: test on batch batchId
+        batch_inputs, batch_targets = get_batch(batch, config, train=False)
+        pred_traj                   = self.predict(batch_inputs,batch_targets.shape[1])
+        # Cycle over the instants to predict
+        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+            # Conserve the x,y coordinates
+            this_pred_out     = pred_traj[i][:, :2]
+            # Convert it to absolute (starting from the last observed position)
+            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+            # Keep all the trajectories
+            traj_obs.append(obs_traj_gt)
+            traj_gt.append(pred_traj_gt)
+            traj_pred.append(this_pred_out_abs)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred)

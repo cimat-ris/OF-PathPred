@@ -19,57 +19,6 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
 
-def relative_to_abs(rel_traj, start_pos):
-    """Relative x,y to absolute x,y coordinates.
-    Args:
-    rel_traj: numpy array [T,2]
-    start_pos: [2]
-    Returns:
-    abs_traj: [T,2]
-    """
-    # batch, seq_len, 2
-    # the relative xy cumulated across time first
-    displacement = np.cumsum(rel_traj, axis=0)
-    abs_traj = displacement + np.array([start_pos])  # [1,2]
-    return abs_traj
-
-def get_batch(batch_data, config, train=False):
-    """Given a batch of data, determine the input and ground truth."""
-    N      = len(batch_data['obs_traj_rel'])
-    P      = config.P
-    OF     = config.flow_size
-    T_in   = config.obs_len
-    T_pred = config.pred_len
-
-    returned_inputs = []
-    traj_obs_gt  = np.zeros([N, T_in, P], dtype='float32')
-    traj_pred_gt = np.zeros([N, T_pred, P], dtype='float32')
-    # --- xy input
-    for i, (obs_data, pred_data) in enumerate(zip(batch_data['obs_traj_rel'],
-                                                  batch_data['pred_traj_rel'])):
-        for j, xy in enumerate(obs_data):
-            traj_obs_gt[i, j, :] = xy
-        for j, xy in enumerate(pred_data):
-            traj_pred_gt[i, j, :]   = xy
-    returned_inputs.append(traj_obs_gt)
-    # ------------------------------------------------------
-    # Social component (through optical flow)
-    if config.add_social:
-        obs_flow = np.zeros((N, T_in, OF),dtype ='float32')
-        # each batch
-        for i, flow_seq in enumerate(batch_data['obs_flow']):
-            for j , flow_step in enumerate(flow_seq):
-                obs_flow[i,j,:] = flow_step
-        returned_inputs.append(obs_flow)
-    # -----------------------------------------------------------
-    # Person pose input
-    if config.add_kp:
-        obs_kp = np.zeros((N, T_in, KP, 2), dtype='float32')
-        # each bacth
-        for i, obs_kp_rel in enumerate(batch_data['obs_kp_rel']):
-            for j, obs_kp_step in enumerate(obs_kp_rel):
-                obs_kp[i, j, :, :] = obs_kp_step
-    return returned_inputs,traj_pred_gt
 
 # Load the default parameters
 experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=True)
@@ -159,6 +108,7 @@ tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
+test_data        = batches_data.Dataset(test_data, model_parameters)
 
 # Checkpoints
 checkpoint_dir = './training_checkpoints'
@@ -192,16 +142,14 @@ if perform_training==True:
         if (epoch + 1) % 2 == 0:
             checkpoint.save(file_prefix = checkpoint_prefix)
         print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
-
-
-    # Training results
-    from matplotlib import pyplot as plt
+    # Plot training results
     plt.figure(figsize=(8,8))
     plt.subplot(1,1,1)
     plt.plot(train_loss_results)
     plt.xlabel("epoch")
     plt.ylabel("MSE")
     plt.show()
+
 
 # Testing
 print("[INF] Restoring last model")
@@ -210,43 +158,4 @@ checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
 
 print("[INF] Testing")
-traj_obs = []
-traj_gt  = []
-traj_pred= []
-# Select one random batch
-test_batches_data= batches_data.Dataset(test_data, model_parameters)
-batchId          = np.random.randint(test_batches_data.get_data_size(),size=10)
-batch            = test_batches_data.get_by_idxs(batchId)
-# Qualitative evaluation: test on batch batchId
-batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
-pred_traj                   = tj_enc_dec.predict(batch_inputs,batch_targets.shape[1])
-
-for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-    # Conserve the x,y coordinates
-    this_pred_out     = pred_traj[i][:, :2]
-    # Convert it to absolute (starting from the last observed position)
-    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-    # Keep all the trajectories
-    traj_obs.append(obs_traj_gt)
-    traj_gt.append(pred_traj_gt)
-    traj_pred.append(this_pred_out_abs)
-plt.subplots(1,1,figsize=(10,10))
-ax = plt.subplot(1,1,1)
-ax.set_ylabel('Y (m)')
-ax.set_xlabel('X (m)')
-ax.set_title('Trajectory samples')
-plt.axis('equal')
-# Plot some random testing data and the predicted ones
-plt.plot(traj_obs[0][0,0],traj_obs[0][0,1],color='red',label='Observations')
-plt.plot(traj_gt[0][0,0],traj_gt[0][0,1],color='blue',label='Ground truth')
-plt.plot(traj_pred[0][0,0],traj_pred[0][0,1],color='green',label='Prediction')
-for (gt,obs,pred) in zip(traj_gt,traj_obs,traj_pred):
-    plt.plot(obs[:,0],obs[:,1],color='red')
-    # Ground truth trajectory
-    plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue')
-    plt.plot(gt[:,0],gt[:,1],color='blue')
-    # Predicted trajectory
-    plt.plot([obs[-1,0],pred[0,0]],[obs[-1,1],pred[0,1]],color='green')
-    plt.plot(pred[:,0],pred[:,1],color='green')
-ax.legend()
-plt.show()
+tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)
