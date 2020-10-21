@@ -147,28 +147,50 @@ tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
 
-num_batches_per_epoch = train_data.get_num_batches()
-print("[INF] Training")
-train_loss_results = []
-# Epochs
-for epoch in range(model_parameters.num_epochs):
-    # Cycle over batches
-    total_loss = 0
-    num_batches_per_epoch = train_data.get_num_batches()
-    for idx, batch in tqdm(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
-        # Format the data
-        batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
-        # Run the forward pass of the layer.
-        # Compute the loss value for this minibatch.
-        batch_loss = tj_enc_dec.train_step(batch_inputs, batch_targets)
-        total_loss+= batch_loss
-    # End epoch
-    total_loss = total_loss / num_batches_per_epoch
-    train_loss_results.append(total_loss)
-    print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
+# Checkpoints
+checkpoint_dir = './training_checkpoints'
+checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
+                                    encoder=tj_enc_dec.enc,
+                                    decoder=tj_enc_dec.dec)
 
-from matplotlib import pyplot as plt
-plt.figure(figsize=(8,8))
-plt.subplot(1,1,1)
-plt.plot(train_loss_results)
-plt.show()
+# Training
+print("[INF] Training")
+perform_training = True
+if perform_training==True:
+    num_batches_per_epoch = train_data.get_num_batches()
+    train_loss_results    = []
+    # Epochs
+    for epoch in range(model_parameters.num_epochs):
+        # Cycle over batches
+        total_loss = 0
+        num_batches_per_epoch = train_data.get_num_batches()
+        for idx, batch in tqdm(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            # Format the data
+            batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
+            # Run the forward pass of the layer.
+            # Compute the loss value for this minibatch.
+            batch_loss = tj_enc_dec.train_step(batch_inputs, batch_targets)
+            total_loss+= batch_loss
+        # End epoch
+        total_loss = total_loss / num_batches_per_epoch
+        train_loss_results.append(total_loss)
+        # Saving (checkpoint) the model every 2 epochs
+        if (epoch + 1) % 2 == 0:
+            checkpoint.save(file_prefix = checkpoint_prefix)
+        print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
+
+
+    # Training results
+    from matplotlib import pyplot as plt
+    plt.figure(figsize=(8,8))
+    plt.subplot(1,1,1)
+    plt.plot(train_loss_results)
+    plt.xlabel("epoch")
+    plt.ylabel("MSE")
+    plt.show()
+
+# Testing
+print("[INF] Restoring last model")
+# restoring the latest checkpoint in checkpoint_dir
+checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))

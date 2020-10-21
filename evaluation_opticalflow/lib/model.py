@@ -310,7 +310,7 @@ class TrajectoryEncoderDecoder():
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
         # Instantiate an optimizer to train the models.
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
 
 
     def train_step(self, batch_inputs, batch_targets):
@@ -329,7 +329,7 @@ class TrajectoryEncoderDecoder():
             dec_input = tf.expand_dims(traj_obs_last, 1)
             # Teacher forcing - feeding the target as the next input
             for t in range(1, batch_targets.shape[1]):
-                # ----------------------------- xy decoder-----------------------------------------
+                # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
                 t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
@@ -348,18 +348,3 @@ class TrajectoryEncoderDecoder():
         # Average loss over the predicted times
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
-
-#def softmax(logits, scope=None):
-#    """a flatten and reconstruct version of softmax."""
-#    flat_logits = flatten(logits, 1)
-#    flat_out = tf.nn.softmax(flat_logits)
-#    out = reconstruct(flat_out, logits, 1)
-#    return out
-
-#def softsel(target, logits, use_sigmoid=False, scope=None):
-#    """Apply attention weights."""
-#    a = softmax(logits)  # shape is the same
-#    target_rank = len(target.get_shape().as_list())
-#    # [N,M,JX,JQ,2d] elem* [N,M,JX,JQ,1]
-#    # second last dim
-#    return tf.reduce_sum(tf.expand_dims(a, -1)*target, target_rank-2)
