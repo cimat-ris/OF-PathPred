@@ -46,7 +46,6 @@ class Dataset(object):
         Dataset object.
         """
         num_batches_per_epoch = int(math.ceil(self.num_examples / float(batch_size)))
-
         if full:
             num_steps = num_batches_per_epoch
 

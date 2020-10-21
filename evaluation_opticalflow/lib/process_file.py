@@ -36,7 +36,6 @@ class predictor_parameters_varios:
         #data_dirs = ['../data1/eth-univ', '../data1/eth-hotel',
         #     '../data1/ucy-zara01', '../data1/ucy-zara02',
         #     '../data1/ucy-univ']
-
         self.ind_test   = 3
         # Observation length (trajlet size)
         self.obs_len    = 8
@@ -65,7 +64,7 @@ def process_file(directory, args, delim):
     pred_len = args.pred_len
     seq_len  = obs_len + pred_len
 
-    print("[INF] Sequence length (observation+prediction):", seq_len)
+    print("[INF] Sequence length (observation+prediction): ", seq_len)
     num_person_in_start_frame = []
 
     seq_list_pos   = []
@@ -103,15 +102,14 @@ def process_file(directory, args, delim):
 
     # Trayectory coordinates
     path_file = os.path.join(directory, 'mundo/mun_pos.csv')
-
-    print(path_file)
+    print("[INF] Dataset path: "+path_file)
     raw_traj_data = np.genfromtxt(path_file, delimiter=',')
 
     # We suppose that the frame ids are in ascending order
     frame_ids = np.unique(raw_traj_data[:, 0]).tolist()
     print("[INF] Total number of frames: ",len(frame_ids))
-
     raw_traj_data_per_frame = [] # people in frame
+
     # Group the spatial pedestrian data frame by frame
     # id_frame, id_person, x, y
     for frame in frame_ids:
@@ -126,10 +124,7 @@ def process_file(directory, args, delim):
             peds_id_list = reduce(set.intersection,
                                 [set(peds_id_list[:,1]) for peds_id_list in
                                 raw_seq_data])
-
             peds_id_list = sorted(list(peds_id_list))
-
-
             raw_seq_data = np.concatenate(raw_seq_data,axis=0)
 
             # Number of people from the intersection of the id_person of "raw_seq_data"
@@ -264,7 +259,6 @@ def process_file(directory, args, delim):
         if args.add_social:
             seq_list_person.append(neighbors_data [:count_ped])
             #seq_list_person_rel.append(neighbors_data _rel[:count_ped])
-        #hasta aqui
     #print(" maximo numero de personas que permanecen en toda una secuencia de frames")
     #print(max_p)
     #print("max_person long")
@@ -274,16 +268,16 @@ def process_file(directory, args, delim):
     seq_list_pos = np.concatenate(seq_list_pos, axis=0)
     seq_list_rel = np.concatenate(seq_list_rel, axis=0)
     seq_list_frames = np.concatenate(seq_list_frames, axis=0)
-    print("[INF] Total number of sample sequences ",len(seq_list_pos))
+    print("[INF] Total number of sample sequences: ",len(seq_list_pos))
 
     # we get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
-    obs_traj = seq_list_pos[:, :obs_len, :]
-    pred_traj = seq_list_pos[:, obs_len:, :]
-    frames_obs = seq_list_frames[:,:obs_len]
+    obs_traj     = seq_list_pos[:, :obs_len, :]
+    pred_traj    = seq_list_pos[:, obs_len:, :]
+    frames_obs   = seq_list_frames[:,:obs_len]
     obs_traj_rel = seq_list_rel[:, :obs_len, :]
-    pred_traj_rel = seq_list_rel[:, obs_len:, :]
+    pred_traj_rel= seq_list_rel[:, obs_len:, :]
 
     # the starting idx for each frame in the N*K list,
     # [frame_id, 2]
@@ -318,7 +312,7 @@ def process_file(directory, args, delim):
         if args.neighborhood:
                 of_sim = OpticalFlowSimulator(use_bounds = True, lim=args.lim[args.ind_test])
                 flow,vis_neigh,_ = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
-                       
+
         else:
             if args.obstacles:
                 of_sim = OpticalFlowSimulator()
@@ -356,7 +350,7 @@ def process_file(directory, args, delim):
     return data
 
 def process_file_varios(data_dirs, list_max_person, args, delim, lim=[]):
-    
+
     datasets = range(len(list_max_person))
     datasets = list(datasets)
     datasets.remove(args.ind_test)

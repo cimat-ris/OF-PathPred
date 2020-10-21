@@ -348,3 +348,23 @@ class TrajectoryEncoderDecoder():
         # Average loss over the predicted times
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
+
+    def predict(self, batch_inputs, n_steps):
+        traj_obs_inputs = batch_inputs[0]
+        traj_pred       = []
+        # Last observed position from the trajectory
+        traj_obs_last = traj_obs_inputs[:, -1]
+        # Apply trajectory and context encoding
+        traj_obs_enc_last_state1, traj_obs_enc_last_state2, obs_enc_h = self.enc(batch_inputs, training=False)
+        # The first input to the decoder is the last observed position [Nx1xK]
+        dec_input = tf.expand_dims(traj_obs_last, 1)
+        for t in range(1, n_steps):
+            # ------------------------ xy decoder--------------------------------------
+            # passing enc_output to the decoder
+            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
+            # Next input is the last position
+            dec_input = t_pred
+            traj_pred.append(t_pred)
+            traj_obs_enc_last_state1 = dec_hidden1
+            traj_obs_enc_last_state2 = dec_hidden2
+        return tf.squeeze(tf.stack(traj_pred, axis=1))

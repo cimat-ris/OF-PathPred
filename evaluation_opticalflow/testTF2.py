@@ -19,6 +19,19 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
 
+def relative_to_abs(rel_traj, start_pos):
+    """Relative x,y to absolute x,y coordinates.
+    Args:
+    rel_traj: numpy array [T,2]
+    start_pos: [2]
+    Returns:
+    abs_traj: [T,2]
+    """
+    # batch, seq_len, 2
+    # the relative xy cumulated across time first
+    displacement = np.cumsum(rel_traj, axis=0)
+    abs_traj = displacement + np.array([start_pos])  # [1,2]
+    return abs_traj
 
 def get_batch(batch_data, config, train=False):
     """Given a batch of data, determine the input and ground truth."""
@@ -156,7 +169,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training")
-perform_training = True
+perform_training = False
 if perform_training==True:
     num_batches_per_epoch = train_data.get_num_batches()
     train_loss_results    = []
@@ -194,3 +207,46 @@ if perform_training==True:
 print("[INF] Restoring last model")
 # restoring the latest checkpoint in checkpoint_dir
 checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
+
+
+print("[INF] Testing")
+traj_obs = []
+traj_gt  = []
+traj_pred= []
+# Select one random batch
+test_batches_data= batches_data.Dataset(test_data, model_parameters)
+batchId          = np.random.randint(test_batches_data.get_data_size(),size=10)
+batch            = test_batches_data.get_by_idxs(batchId)
+# Qualitative evaluation: test on batch batchId
+batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
+pred_traj                   = tj_enc_dec.predict(batch_inputs,batch_targets.shape[1])
+
+for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+    # Conserve the x,y coordinates
+    this_pred_out     = pred_traj[i][:, :2]
+    # Convert it to absolute (starting from the last observed position)
+    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+    # Keep all the trajectories
+    traj_obs.append(obs_traj_gt)
+    traj_gt.append(pred_traj_gt)
+    traj_pred.append(this_pred_out_abs)
+plt.subplots(1,1,figsize=(10,10))
+ax = plt.subplot(1,1,1)
+ax.set_ylabel('Y (m)')
+ax.set_xlabel('X (m)')
+ax.set_title('Trajectory samples')
+plt.axis('equal')
+# Plot some random testing data and the predicted ones
+plt.plot(traj_obs[0][0,0],traj_obs[0][0,1],color='red',label='Observations')
+plt.plot(traj_gt[0][0,0],traj_gt[0][0,1],color='blue',label='Ground truth')
+plt.plot(traj_pred[0][0,0],traj_pred[0][0,1],color='green',label='Prediction')
+for (gt,obs,pred) in zip(traj_gt,traj_obs,traj_pred):
+    plt.plot(obs[:,0],obs[:,1],color='red')
+    # Ground truth trajectory
+    plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue')
+    plt.plot(gt[:,0],gt[:,1],color='blue')
+    # Predicted trajectory
+    plt.plot([obs[-1,0],pred[0,0]],[obs[-1,1],pred[0,1]],color='green')
+    plt.plot(pred[:,0],pred[:,1],color='green')
+ax.legend()
+plt.show()
