@@ -23,8 +23,8 @@ class Model_Parameters(object):
         # Optical flow
         self.flow_size = 64
         # For training
-        self.num_epochs = 30
-        self.batch_size = 64 # batch size
+        self.num_epochs = 200
+        self.batch_size = 32  # batch size
         self.validate   = 300
         # Network architecture
         self.P               = 2 # Dimension
@@ -112,29 +112,32 @@ class SocialEncoder(layers.Layer):
 """ Focal attention layer.
 """
 class FocalAttention(layers.Layer):
-    def __init__(self):
+    def __init__(self,config,M):
         super(FocalAttention, self).__init__(name="focal_attention")
+        self.flatten  = tf.keras.layers.Flatten()
+        self.reshape  = tf.keras.layers.Reshape((M, config.obs_len))
 
     def call(self,query, context):
         # query  : [N,D1]
         # context: [N,M,T,D2]
-        print("*** focal attention ***")
-        # Tensor dimensions
+        # Get the tensor dimensions and check them
         _, D1       = query.get_shape().as_list()
         _, K, T, D2 = context.get_shape().as_list()
-        assert d == d2
-        # [N,d] -> [N,K,T,d]
+        assert D1 == D2
+        # Expand [N,D1] -> [N,M,T,D1]
         query_aug = tf.tile(tf.expand_dims(tf.expand_dims(query, 1), 1), [1, K, T, 1])
-        # cosine simi
+        # Cosine similarity
         query_aug_norm = tf.nn.l2_normalize(query_aug, -1)
-        context_norm   = tf.nn.l2_normalize(context, -1)
-        # [N, K, T]
-        a_logits = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
-        a_logits_maxed = tf.reduce_max(a_logits, 2)  # [N,K]
-        print(a_logits_maxed)
-        return a_logits_maxed
-        #attended_context = softsel(softsel(context, a_logits), a_logits_maxed)
-        #return attended_context
+        context_norm   = tf.nn.l2_normalize(context,   -1)
+        # Weights for pairs feature, time: [N, M, T]
+        S         = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
+        B         = self.reshape(tf.nn.softmax(self.flatten(S)))
+        BQ        = tf.reduce_sum(tf.expand_dims(B, -1)*context,2)
+        # Weigthts for features, maxed over time: [N,M]
+        Sm        = tf.reduce_max(S, 2)
+        A         = tf.nn.softmax(Sm)
+        AQ        = tf.reduce_sum(tf.expand_dims(A, -1)*BQ,1)
+        return tf.expand_dims(AQ,1)
 
 """ Custom model class for the encoding part (trajectory and context)
 """
@@ -248,8 +251,11 @@ class TrajectoryDecoder(tf.keras.Model):
             recurrent_dropout=1.0-config.keep_prob,
             name='traj_dec')
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
+        M = 1
+        if (self.add_social):
+            M=M+1
         # Attention layer
-        self.focal_attention = FocalAttention()
+        self.focal_attention = FocalAttention(config,M)
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
             activation=tf.identity,
@@ -260,9 +266,6 @@ class TrajectoryDecoder(tf.keras.Model):
         enc_last_state_shape = (config.dec_hidden_size)
         self.input_layer_hid1= layers.Input(enc_last_state_shape)
         self.input_layer_hid2= layers.Input(enc_last_state_shape)
-        M = 1
-        if (self.add_social):
-            M=M+1
         # [N,M,T1,h_dim]
         ctxt_shape = (M,config.obs_len,config.enc_hidden_size)
         self.input_layer_ctxt = layers.Input(ctxt_shape)
@@ -277,18 +280,19 @@ class TrajectoryDecoder(tf.keras.Model):
         # Decoder inputs: position
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
+         # Attention: [N,1,h_dim]
+        # query is decoder_out_h: [N,h_dim]
+        query           = enc_last_state1
+        attention       = self.focal_attention(query, context)
+        # Augmented imput: [N,1,h_dim+emb]
+        augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         # Application of the RNN: [N,T2,dec_hidden_size]
-        decoder_out = self.recurrentLayer(decoder_inputs_emb,initial_state=(enc_last_state1, enc_last_state2))
+        decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_state1, enc_last_state2))
         decoder_out_h      = decoder_out[0]
         decoder_out_states1= decoder_out[1]
         decoder_out_states2= decoder_out[2]
         # Mapping to positions
         decoder_out_xy = self.h_to_xy(decoder_out_h)
-         # Attention
-        # [N,h_dim]
-        attention_weights = None
-        # query is next_cell_state.h
-        # attended_encode_states = self.focal_attention(next_cell_state.h, enc_h)
         # Concatenate previous xy embedding, attended encoded states
         # [N,emb+h_dim]
         # next_input = tf.concat([xy_emb, attended_encode_states], axis=1)

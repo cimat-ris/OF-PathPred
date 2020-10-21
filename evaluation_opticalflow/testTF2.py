@@ -163,5 +163,12 @@ for epoch in range(model_parameters.num_epochs):
         batch_loss = tj_enc_dec.train_step(batch_inputs, batch_targets)
         total_loss+= batch_loss
     # End epoch
+    total_loss = total_loss / num_batches_per_epoch
     train_loss_results.append(total_loss)
-    print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss / num_batches_per_epoch))
+    print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
+
+from matplotlib import pyplot as plt
+plt.figure(figsize=(8,8))
+plt.subplot(1,1,1)
+plt.plot(train_loss_results)
+plt.show()
