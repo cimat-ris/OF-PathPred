@@ -1,5 +1,6 @@
 import functools
 import operator
+from tqdm import tqdm
 from plot_utils import plot_gt_preds
 from traj_utils import relative_to_abs
 from batches_data import get_batch
@@ -304,19 +305,22 @@ class TrajectoryDecoder(tf.keras.Model):
 
 # The main class
 class TrajectoryEncoderDecoder():
+    # Constructor
     def __init__(self,config):
+        # Flags for considering social interations, multiple decoder
         self.add_social   = config.add_social
         self.multi_decoder= config.multi_decoder
-        # Encoding: Positions and context
+        # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
+        # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
         # Instantiate an optimizer to train the models.
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
 
-
-    def train_step(self, batch_inputs, batch_targets):
+    # Single training step, for one batch
+    def batch_train_step(self, batch_inputs, batch_targets):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
@@ -352,37 +356,67 @@ class TrajectoryEncoderDecoder():
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
 
-    def predict(self, batch_inputs, n_steps):
+    # Prediction (testing) for one batch
+    def batch_predict(self, batch_inputs, n_steps):
         traj_obs_inputs = batch_inputs[0]
+        # List for the predictions
         traj_pred       = []
-        # Last observed position from the trajectory
+        # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
-        traj_obs_enc_last_state1, traj_obs_enc_last_state2, obs_enc_h = self.enc(batch_inputs, training=False)
+        traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=False)
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
         for t in range(1, n_steps):
             # ------------------------ xy decoder--------------------------------------
-            # passing enc_output to the decoder
-            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
-            # Next input is the last position
+            # Passing enc_output to the decoder
+            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
+            # Next input is the last predicted position
             dec_input = t_pred
+            # Add it to the list of predictions
             traj_pred.append(t_pred)
+            # Reuse the hidden states for the next step
             traj_obs_enc_last_state1 = dec_hidden1
             traj_obs_enc_last_state2 = dec_hidden2
         return tf.squeeze(tf.stack(traj_pred, axis=1))
 
+    # Training loop
+    def training_loop(self,train_data,config,checkpoint,checkpoint_prefix):
+        num_batches_per_epoch = train_data.get_num_batches()
+        train_loss_results    = []
+        # Epochs
+        for epoch in range(config.num_epochs):
+            # Cycle over batches
+            total_loss = 0
+            num_batches_per_epoch = train_data.get_num_batches()
+            for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config, train=True)
+                # Run the forward pass of the layer.
+                # Compute the loss value for this minibatch.
+                batch_loss = self.batch_train_step(batch_inputs, batch_targets)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            train_loss_results.append(total_loss)
+            # Saving (checkpoint) the model every 2 epochs
+            if (epoch + 1) % 2 == 0:
+                checkpoint.save(file_prefix = checkpoint_prefix)
+            print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
+        return train_loss_results
 
+    # Perform a qualitative evaluation over a baych of n_trajectories
     def qualitative_evaluation(self,dataset,config,n_trajectories):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
-        # Select
+        # Select n_trajectories indices
         trajIds  = np.random.randint(dataset.get_data_size(),size=n_trajectories)
+        # Form th batch
         batch    = dataset.get_by_idxs(trajIds)
-        # Qualitative evaluation: test on batch batchId
         batch_inputs, batch_targets = get_batch(batch, config, train=False)
-        pred_traj                   = self.predict(batch_inputs,batch_targets.shape[1])
+        # Perform prediction
+        pred_traj                   = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             # Conserve the x,y coordinates
@@ -393,4 +427,5 @@ class TrajectoryEncoderDecoder():
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs)
+        # Plot ground truth and predictions
         plot_gt_preds(traj_gt,traj_obs,traj_pred)

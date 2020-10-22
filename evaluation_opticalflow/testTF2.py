@@ -3,7 +3,6 @@ import sys,os
 sys.path.append('./lib')
 import math,numpy as np
 import warnings
-from tqdm import tqdm
 warnings.filterwarnings('ignore')
 import tensorflow as tf
 print('Tensorflow version: ',tf.__version__)
@@ -92,18 +91,11 @@ print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[
 print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
-# Model
+# Model parameters
 model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=False)
-# x is NxT_obsx2 (simulation of a batch of trajectories)
-x = tf.ones((3,model_parameters.obs_len,model_parameters.P))
-# y is NxT_predx2 (simulation of a batch of trajectories)
-y = tf.cumsum(tf.ones((3,model_parameters.pred_len,model_parameters.P)),axis=1)
-# x is NxT_obsx20 (simulation of a batch of social features)
-s = tf.ones((3,model_parameters.obs_len,model_parameters.flow_size))
+model_parameters.num_epochs = 10
 
-obs_shape  = (model_parameters.obs_len,model_parameters.P)
-gt_shape   = (model_parameters.pred_len,model_parameters.P)
-soc_shape  = (model_parameters.obs_len,model_parameters.flow_size)
+# Model
 tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 
 train_data       = batches_data.Dataset(training_data,model_parameters)
@@ -121,27 +113,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 print("[INF] Training")
 perform_training = False
 if perform_training==True:
-    num_batches_per_epoch = train_data.get_num_batches()
-    train_loss_results    = []
-    # Epochs
-    for epoch in range(model_parameters.num_epochs):
-        # Cycle over batches
-        total_loss = 0
-        num_batches_per_epoch = train_data.get_num_batches()
-        for idx, batch in tqdm(train_data.get_batches(model_parameters.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
-            # Format the data
-            batch_inputs, batch_targets = get_batch(batch, model_parameters, train=True)
-            # Run the forward pass of the layer.
-            # Compute the loss value for this minibatch.
-            batch_loss = tj_enc_dec.train_step(batch_inputs, batch_targets)
-            total_loss+= batch_loss
-        # End epoch
-        total_loss = total_loss / num_batches_per_epoch
-        train_loss_results.append(total_loss)
-        # Saving (checkpoint) the model every 2 epochs
-        if (epoch + 1) % 2 == 0:
-            checkpoint.save(file_prefix = checkpoint_prefix)
-        print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
+    train_loss_results = tj_enc_dec.training_loop(train_data,model_parameters,checkpoint,checkpoint_prefix)
     # Plot training results
     plt.figure(figsize=(8,8))
     plt.subplot(1,1,1)
