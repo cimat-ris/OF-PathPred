@@ -367,7 +367,7 @@ class TrajectoryEncoderDecoder():
         traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=False)
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
-        for t in range(1, n_steps):
+        for t in range(0, n_steps):
             # ------------------------ xy decoder--------------------------------------
             # Passing enc_output to the decoder
             t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
@@ -403,7 +403,48 @@ class TrajectoryEncoderDecoder():
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
             print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
-        return train_loss_results
+            if self.use_validation:
+                pass
+            #            results = self.evaluate(val_data,sess)
+            #            if results["ade"]< best['ade']:
+            #                best['ade'] = results["ade"]
+            #                best['fde'] = results["fde"]
+            #                   best["step"]= global_step
+            #                # Save the best model
+            #                checkpoint_path_model_best = os.path.join('models/'+dataset_name, 'model_best.ckpt')
+            #                bestsaver.save(sess,checkpoint_path_model_best,global_step = 0)
+            #                finalperf = results
+            #                val_perf.append((loss, results))
+        return train_loss_results,val_loss_results
+
+    def quantitative_evaluation(self,test_data,config):
+        l2dis = []
+        num_batches_per_epoch = test_data.get_num_batches()
+        for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            # Format the data
+            batch_inputs, batch_targets = get_batch(batch, config, train=True)
+            pred_out               = self.batch_predict(batch_inputs,batch_targets.shape[1])
+            this_actual_batch_size = batch["original_batch_size"]
+            d = []
+            # For all the trajectories in the batch
+            for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+                if i >= this_actual_batch_size:
+                    break
+                # Conserve the x,y coordinates
+                this_pred_out     = pred_out[i][:, :2] #[pred,2]
+                # Convert it to absolute (starting from the last observed position)
+                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                # Check shape is OK
+                assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+                # Error for ade/fde
+                diff = pred_traj_gt - this_pred_out_abs
+                diff = diff**2
+                diff = np.sqrt(np.sum(diff, axis=1))
+                d.append(diff)
+            l2dis += d
+        ade = [t for o in l2dis for t in o] # average displacement
+        fde = [o[-1] for o in l2dis] # final displacement
+        return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a baych of n_trajectories
     def qualitative_evaluation(self,dataset,config,n_trajectories):

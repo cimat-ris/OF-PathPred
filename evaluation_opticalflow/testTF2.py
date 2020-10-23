@@ -128,6 +128,8 @@ print("[INF] Restoring last model")
 # restoring the latest checkpoint in checkpoint_dir
 checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
-
-print("[INF] Testing")
+print("[INF] Quantitative testing")
+results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
+print(results)
+print("[INF] Qualitative testing")
 tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)
