@@ -10,7 +10,7 @@ def grouper(lst, num):
     out = list(out)
     return out
 
-def get_batch(batch_data, config, train=False):
+def get_batch(batch_data, config):
     """Given a batch of data, determine the input and ground truth."""
     N      = len(batch_data['obs_traj_rel'])
     P      = config.P

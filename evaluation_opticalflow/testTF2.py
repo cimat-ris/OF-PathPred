@@ -93,7 +93,7 @@ print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.ke
 
 # Model parameters
 model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=False)
-model_parameters.num_epochs = 10
+model_parameters.num_epochs = 100
 
 # Model
 tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
@@ -111,15 +111,18 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training")
-perform_training = False
+perform_training = True
 if perform_training==True:
-    train_loss_results = tj_enc_dec.training_loop(train_data,model_parameters,checkpoint,checkpoint_prefix)
+    train_loss_results,val_loss_results = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
     # Plot training results
-    plt.figure(figsize=(8,8))
-    plt.subplot(1,1,1)
-    plt.plot(train_loss_results)
-    plt.xlabel("epoch")
-    plt.ylabel("MSE")
+    fig = plt.figure(figsize=(8,8))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.plot(train_loss_results,'b',label='Training')
+    ax.plot(val_loss_results,'r',label='Validation')
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("MSE")
+    ax.set_title('Training and validation losses')
+    ax.legend()
     plt.show()
 
 

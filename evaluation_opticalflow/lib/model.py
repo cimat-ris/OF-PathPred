@@ -27,14 +27,15 @@ class Model_Parameters(object):
         # Optical flow
         self.flow_size = 64
         # For training
-        self.num_epochs = 200
-        self.batch_size = 32  # batch size
+        self.num_epochs = 400
+        self.batch_size = 64  # batch size
+        self.use_validation = False
         self.validate   = 300
         # Network architecture
         self.P               = 2 # Dimension
         self.enc_hidden_size = 64 #
         self.dec_hidden_size = 64
-        self.emb_size        = 64
+        self.emb_size        = 128
         self.keep_prob       = 0.7 # dropout
 
         self.min_ped      = 1
@@ -302,7 +303,6 @@ class TrajectoryDecoder(tf.keras.Model):
         # next_input = tf.concat([xy_emb, attended_encode_states], axis=1)
         return decoder_out_xy, decoder_out_states1, decoder_out_states2
 
-
 # The main class
 class TrajectoryEncoderDecoder():
     # Constructor
@@ -318,6 +318,38 @@ class TrajectoryEncoderDecoder():
         self.dec.summary()
         # Instantiate an optimizer to train the models.
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
+        # Instantiate the loss operator
+        self.loss_fn = keras.losses.MeanSquaredError()
+
+    # Single testing step, for one batch
+    def batch_test_step(self, batch_inputs, batch_targets):
+        traj_obs_inputs = batch_inputs[0]
+        # Last observed position from the trajectory
+        traj_obs_last = traj_obs_inputs[:, -1]
+        # Open a GradientTape to record the operations run
+        # during the forward pass, which enables auto-differentiation.
+        loss_value = 0
+        # Loss function
+        loss_fn = keras.losses.MeanSquaredError()
+        # Apply trajectory and context encoding
+        traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=True)
+        # The first input to the decoder is the last observed position [Nx1xK]
+        dec_input = tf.expand_dims(traj_obs_last, 1)
+        # Teacher forcing - feeding the target as the next input
+        for t in range(0, batch_targets.shape[1]):
+            # ------------------------ xy decoder--------------------------------------
+            # Passing enc_output to the decoder
+            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
+            t_target = tf.expand_dims(batch_targets[:, t], 1)
+            # Next input is the last predicted position
+            dec_input = t_pred
+            # Reuse the hidden states for the next step
+            traj_obs_enc_last_state1 = dec_hidden1
+            traj_obs_enc_last_state2 = dec_hidden2
+            loss_value += loss_fn(t_target, t_pred)
+        # Average loss over the predicted times
+        batch_loss = (loss_value / int(batch_targets.shape[1]))
+        return batch_loss
 
     # Single training step, for one batch
     def batch_train_step(self, batch_inputs, batch_targets):
@@ -331,14 +363,14 @@ class TrajectoryEncoderDecoder():
         loss_fn = keras.losses.MeanSquaredError()
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
-            traj_obs_enc_last_state1, traj_obs_enc_last_state2, obs_enc_h = self.enc(batch_inputs, training=True)
+            traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=True)
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
             # Teacher forcing - feeding the target as the next input
-            for t in range(1, batch_targets.shape[1]):
+            for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h,training=True)
+                t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss for
                 loss_value += loss_fn(t_target, t_pred)
@@ -381,17 +413,20 @@ class TrajectoryEncoderDecoder():
         return tf.squeeze(tf.stack(traj_pred, axis=1))
 
     # Training loop
-    def training_loop(self,train_data,config,checkpoint,checkpoint_prefix):
-        num_batches_per_epoch = train_data.get_num_batches()
-        train_loss_results    = []
+    def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
+        num_batches_per_epoch= train_data.get_num_batches()
+        train_loss_results   = []
+        val_loss_results     = []
+        val_metrics_results  = []
         # Epochs
         for epoch in range(config.num_epochs):
+            print('Epoch {}.'.format(epoch + 1))
             # Cycle over batches
             total_loss = 0
             num_batches_per_epoch = train_data.get_num_batches()
             for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
                 # Format the data
-                batch_inputs, batch_targets = get_batch(batch, config, train=True)
+                batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
                 # Compute the loss value for this minibatch.
                 batch_loss = self.batch_train_step(batch_inputs, batch_targets)
@@ -399,13 +434,28 @@ class TrajectoryEncoderDecoder():
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
             train_loss_results.append(total_loss)
+
             # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
-            print('Epoch {} Loss {:.4f}'.format(epoch + 1, total_loss ))
-            if self.use_validation:
+            print('Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+
+            # Compute validation loss
+            total_loss = 0
+            num_batches_per_epoch = val_data.get_num_batches()
+            for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config)
+                batch_loss                  = self.batch_test_step(batch_inputs,batch_targets)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            val_loss_results.append(total_loss)
+
+            if config.use_validation:
                 pass
-            #            results = self.evaluate(val_data,sess)
+            val_metrics = self.quantitative_evaluation(val_data,config)
+            val_metrics_results.append(val_metrics)
             #            if results["ade"]< best['ade']:
             #                best['ade'] = results["ade"]
             #                best['fde'] = results["fde"]
@@ -422,7 +472,7 @@ class TrajectoryEncoderDecoder():
         num_batches_per_epoch = test_data.get_num_batches()
         for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
             # Format the data
-            batch_inputs, batch_targets = get_batch(batch, config, train=True)
+            batch_inputs, batch_targets = get_batch(batch, config)
             pred_out               = self.batch_predict(batch_inputs,batch_targets.shape[1])
             this_actual_batch_size = batch["original_batch_size"]
             d = []
@@ -455,7 +505,7 @@ class TrajectoryEncoderDecoder():
         trajIds  = np.random.randint(dataset.get_data_size(),size=n_trajectories)
         # Form th batch
         batch    = dataset.get_by_idxs(trajIds)
-        batch_inputs, batch_targets = get_batch(batch, config, train=False)
+        batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         pred_traj                   = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict
