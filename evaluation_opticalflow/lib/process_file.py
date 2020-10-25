@@ -316,9 +316,8 @@ def process_file(directory, args, delim):
             "obs_traj":  obs_traj
         }
         if args.neighborhood:
-                of_sim = OpticalFlowSimulator(use_bounds = True, lim=args.lim[args.ind_test])
-                flow,vis_neigh,_ = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
-                       
+            of_sim = OpticalFlowSimulator(use_bounds = True, lim=args.lim[args.ind_test])
+            flow,vis_neigh,_ = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],args.obs_len,obstacles_world)
         else:
             if args.obstacles:
                 of_sim = OpticalFlowSimulator()
