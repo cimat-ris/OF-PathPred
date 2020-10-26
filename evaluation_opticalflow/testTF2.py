@@ -25,9 +25,9 @@ experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obst
 # Dataset to be tested
 dataset_paths  = "../data1/"
 #dataset_name = 'eth-hotel'
-#dataset_name = 'eth-univ'
+dataset_name = 'eth-univ'
 #dataset_name = 'ucy-zara01'
-dataset_name = 'ucy-zara02'
+#dataset_name = 'ucy-zara02'
 recompute_opticalflow = False
 # File of trajectories coordinates. Coordinates are in world frame
 data_path = dataset_paths+dataset_name
@@ -37,7 +37,7 @@ print('[INF] Extracting data from thedatasets')
 data = process_file(data_path, experiment_parameters, ',')
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
-training_pc  = 0.6
+training_pc  = 0.5
 test_pc      = 0.2
 
 # Count how many data we have (sub-sequences of length 8, in pred_traj)
@@ -118,14 +118,14 @@ if perform_training==True:
     ax = fig.add_subplot(1, 2, 1)
     ax.plot(train_loss_results,'b',label='Training')
     ax.plot(val_loss_results,'r',label='Validation')
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("MSE")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
     ax.set_title('Training and validation losses')
     ax.legend()
     ax = fig.add_subplot(1, 2, 2)
     ax.plot(val_metrics_results["ade"],'b',label='ADE in validation')
     ax.plot(val_metrics_results["fde"],'r',label='FDE in validation')
-    ax.set_xlabel("epoch")
+    ax.set_xlabel("Epoch")
     ax.set_ylabel("Error (m)")
     ax.set_title('Metrics at validation')
     ax.legend()

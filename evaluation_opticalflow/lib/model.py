@@ -28,14 +28,14 @@ class Model_Parameters(object):
         self.flow_size = 64
         # For training
         self.num_epochs = 100
-        self.batch_size = 100  # batch size
+        self.batch_size = 64  # batch size
         self.use_validation = True
         # Network architecture
         self.P               = 2 # Dimension
         self.enc_hidden_size = 128 #
         self.dec_hidden_size = 128
         self.emb_size        = 32
-        self.keep_prob       = 0.7 # dropout
+        self.dropout_rate    = 0.25 # dropout
 
         self.min_ped      = 1
         self.seq_len      = self.obs_len + self.pred_len
@@ -64,25 +64,26 @@ class TrajectoryEncoder(layers.Layer):
             activation=config.activation_func,
             name='traj_enc_emb')
         # Dropout
-        self.dropout = tf.keras.layers.Dropout(1.0-config.keep_prob)
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # LSTM cell
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
             name   = 'traj_enc_cell',
-            dropout= 1.0-config.keep_prob,
-            recurrent_dropout=1.0-config.keep_prob)
+            dropout= config.dropout_rate,
+            recurrent_dropout=config.dropout_rate
+            )
         # Recurrent neural network using the previous cell
         # Initial state is zero
         self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
             return_sequences=True,
             return_state=True)
 
-    def call(self,traj_inputs):
+    def call(self,traj_inputs,training=None):
         # Linear embedding of the observed trajectories
         x = self.traj_xy_emb_enc(traj_inputs)
         # Dropout
-        x = self.dropout(x)
+        x = self.dropout(x,training=training)
         # Applies the position sequence through the LSTM
-        return self.lstm(x)
+        return self.lstm(x,training=training)
 
 """ Social encoding through embedding+RNN.
 """
@@ -94,24 +95,25 @@ class SocialEncoder(layers.Layer):
             activation=config.activation_func,
             name='social_enc_emb')
         # Dropout
-        self.dropout = tf.keras.layers.Dropout(1.0-config.keep_prob)
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # LSTM cell
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
             name   = 'social_enc_cell',
-            dropout= 1.0-config.keep_prob,
-            recurrent_dropout=1.0-config.keep_prob)
+            dropout= config.dropout_rate,
+            recurrent_dropout= config.dropout_rate
+            )
         # Recurrent neural network using the previous cell
         self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
             return_sequences=True,
             return_state=True)
 
-    def call(self,social_inputs):
+    def call(self,social_inputs,training=None):
         # Linear embedding of the observed trajectories
         x = self.traj_social_emb_enc(social_inputs)
         # Dropout
-        x = self.dropout(x)
+        x = self.dropout(x,training=training)
         # Applies the position sequence through the LSTM
-        return self.lstm(x)
+        return self.lstm(x,training=training)
 
 """ Focal attention layer.
 """
@@ -170,7 +172,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             inputs=tf.cond(self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
             outputs=self.out)
 
-    def call(self,inputs,training=False):
+    def call(self,inputs,training=None):
         # inputs[0] is the observed part
         traj_obs_inputs  = inputs[0]
         if self.add_social:
@@ -180,7 +182,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # Encoding
         # ----------------------------------------------------------
         # Applies the position sequence through the LSTM: [N,T1,H]
-        traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs)
+        traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
         # Get the hidden states and the last hidden state,
         # separately, and add them to the lists
         enc_h_list          = [traj_obs_enc_h]
@@ -190,7 +192,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # ----------------------------------------------------------
         if self.add_social:
             # Applies the person pose (keypoints) sequence through the LSTM
-            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs)
+            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs,training=training)
             # Get hidden states and the last hidden state, separately, and add them to the lists
             enc_h_list.append(soc_obs_enc_h)
             enc_last_state_list.append(soc_obs_enc_last_state)
@@ -248,12 +250,15 @@ class TrajectoryDecoder(tf.keras.Model):
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
+        # Dropout
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # RNN cell
         self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
             recurrent_initializer='glorot_uniform',
-            dropout= 1.0-config.keep_prob,
-            recurrent_dropout=1.0-config.keep_prob,
-            name='traj_dec')
+            name='traj_dec',
+            dropout= config.dropout_rate,
+            recurrent_dropout=config.dropout_rate
+            )
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         M = 1
         if (self.add_social):
@@ -280,10 +285,11 @@ class TrajectoryDecoder(tf.keras.Model):
                     outputs=self.out)
 
     # Call to the decoder
-    def call(self, dec_input, enc_last_state1, enc_last_state2, context, firstCall=False,training=False):
+    def call(self, dec_input, enc_last_state1, enc_last_state2, context, firstCall=False,training=None):
         # Decoder inputs: position
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
+        #decoder_inputs_emb = self.dropout(decoder_inputs_emb,training=training)
          # Attention: [N,1,h_dim]
         # query is decoder_out_h: [N,h_dim]
         query           = enc_last_state1
@@ -291,7 +297,7 @@ class TrajectoryDecoder(tf.keras.Model):
         # Augmented imput: [N,1,h_dim+emb]
         augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         # Application of the RNN: [N,T2,dec_hidden_size]
-        decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_state1, enc_last_state2))
+        decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_state1, enc_last_state2),training=training)
         decoder_out_h      = decoder_out[0]
         decoder_out_states1= decoder_out[1]
         decoder_out_states2= decoder_out[2]
@@ -318,7 +324,8 @@ class TrajectoryEncoderDecoder():
         # Instantiate an optimizer to train the models.
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
         # Instantiate the loss operator
-        self.loss_fn = keras.losses.MeanSquaredError()
+        # self.loss_fn = keras.losses.MeanSquaredError()
+        self.loss_fn = keras.losses.LogCosh()
 
     # Single testing step, for one batch
     def batch_test_step(self, batch_inputs, batch_targets):
@@ -328,24 +335,22 @@ class TrajectoryEncoderDecoder():
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         loss_value = 0
-        # Loss function
-        loss_fn = keras.losses.MeanSquaredError()
         # Apply trajectory and context encoding
-        traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=True)
+        traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=False)
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
         # Teacher forcing - feeding the target as the next input
         for t in range(0, batch_targets.shape[1]):
             # ------------------------ xy decoder--------------------------------------
             # Passing enc_output to the decoder
-            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
+            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=False)
             t_target = tf.expand_dims(batch_targets[:, t], 1)
             # Next input is the last predicted position
             dec_input = t_pred
             # Reuse the hidden states for the next step
             traj_obs_enc_last_state1 = dec_hidden1
             traj_obs_enc_last_state2 = dec_hidden2
-            loss_value += (batch_targets.shape[1]-t)*loss_fn(t_target, t_pred)
+            loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
         # Average loss over the predicted times
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
@@ -358,8 +363,6 @@ class TrajectoryEncoderDecoder():
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         loss_value = 0
-        # Loss function
-        loss_fn = keras.losses.MeanSquaredError()
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
             traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=True)
@@ -372,7 +375,7 @@ class TrajectoryEncoderDecoder():
                 t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss for
-                loss_value += (batch_targets.shape[1]-t)*loss_fn(t_target, t_pred)
+                loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
                 # Using teacher forcing [Nx1xK]
                 dec_input = tf.expand_dims(batch_targets[:, t], 1)
                 traj_obs_enc_last_state1 = dec_hidden1
@@ -401,7 +404,7 @@ class TrajectoryEncoderDecoder():
         for t in range(0, n_steps):
             # ------------------------ xy decoder--------------------------------------
             # Passing enc_output to the decoder
-            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
+            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=False)
             # Next input is the last predicted position
             dec_input = t_pred
             # Add it to the list of predictions
@@ -444,13 +447,14 @@ class TrajectoryEncoderDecoder():
                 # Compute validation loss
                 total_loss = 0
                 num_batches_per_epoch = val_data.get_num_batches()
-                for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+                for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
                     # Format the data
                     batch_inputs, batch_targets = get_batch(batch, config)
                     batch_loss                  = self.batch_test_step(batch_inputs,batch_targets)
                     total_loss+= batch_loss
                 # End epoch
                 total_loss = total_loss / num_batches_per_epoch
+                print('Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
                 val_loss_results.append(total_loss)
                 # Evaluat ADE, FDE metrics on validation data
                 val_metrics = self.quantitative_evaluation(val_data,config)
