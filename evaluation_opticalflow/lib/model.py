@@ -1,5 +1,6 @@
 import functools
 import operator
+import os
 from tqdm import tqdm
 from plot_utils import plot_gt_preds
 from traj_utils import relative_to_abs
@@ -13,29 +14,27 @@ from tensorflow.keras import models
 class Model_Parameters(object):
     """Model parameters.
     """
-    def __init__(self, train_num_examples, add_kp = False, add_social = False):
+    def __init__(self, add_kp = False, add_social = False):
         # -----------------
         # Observation/prediction lengths
         self.obs_len  = 8
         self.pred_len = 12
 
         self.add_kp             = add_kp
-        self.train_num_examples = train_num_examples
         self.add_social         = add_social
         # Key points
         self.kp_size = 18
         # Optical flow
         self.flow_size = 64
         # For training
-        self.num_epochs = 400
-        self.batch_size = 64  # batch size
-        self.use_validation = False
-        self.validate   = 300
+        self.num_epochs = 100
+        self.batch_size = 100  # batch size
+        self.use_validation = True
         # Network architecture
         self.P               = 2 # Dimension
-        self.enc_hidden_size = 64 #
-        self.dec_hidden_size = 64
-        self.emb_size        = 128
+        self.enc_hidden_size = 128 #
+        self.dec_hidden_size = 128
+        self.emb_size        = 32
         self.keep_prob       = 0.7 # dropout
 
         self.min_ped      = 1
@@ -346,7 +345,7 @@ class TrajectoryEncoderDecoder():
             # Reuse the hidden states for the next step
             traj_obs_enc_last_state1 = dec_hidden1
             traj_obs_enc_last_state2 = dec_hidden2
-            loss_value += loss_fn(t_target, t_pred)
+            loss_value += (batch_targets.shape[1]-t)*loss_fn(t_target, t_pred)
         # Average loss over the predicted times
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
@@ -373,7 +372,7 @@ class TrajectoryEncoderDecoder():
                 t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss for
-                loss_value += loss_fn(t_target, t_pred)
+                loss_value += (batch_targets.shape[1]-t)*loss_fn(t_target, t_pred)
                 # Using teacher forcing [Nx1xK]
                 dec_input = tf.expand_dims(batch_targets[:, t], 1)
                 traj_obs_enc_last_state1 = dec_hidden1
@@ -417,7 +416,8 @@ class TrajectoryEncoderDecoder():
         num_batches_per_epoch= train_data.get_num_batches()
         train_loss_results   = []
         val_loss_results     = []
-        val_metrics_results  = []
+        val_metrics_results  = { "ade": [], "fde": []}
+        best                 = {'ade':999999, 'fde':0, 'batchId':-1}
         # Epochs
         for epoch in range(config.num_epochs):
             print('Epoch {}.'.format(epoch + 1))
@@ -435,37 +435,35 @@ class TrajectoryEncoderDecoder():
             total_loss = total_loss / num_batches_per_epoch
             train_loss_results.append(total_loss)
 
-            # Saving (checkpoint) the model every 2 epochs
+                # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
             print('Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
 
-            # Compute validation loss
-            total_loss = 0
-            num_batches_per_epoch = val_data.get_num_batches()
-            for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
-                # Format the data
-                batch_inputs, batch_targets = get_batch(batch, config)
-                batch_loss                  = self.batch_test_step(batch_inputs,batch_targets)
-                total_loss+= batch_loss
-            # End epoch
-            total_loss = total_loss / num_batches_per_epoch
-            val_loss_results.append(total_loss)
-
             if config.use_validation:
-                pass
-            val_metrics = self.quantitative_evaluation(val_data,config)
-            val_metrics_results.append(val_metrics)
-            #            if results["ade"]< best['ade']:
-            #                best['ade'] = results["ade"]
-            #                best['fde'] = results["fde"]
-            #                   best["step"]= global_step
-            #                # Save the best model
-            #                checkpoint_path_model_best = os.path.join('models/'+dataset_name, 'model_best.ckpt')
-            #                bestsaver.save(sess,checkpoint_path_model_best,global_step = 0)
-            #                finalperf = results
-            #                val_perf.append((loss, results))
-        return train_loss_results,val_loss_results
+                # Compute validation loss
+                total_loss = 0
+                num_batches_per_epoch = val_data.get_num_batches()
+                for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+                    # Format the data
+                    batch_inputs, batch_targets = get_batch(batch, config)
+                    batch_loss                  = self.batch_test_step(batch_inputs,batch_targets)
+                    total_loss+= batch_loss
+                # End epoch
+                total_loss = total_loss / num_batches_per_epoch
+                val_loss_results.append(total_loss)
+                # Evaluat ADE, FDE metrics on validation data
+                val_metrics = self.quantitative_evaluation(val_data,config)
+                val_metrics_results['ade'].append(val_metrics['ade'])
+                val_metrics_results['fde'].append(val_metrics['fde'])
+                if val_metrics["ade"]< best['ade']:
+                    best['ade'] = val_metrics["ade"]
+                    best['fde'] = val_metrics["fde"]
+                    best["patchId"]= idx
+                    # Save the best model so far
+                    checkpoint_path_model_best = os.path.join(checkpoint_prefix, 'best')
+                    checkpoint.save(file_prefix = checkpoint_path_model_best)
+        return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
 
     def quantitative_evaluation(self,test_data,config):
         l2dis = []

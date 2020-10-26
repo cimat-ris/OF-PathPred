@@ -37,7 +37,7 @@ print('[INF] Extracting data from thedatasets')
 data = process_file(data_path, experiment_parameters, ',')
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
-training_pc  = 0.7
+training_pc  = 0.6
 test_pc      = 0.2
 
 # Count how many data we have (sub-sequences of length 8, in pred_traj)
@@ -53,7 +53,6 @@ idx_train = idx[0:training]
 idx_test  = idx[training:training+test]
 # Indices for validation
 idx_val   = idx[training+test:]
-
 # Training set
 training_data = {
      "obs_traj":      data["obs_traj"][idx_train],
@@ -64,7 +63,6 @@ training_data = {
 }
 if experiment_parameters.add_social:
     training_data["obs_flow"]=data["obs_flow"][idx_train]
-
 # Test set
 test_data = {
      "obs_traj":     data["obs_traj"][idx_test],
@@ -86,21 +84,22 @@ validation_data ={
 }
 if experiment_parameters.add_social:
     validation_data["obs_flow"]=data["obs_flow"][idx_val]
-
 print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
 print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
 # Model parameters
-model_parameters = Model_Parameters(train_num_examples=1,add_kp=False,add_social=False)
+model_parameters = Model_Parameters(add_kp=False,add_social=False)
 model_parameters.num_epochs = 100
+
+# Get the necessary data
+train_data       = batches_data.Dataset(training_data,model_parameters)
+val_data         = batches_data.Dataset(validation_data,model_parameters)
+test_data        = batches_data.Dataset(test_data, model_parameters)
 
 # Model
 tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 
-train_data       = batches_data.Dataset(training_data,model_parameters)
-val_data         = batches_data.Dataset(validation_data,model_parameters)
-test_data        = batches_data.Dataset(test_data, model_parameters)
 
 # Checkpoints
 checkpoint_dir = './training_checkpoints'
@@ -113,26 +112,34 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 print("[INF] Training")
 perform_training = True
 if perform_training==True:
-    train_loss_results,val_loss_results = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
+    train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
     # Plot training results
-    fig = plt.figure(figsize=(8,8))
-    ax = fig.add_subplot(1, 1, 1)
+    fig = plt.figure(figsize=(16,8))
+    ax = fig.add_subplot(1, 2, 1)
     ax.plot(train_loss_results,'b',label='Training')
     ax.plot(val_loss_results,'r',label='Validation')
     ax.set_xlabel("epoch")
     ax.set_ylabel("MSE")
     ax.set_title('Training and validation losses')
     ax.legend()
+    ax = fig.add_subplot(1, 2, 2)
+    ax.plot(val_metrics_results["ade"],'b',label='ADE in validation')
+    ax.plot(val_metrics_results["fde"],'r',label='FDE in validation')
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("Error (m)")
+    ax.set_title('Metrics at validation')
+    ax.legend()
     plt.show()
 
 
 # Testing
+# Restoring the latest checkpoint in checkpoint_dir
 print("[INF] Restoring last model")
-# restoring the latest checkpoint in checkpoint_dir
 checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
-
+# Quantitative testing: ADE/FDE
 print("[INF] Quantitative testing")
 results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
 print(results)
+# Qualitative testing
 print("[INF] Qualitative testing")
 tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)
