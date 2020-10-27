@@ -20,76 +20,64 @@ from tensorflow.keras import models
 
 
 # Load the default parameters
-experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=True)
+experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=True)
 
 # Dataset to be tested
-dataset_paths  = "../data1/"
-#dataset_name = 'eth-hotel'
-dataset_name = 'eth-univ'
-#dataset_name = 'ucy-zara01'
-#dataset_name = 'ucy-zara02'
-recompute_opticalflow = False
-# File of trajectories coordinates. Coordinates are in world frame
-data_path = dataset_paths+dataset_name
+dataset_dir               = "../data1/"
+testing_data_paths        = [dataset_dir+'eth-univ']
+training_data_paths       = [dataset_dir+'eth-hotel',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
 
 # Process data specified by the path to get the trajectories with
-print('[INF] Extracting data from thedatasets')
-data = process_file(data_path, experiment_parameters, ',')
-
-# Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
-training_pc  = 0.5
-test_pc      = 0.2
+print('[INF] Extracting data from the datasets')
+test_data     = process_file(testing_data_paths, experiment_parameters)
+train_data = process_file(training_data_paths, experiment_parameters)
 
 # Count how many data we have (sub-sequences of length 8, in pred_traj)
-ndata      = len(data[list(data.keys())[2]])
-idx        = np.random.permutation(ndata)
-training   = int(ndata*training_pc)
-test       = int(ndata*test_pc)
-validation = int(ndata-training-test)
+n_test_data  = len(test_data[list(test_data.keys())[2]])
+n_train_data = len(train_data[list(train_data.keys())[2]])
+idx        = np.random.permutation(n_train_data)
+validation_pc = 0.1
+validation    = int(n_train_data*validation_pc)
+training      = int(n_train_data-validation)
 
 # Indices for training
 idx_train = idx[0:training]
-# Indices for testing
-idx_test  = idx[training:training+test]
 # Indices for validation
-idx_val   = idx[training+test:]
+idx_val   = idx[training:]
 # Training set
 training_data = {
-     "obs_traj":      data["obs_traj"][idx_train],
-     "obs_traj_rel":  data["obs_traj_rel"][idx_train],
-     "pred_traj":     data["pred_traj"][idx_train],
-     "pred_traj_rel": data["pred_traj_rel"][idx_train],
-     "key_idx":       data["key_idx"][idx_train]
+     "obs_traj":      train_data["obs_traj"][idx_train],
+     "obs_traj_rel":  train_data["obs_traj_rel"][idx_train],
+     "pred_traj":     train_data["pred_traj"][idx_train],
+     "pred_traj_rel": train_data["pred_traj_rel"][idx_train],
 }
 if experiment_parameters.add_social:
-    training_data["obs_flow"]=data["obs_flow"][idx_train]
+    training_data["obs_flow"]=train_data["obs_flow"][idx_train]
 # Test set
-test_data = {
-     "obs_traj":     data["obs_traj"][idx_test],
-     "obs_traj_rel": data["obs_traj_rel"][idx_test],
-     "pred_traj":    data["pred_traj"][idx_test],
-     "pred_traj_rel":data["pred_traj_rel"][idx_test],
-     "key_idx":      data["key_idx"][idx_test]
+testing_data = {
+     "obs_traj":     test_data["obs_traj"][:],
+     "obs_traj_rel": test_data["obs_traj_rel"][:],
+     "pred_traj":    test_data["pred_traj"][:],
+     "pred_traj_rel":test_data["pred_traj_rel"][:],
 }
 if experiment_parameters.add_social:
-    test_data["obs_flow"]=data["obs_flow"][idx_test]
+    testing_data["obs_flow"]=test_data["obs_flow"][:]
 
 # Validation set
 validation_data ={
-     "obs_traj":     data["obs_traj"][idx_val],
-     "obs_traj_rel": data["obs_traj_rel"][idx_val],
-     "pred_traj":    data["pred_traj"][idx_val],
-     "pred_traj_rel":data["pred_traj_rel"][idx_val],
-     "key_idx":      data["key_idx"][idx_val]
+     "obs_traj":     train_data["obs_traj"][idx_val],
+     "obs_traj_rel": train_data["obs_traj_rel"][idx_val],
+     "pred_traj":    train_data["pred_traj"][idx_val],
+     "pred_traj_rel":train_data["pred_traj_rel"][idx_val],
 }
 if experiment_parameters.add_social:
-    validation_data["obs_flow"]=data["obs_flow"][idx_val]
+    validation_data["obs_flow"]=train_data["obs_flow"][idx_val]
 print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
 print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
 # Model parameters
-model_parameters = Model_Parameters(add_kp=False,add_social=False)
+model_parameters = Model_Parameters(add_kp=False,add_social=True)
 model_parameters.num_epochs = 100
 
 # Get the necessary data
