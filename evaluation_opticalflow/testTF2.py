@@ -133,7 +133,7 @@ plt.show()
 #############################################################
 # Model parameters
 model_parameters = Model_Parameters(add_kp=False,add_social=False)
-model_parameters.num_epochs = 100
+model_parameters.num_epochs = 50
 
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
@@ -153,7 +153,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training")
-perform_training = True
+perform_training = False
 if perform_training==True:
     train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
     # Plot training results
@@ -177,8 +177,8 @@ if perform_training==True:
 
 # Testing
 # Restoring the latest checkpoint in checkpoint_dir
-print("[INF] Restoring last model")
-checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
+print("[INF] Restoring best model")
+checkpoint.read(checkpoint_prefix+'-best')
 # Quantitative testing: ADE/FDE
 print("[INF] Quantitative testing")
 results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)

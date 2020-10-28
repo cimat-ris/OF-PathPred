@@ -19,6 +19,7 @@ class Model_Parameters(object):
         # Observation/prediction lengths
         self.obs_len  = 8
         self.pred_len = 12
+        self.seq_len      = self.obs_len + self.pred_len
 
         self.add_kp             = add_kp
         self.add_social         = add_social
@@ -32,24 +33,16 @@ class Model_Parameters(object):
         self.use_validation = True
         # Network architecture
         self.P               = 2 # Dimension
-        self.enc_hidden_size = 128 #
-        self.dec_hidden_size = 128
-        self.emb_size        = 32
-        self.dropout_rate    = 0.25 # dropout
-
-        self.min_ped      = 1
-        self.seq_len      = self.obs_len + self.pred_len
+        self.enc_hidden_size = 256 # Default value in NextP
+        self.dec_hidden_size = 256 # Default value in NextP
+        self.emb_size        = 128 # Default value in NextP
+        self.dropout_rate    = 0.3 # Default value in NextP
 
         self.activation_func  = tf.nn.tanh
         self.activation_func1 = tf.nn.relu
         self.multi_decoder = False
         self.modelname = 'gphuctl'
-
-        self.init_lr = 0.002 # 0.01
-        self.learning_rate_decay = 0.85
-        self.num_epoch_per_decay = 2.0
         self.optimizer = 'adam'
-        self.emb_lr = 1.0
         # To save the best model
         self.load_best = True
 
@@ -321,8 +314,18 @@ class TrajectoryEncoderDecoder():
         # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
+
+        initial_learning_rate = 0.1
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                initial_learning_rate,
+                decay_steps=100000,
+                decay_rate=0.96,
+                staircase=True)
+
         # Instantiate an optimizer to train the models.
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
+        # self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
+        self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
+
         # Instantiate the loss operator
         # self.loss_fn = keras.losses.MeanSquaredError()
         self.loss_fn = keras.losses.LogCosh()
@@ -360,6 +363,8 @@ class TrajectoryEncoderDecoder():
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
+        # variables
+        variables = self.enc.trainable_weights + self.dec.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         loss_value = 0
@@ -380,8 +385,9 @@ class TrajectoryEncoderDecoder():
                 dec_input = tf.expand_dims(batch_targets[:, t], 1)
                 traj_obs_enc_last_state1 = dec_hidden1
                 traj_obs_enc_last_state2 = dec_hidden2
-
-        variables = self.enc.trainable_weights + self.dec.trainable_weights
+            # L2 weight decay
+            loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
+                        if 'bias' not in v.name ]) * 0.0001
         # Get the gradients
         grads = g.gradient(loss_value, variables)
         # Run one step of gradient descent
@@ -465,8 +471,7 @@ class TrajectoryEncoderDecoder():
                     best['fde'] = val_metrics["fde"]
                     best["patchId"]= idx
                     # Save the best model so far
-                    checkpoint_path_model_best = os.path.join(checkpoint_prefix, 'best')
-                    checkpoint.save(file_prefix = checkpoint_path_model_best)
+                    checkpoint.write(checkpoint_prefix+'-best')
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
 
     def quantitative_evaluation(self,test_data,config):
