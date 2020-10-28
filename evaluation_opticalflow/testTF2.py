@@ -1,5 +1,12 @@
 # Imports
 import sys,os
+''' TF_CPP_MIN_LOG_LEVEL
+0 = all messages are logged (default behavior)
+1 = INFO messages are not printed
+2 = INFO and WARNING messages are not printed
+3 = INFO, WARNING, and ERROR messages are not printed
+'''
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.append('./lib')
 import math,numpy as np
 import warnings
@@ -41,9 +48,9 @@ if not use_pickled_data:
     # Count how many data we have (sub-sequences of length 8, in pred_traj)
     n_test_data  = len(test_data[list(test_data.keys())[2]])
     n_train_data = len(train_data[list(train_data.keys())[2]])
-    #idx        = np.random.permutation(n_train_data)
-    idx = range(n_train_data)
-    validation_pc = 0.2
+    idx        = np.random.permutation(n_train_data)
+    #idx = range(n_train_data)
+    validation_pc = 0.25
     validation    = int(n_train_data*validation_pc)
     training      = int(n_train_data-validation)
 
@@ -153,7 +160,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training")
-perform_training = False
+perform_training = True
 if perform_training==True:
     train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
     # Plot training results
