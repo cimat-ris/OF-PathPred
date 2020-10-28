@@ -39,7 +39,6 @@ class Model_Parameters(object):
         self.dropout_rate    = 0.3 # Default value in NextP
 
         self.activation_func  = tf.nn.tanh
-        self.activation_func1 = tf.nn.relu
         self.multi_decoder = False
         self.modelname = 'gphuctl'
         self.optimizer = 'adam'
@@ -55,9 +54,10 @@ class TrajectoryEncoder(layers.Layer):
         # Linear embedding of the observed trajectories (for each x,y)
         self.traj_xy_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
+            use_bias=True,
             name='traj_enc_emb')
-        # Dropout
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
+        # Dropout: Redundant with the following?
+        # self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # LSTM cell
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
             name   = 'traj_enc_cell',
@@ -73,8 +73,6 @@ class TrajectoryEncoder(layers.Layer):
     def call(self,traj_inputs,training=None):
         # Linear embedding of the observed trajectories
         x = self.traj_xy_emb_enc(traj_inputs)
-        # Dropout
-        x = self.dropout(x,training=training)
         # Applies the position sequence through the LSTM
         return self.lstm(x,training=training)
 
@@ -87,8 +85,6 @@ class SocialEncoder(layers.Layer):
         self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='social_enc_emb')
-        # Dropout
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # LSTM cell
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
             name   = 'social_enc_cell',
@@ -103,8 +99,6 @@ class SocialEncoder(layers.Layer):
     def call(self,social_inputs,training=None):
         # Linear embedding of the observed trajectories
         x = self.traj_social_emb_enc(social_inputs)
-        # Dropout
-        x = self.dropout(x,training=training)
         # Applies the position sequence through the LSTM
         return self.lstm(x,training=training)
 
