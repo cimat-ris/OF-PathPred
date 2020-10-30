@@ -22,6 +22,7 @@ def process_file(data_paths, parameters):
     # Lists that will hold the data
     num_person_starting_at_frame = []
     seq_pos_all                  = []
+    seq_theta_all                = []
     seq_rel_all                  = []
     seq_neighbors_all            = []
     seq_frames_all               = []  # [N, seq_len]
@@ -85,6 +86,8 @@ def process_file(data_paths, parameters):
             pos_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
             # Same, with only the displacements
             rel_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
+            # Same with orientations
+            theta_seq_data = np.zeros((num_peds_in_seq, seq_len, 1), dtype="float32")
             # Is the array that have the sequence of Id_person of all people that there are in frame sequence
             frame_ids_seq_data = np.zeros((num_peds_in_seq, seq_len), dtype="int32")
 
@@ -139,11 +142,17 @@ def process_file(data_paths, parameters):
                 ped_seq_pos = ped_seq_data[:,2:]
                 # Spatial data (relative)
                 ped_seq_rel = np.zeros_like(ped_seq_pos)
-                # First frame of the relative array is set to zeros
-                ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
+                if parameters.output_representation=='dxdy':
+                    # First frame of the relative array is set to zeros
+                    ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
+                else:
+                    ped_seq_rel[1:, 0] = np.sqrt(np.sum(np.square(ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]),axis=1))
+                    ped_seq_rel[1:, 1] = np.arctan2(ped_seq_pos[1:, 1] - ped_seq_pos[:-1, 1],ped_seq_pos[1:, 0] - ped_seq_pos[:-1, 0])
+
                 # Absolute x,y and displacements for all person_id
                 pos_seq_data[ped_count, :, :] = ped_seq_pos
                 rel_seq_data[ped_count, :, :] = ped_seq_rel
+                theta_seq_data[ped_count, :, 0] = ped_seq_rel[:,1]
 
                 # For each tracked person
                 # we keep the list of all the frames in which it is present
@@ -160,14 +169,15 @@ def process_file(data_paths, parameters):
             seq_pos_all.append(pos_seq_data[:ped_count])
             # Append all the displacement trajectories (pos_seq_data) starting at this frame
             seq_rel_all.append(rel_seq_data[:ped_count])
+            seq_theta_all.append(theta_seq_data[:ped_count])
             # Append all the frame ranges (frame_ids_seq_data) starting at this frame
             seq_frames_all.append(frame_ids_seq_data[:ped_count])
             # Information used locally for this dataset
             seq_pos_dataset.append(pos_seq_data[:ped_count])
-            # Neighbours
-            seq_neighbors_all.append(neighbors_data[:ped_count])
             # Social interactions
             if parameters.add_social:
+                # Neighbours
+                seq_neighbors_all.append(neighbors_data[:ped_count])
                 # Append all the neighbor data (neighbors_data) starting at this frame
                 seq_neighbors_dataset.append(neighbors_data[:ped_count])
 
@@ -196,27 +206,31 @@ def process_file(data_paths, parameters):
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
     seq_pos_all   = np.concatenate(seq_pos_all, axis=0)
     seq_rel_all   = np.concatenate(seq_rel_all, axis=0)
+    seq_theta_all = np.concatenate(seq_theta_all, axis=0)
     seq_frames_all= np.concatenate(seq_frames_all, axis=0)
-    seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
+    if parameters.add_social:
+        seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
     print("[INF] Total number of sample sequences: ",len(seq_pos_all))
 
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
-    obs_traj     = seq_pos_all[:, :obs_len, :]
-    pred_traj    = seq_pos_all[:, obs_len:, :]
-    frame_obs    = seq_frames_all[:, :obs_len]
-    obs_traj_rel = seq_rel_all[:, :obs_len, :]
-    pred_traj_rel= seq_rel_all[:, obs_len:, :]
-    neighbors_obs= seq_neighbors_all[:, :obs_len, :]
+    obs_traj      = seq_pos_all[:, :obs_len, :]
+    obs_traj_theta= seq_theta_all[:, :obs_len, :]
+    pred_traj     = seq_pos_all[:, obs_len:, :]
+    frame_obs     = seq_frames_all[:, :obs_len]
+    obs_traj_rel  = seq_rel_all[:, :obs_len, :]
+    pred_traj_rel = seq_rel_all[:, obs_len:, :]
+    if parameters.add_social:
+        neighbors_obs= seq_neighbors_all[:, :obs_len, :]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
         "obs_traj_rel": obs_traj_rel,
+        "obs_traj_theta":obs_traj_theta,
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
-        "frames_obs": frame_obs,
-        "neighbors_obs": neighbors_obs
+        "frames_obs": frame_obs
     }
 
     # Optical flow
@@ -224,5 +238,6 @@ def process_file(data_paths, parameters):
         all_flow = np.concatenate(all_flow,axis=0)
         data.update({
             "obs_flow": all_flow,
+            "neighbors_obs": neighbors_obs
         })
     return data
