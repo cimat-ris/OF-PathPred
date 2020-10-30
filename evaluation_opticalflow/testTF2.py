@@ -30,10 +30,10 @@ from datetime import datetime
 random.seed(datetime.now())
 
 experiment_name  = 'LOO-eth-hotel'
-use_pickled_data = True
+use_pickled_data = False
 if not use_pickled_data:
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=True)
+    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 
     # Dataset to be tested
     dataset_dir               = "../data1/"
@@ -48,11 +48,10 @@ if not use_pickled_data:
     # Count how many data we have (sub-sequences of length 8, in pred_traj)
     n_test_data  = len(test_data[list(test_data.keys())[2]])
     n_train_data = len(train_data[list(train_data.keys())[2]])
-    idx        = np.random.permutation(n_train_data)
-    #idx = range(n_train_data)
-    validation_pc = 0.25
-    validation    = int(n_train_data*validation_pc)
-    training      = int(n_train_data-validation)
+    idx          = np.random.permutation(n_train_data)
+    validation_pc= 0.25
+    validation   = int(n_train_data*validation_pc)
+    training     = int(n_train_data-validation)
 
     # Indices for training
     idx_train = idx[0:training]
@@ -133,14 +132,10 @@ for (o,p) in zip(training_data["obs_traj"][samples],training_data["pred_traj"][s
 plt.show()
 
 
-
-
-
-
 #############################################################
 # Model parameters
-model_parameters = Model_Parameters(add_kp=False,add_social=False)
-model_parameters.num_epochs = 50
+model_parameters = Model_Parameters(add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social)
+model_parameters.num_epochs = 60
 
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
@@ -155,41 +150,50 @@ tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 checkpoint_dir = './training_checkpoints'
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
 checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
-                                    encoder=tj_enc_dec.enc,
-                                    decoder=tj_enc_dec.dec)
+                                            encoder=tj_enc_dec.enc,
+                                            decoder=tj_enc_dec.dec)
 
 # Training
 print("[INF] Training")
 perform_training = True
+plot_training    = False
+all_results      = []
 if perform_training==True:
-    train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
-    # Plot training results
-    fig = plt.figure(figsize=(16,8))
-    ax = fig.add_subplot(1, 2, 1)
-    ax.plot(train_loss_results,'b',label='Training')
-    ax.plot(val_loss_results,'r',label='Validation')
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss")
-    ax.set_title('Training and validation losses')
-    ax.legend()
-    ax = fig.add_subplot(1, 2, 2)
-    ax.plot(val_metrics_results["ade"],'b',label='ADE in validation')
-    ax.plot(val_metrics_results["fde"],'r',label='FDE in validation')
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Error (m)")
-    ax.set_title('Metrics at validation')
-    ax.legend()
-    plt.show()
+        train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
+        if plot_training==True:
+            # Plot training results
+            fig = plt.figure(figsize=(16,8))
+            ax = fig.add_subplot(1, 2, 1)
+            ax.plot(train_loss_results,'b',label='Training')
+            ax.plot(val_loss_results,'r',label='Validation')
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
+            ax.set_title('Training and validation losses')
+            ax.legend()
+            ax = fig.add_subplot(1, 2, 2)
+            ax.plot(val_metrics_results["ade"],'b',label='ADE in validation')
+            ax.plot(val_metrics_results["fde"],'r',label='FDE in validation')
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Error (m)")
+            ax.set_title('Metrics at validation')
+            ax.legend()
+            plt.show()
+
+        # Testing
+        # Restoring the latest checkpoint in checkpoint_dir
+        print("[INF] Restoring best model")
+        checkpoint.read(checkpoint_prefix+'-best')
+
+        # Quantitative testing: ADE/FDE
+        print("[INF] Quantitative testing")
+        results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
+        print(results)
+        all_results.append(results)
 
 
-# Testing
-# Restoring the latest checkpoint in checkpoint_dir
-print("[INF] Restoring best model")
-checkpoint.read(checkpoint_prefix+'-best')
-# Quantitative testing: ADE/FDE
-print("[INF] Quantitative testing")
-results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
-print(results)
+print(all_results)
 # Qualitative testing
-print("[INF] Qualitative testing")
-tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)
+qualitative = False
+if qualitative==True:
+    print("[INF] Qualitative testing")
+    tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)

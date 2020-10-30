@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras.layers import Dense, Bidirectional
 from tensorflow.keras import models
 
 class Model_Parameters(object):
@@ -17,38 +18,41 @@ class Model_Parameters(object):
     def __init__(self, add_kp = False, add_social = False):
         # -----------------
         # Observation/prediction lengths
-        self.obs_len  = 8
-        self.pred_len = 12
-        self.seq_len      = self.obs_len + self.pred_len
-
-        self.add_kp             = add_kp
-        self.add_social         = add_social
+        self.obs_len        = 8
+        self.pred_len       = 12
+        self.seq_len        = self.obs_len + self.pred_len
+        self.add_kp         = add_kp
+        self.add_social     = add_social
+        self.add_attention  = False
+        self.add_bidirection= True
         # Key points
-        self.kp_size = 18
+        self.kp_size        = 18
         # Optical flow
-        self.flow_size = 64
+        self.flow_size      = 64
         # For training
-        self.num_epochs = 100
-        self.batch_size = 64  # batch size
+        self.num_epochs     = 100
+        self.batch_size     = 256  # batch size
         self.use_validation = True
         # Network architecture
-        self.P               = 2 # Dimension
-        self.enc_hidden_size = 256 # Default value in NextP
-        self.dec_hidden_size = 256 # Default value in NextP
-        self.emb_size        = 128 # Default value in NextP
-        self.dropout_rate    = 0.3 # Default value in NextP
+        self.P              =   2 # Dimensions of the position vectors
+        self.enc_hidden_size= 128 # Default value in NextP
+        self.dec_hidden_size= 128 # Default value in NextP
+        self.emb_size       =  64 # Default value in NextP
+        self.dropout_rate   = 0.3 # Default value in NextP
 
-        self.activation_func  = tf.nn.tanh
-        self.multi_decoder = False
-        self.modelname = 'gphuctl'
-        self.optimizer = 'adam'
+        #self.activation_func= tf.nn.relu
+        self.activation_func= tf.nn.tanh
+        self.multi_decoder  = False
+        self.modelname      = 'gphuctl'
+        self.optimizer      = 'adam'
         # To save the best model
-        self.load_best = True
+        self.load_best      = True
 
 """ Trajectory encoder through embedding+RNN.
 """
 class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
+        self.add_bidirection = config.add_bidirection
         # xy encoder: [N,T1,h_dim]
         super(TrajectoryEncoder, self).__init__(name="traj_enc")
         # Linear embedding of the observed trajectories (for each x,y)
@@ -56,9 +60,7 @@ class TrajectoryEncoder(layers.Layer):
             activation=config.activation_func,
             use_bias=True,
             name='traj_enc_emb')
-        # Dropout: Redundant with the following?
-        # self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
-        # LSTM cell
+        # LSTM cell, including dropout
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
             name   = 'traj_enc_cell',
             dropout= config.dropout_rate,
@@ -66,9 +68,14 @@ class TrajectoryEncoder(layers.Layer):
             )
         # Recurrent neural network using the previous cell
         # Initial state is zero
-        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
-            return_sequences=True,
-            return_state=True)
+        if (self.add_bidirection):
+            self.lstm      = Bidirectional(tf.keras.layers.RNN(self.lstm_cell,
+                return_sequences=True,
+                return_state=True),merge_mode='sum')
+        else:
+            self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+                return_sequences=True,
+                return_state=True)
 
     def call(self,traj_inputs,training=None):
         # Linear embedding of the observed trajectories
@@ -85,7 +92,7 @@ class SocialEncoder(layers.Layer):
         self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='social_enc_emb')
-        # LSTM cell
+        # LSTM cell, including dropout
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
             name   = 'social_enc_cell',
             dropout= config.dropout_rate,
@@ -137,14 +144,16 @@ class FocalAttention(layers.Layer):
 class TrajectoryAndContextEncoder(tf.keras.Model):
     def __init__(self,config):
         super(TrajectoryAndContextEncoder, self).__init__(name="traj_ctxt_enc")
-        self.add_social   = config.add_social
+        self.add_social     = config.add_social
+        self.add_attention  = config.add_attention
+        self.add_bidirection=config.add_bidirection
         # Input layers
         obs_shape  = (config.obs_len,config.P)
         soc_shape  = (config.obs_len,config.flow_size)
         self.input_layer_traj = layers.Input(obs_shape)
         # Encoding: Positions
         self.traj_enc     = TrajectoryEncoder(config)
-        if (self.add_social):
+        if (self.add_attention and self.add_social):
             # In the case of handling social interactions, add a third input
             self.input_layer_social = layers.Input(soc_shape)
             # Encoding: Social interactions
@@ -156,20 +165,23 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             self.out = self.call([self.input_layer_traj])
         # Call init again. This is a workaround for being able to use summary
         super(TrajectoryAndContextEncoder, self).__init__(
-            inputs=tf.cond(self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
+            inputs=tf.cond(self.add_attention and self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
             outputs=self.out)
 
     def call(self,inputs,training=None):
         # inputs[0] is the observed part
         traj_obs_inputs  = inputs[0]
-        if self.add_social:
+        if self.add_attention and self.add_social:
             # inputs[1] are the social interaction features
             soc_inputs     = inputs[1]
         # ----------------------------------------------------------
         # Encoding
         # ----------------------------------------------------------
         # Applies the position sequence through the LSTM: [N,T1,H]
-        traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
+        if self.add_bidirection:
+            traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2,__,__ = self.traj_enc(traj_obs_inputs,training=training)
+        else:
+            traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
         # Get the hidden states and the last hidden state,
         # separately, and add them to the lists
         enc_h_list          = [traj_obs_enc_h]
@@ -177,9 +189,9 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # ----------------------------------------------------------
         # Social interaccion (through optical flow)
         # ----------------------------------------------------------
-        if self.add_social:
+        if self.add_attention and self.add_social:
             # Applies the person pose (keypoints) sequence through the LSTM
-            soc_obs_enc_h, soc_obs_enc_last_state, __ = self.soc_enc(soc_inputs,training=training)
+            soc_obs_enc_h, soc_obs_enc_last_state, __, = self.soc_enc(soc_inputs,training=training)
             # Get hidden states and the last hidden state, separately, and add them to the lists
             enc_h_list.append(soc_obs_enc_h)
             enc_last_state_list.append(soc_obs_enc_last_state)
@@ -232,13 +244,12 @@ class TrajectoryDecoder(tf.keras.Model):
     def __init__(self, config):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
         self.add_social   = config.add_social
+        self.add_attention= config.add_attention
         # TODO: multiple decoder to be done
         # Linear embedding of the observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
-        # Dropout
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # RNN cell
         self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
             recurrent_initializer='glorot_uniform',
@@ -247,11 +258,15 @@ class TrajectoryDecoder(tf.keras.Model):
             recurrent_dropout=config.dropout_rate
             )
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
-        M = 1
-        if (self.add_social):
-            M=M+1
+        self.M = 1
+        if (self.add_attention and self.add_social):
+            self.M=self.M+1
+
         # Attention layer
-        self.focal_attention = FocalAttention(config,M)
+        if (self.add_attention):
+            self.focal_attention = FocalAttention(config,self.M)
+        # Dropout
+        # self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
             activation=tf.identity,
@@ -263,7 +278,7 @@ class TrajectoryDecoder(tf.keras.Model):
         self.input_layer_hid1= layers.Input(enc_last_state_shape)
         self.input_layer_hid2= layers.Input(enc_last_state_shape)
         # [N,M,T1,h_dim]
-        ctxt_shape = (M,config.obs_len,config.enc_hidden_size)
+        ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
         self.input_layer_ctxt = layers.Input(ctxt_shape)
         self.out = self.call(self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt)
         # Call init again. This is a workaround for being able to use summary
@@ -276,23 +291,26 @@ class TrajectoryDecoder(tf.keras.Model):
         # Decoder inputs: position
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
-        #decoder_inputs_emb = self.dropout(decoder_inputs_emb,training=training)
-         # Attention: [N,1,h_dim]
+        # Attention: [N,1,h_dim]
         # query is decoder_out_h: [N,h_dim]
         query           = enc_last_state1
-        attention       = self.focal_attention(query, context)
-        # Augmented imput: [N,1,h_dim+emb]
-        augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
+        if self.add_attention:
+            attention       = self.focal_attention(query, context)
+            # Augmented input: [N,1,h_dim+emb]
+            augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
+        else:
+            augmented_inputs= decoder_inputs_emb
         # Application of the RNN: [N,T2,dec_hidden_size]
         decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_state1, enc_last_state2),training=training)
         decoder_out_h      = decoder_out[0]
         decoder_out_states1= decoder_out[1]
         decoder_out_states2= decoder_out[2]
+        # TODO: dropout here?
+        # decoder_out_h = self.dropout(decoder_out_h,training=training)
         # Mapping to positions
         decoder_out_xy = self.h_to_xy(decoder_out_h)
         # Concatenate previous xy embedding, attended encoded states
         # [N,emb+h_dim]
-        # next_input = tf.concat([xy_emb, attended_encode_states], axis=1)
         return decoder_out_xy, decoder_out_states1, decoder_out_states2
 
 # The main class
@@ -321,8 +339,16 @@ class TrajectoryEncoderDecoder():
         self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
 
         # Instantiate the loss operator
-        # self.loss_fn = keras.losses.MeanSquaredError()
-        self.loss_fn = keras.losses.LogCosh()
+        self.loss_fn = keras.losses.MeanSquaredError()
+        #self.loss_fn = keras.losses.LogCosh()
+
+    # Trick to reset th weights: We save them and reload them
+    def save_tmp(self):
+        self.enc.save_weights('tmp_enc.h5')
+        self.dec.save_weights('tmp_dec.h5')
+    def load_tmp(self):
+        self.enc.load_weights('tmp_enc.h5')
+        self.dec.load_weights('tmp_dec.h5')
 
     # Single testing step, for one batch
     def batch_test_step(self, batch_inputs, batch_targets):
@@ -466,6 +492,7 @@ class TrajectoryEncoderDecoder():
                     best["patchId"]= idx
                     # Save the best model so far
                     checkpoint.write(checkpoint_prefix+'-best')
+                print('Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_metrics['ade']))
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
 
     def quantitative_evaluation(self,test_data,config):
