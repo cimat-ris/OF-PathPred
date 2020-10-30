@@ -30,10 +30,10 @@ from datetime import datetime
 random.seed(datetime.now())
 
 experiment_name  = 'LOO-eth-hotel'
-use_pickled_data = False
+experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=False)
+use_pickled_data = True
 if not use_pickled_data:
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 
     # Dataset to be tested
     dataset_dir               = "../data1/"
@@ -134,7 +134,7 @@ plt.show()
 
 #############################################################
 # Model parameters
-model_parameters = Model_Parameters(add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social)
+model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social)
 model_parameters.num_epochs = 60
 
 # Get the necessary data

@@ -15,7 +15,7 @@ from tensorflow.keras import models
 class Model_Parameters(object):
     """Model parameters.
     """
-    def __init__(self, add_kp = False, add_social = False):
+    def __init__(self, add_attention=True, add_kp = False, add_social = False):
         # -----------------
         # Observation/prediction lengths
         self.obs_len        = 8
@@ -23,7 +23,7 @@ class Model_Parameters(object):
         self.seq_len        = self.obs_len + self.pred_len
         self.add_kp         = add_kp
         self.add_social     = add_social
-        self.add_attention  = False
+        self.add_attention  = add_attention
         self.add_bidirection= True
         # Key points
         self.kp_size        = 18
