@@ -61,6 +61,7 @@ if not use_pickled_data:
     training_data = {
         "obs_traj":      train_data["obs_traj"][idx_train],
         "obs_traj_rel":  train_data["obs_traj_rel"][idx_train],
+        "obs_traj_theta":train_data["obs_traj_theta"][idx_train],
         "pred_traj":     train_data["pred_traj"][idx_train],
         "pred_traj_rel": train_data["pred_traj_rel"][idx_train],
     }
@@ -70,6 +71,7 @@ if not use_pickled_data:
     testing_data = {
         "obs_traj":     test_data["obs_traj"][:],
         "obs_traj_rel": test_data["obs_traj_rel"][:],
+        "obs_traj_theta":test_data["obs_traj_theta"][:],
         "pred_traj":    test_data["pred_traj"][:],
         "pred_traj_rel":test_data["pred_traj_rel"][:],
     }
@@ -79,6 +81,7 @@ if not use_pickled_data:
     validation_data ={
         "obs_traj":     train_data["obs_traj"][idx_val],
         "obs_traj_rel": train_data["obs_traj_rel"][idx_val],
+        "obs_traj_theta":train_data["obs_traj_theta"][idx_val],
         "pred_traj":    train_data["pred_traj"][idx_val],
         "pred_traj_rel":train_data["pred_traj_rel"][idx_val],
     }
@@ -96,7 +99,7 @@ if not use_pickled_data:
     pickle_out.close()
 
     # Validation dataset
-    pickle_out = open('test_data_'+experiment_name+'.pickle',"wb")
+    pickle_out = open('validation_data_'+experiment_name+'.pickle',"wb")
     pickle.dump(validation_data, pickle_out, protocol=2)
     pickle_out.close()
 else:
@@ -106,7 +109,7 @@ else:
     training_data = pickle.load(pickle_in)
     pickle_in = open('test_data_'+experiment_name+'.pickle',"rb")
     test_data = pickle.load(pickle_in)
-    pickle_in = open('test_data_'+experiment_name+'.pickle',"rb")
+    pickle_in = open('validation_data_'+experiment_name+'.pickle',"rb")
     validation_data = pickle.load(pickle_in)
 
 
@@ -117,24 +120,27 @@ print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.ke
 
 # Plot ramdomly a subset of the training data (spatial data only)
 training = len(training_data[list(training_data.keys())[0]])
-nSamples = min(30,training)
-samples  = random.sample(range(1,training), nSamples)
-plt.subplots(1,1,figsize=(10,10))
-plt.subplot(1,1,1)
-plt.axis('equal')
-# Plot some of the training data
-for (o,p) in zip(training_data["obs_traj"][samples],training_data["pred_traj"][samples]):
-    # Observations
-    plt.plot(o[:,0],o[:,1],color='red')
-    plt.plot([o[-1,0],p[0,0]],[o[-1,1],p[0,1]],color='blue')
-    # Prediction targets
-    plt.plot(p[:,0],p[:,1],color='blue')
-plt.show()
-
+nSamples = min(20,training)
+show_training_samples = False
+if show_training_samples:
+    samples  = random.sample(range(1,training), nSamples)
+    plt.subplots(1,1,figsize=(10,10))
+    plt.subplot(1,1,1)
+    plt.axis('equal')
+    # Plot some of the training data
+    for (o,t,p,r) in zip(training_data["obs_traj"][samples],training_data["obs_traj_theta"][samples],training_data["pred_traj"][samples],training_data["pred_traj_rel"][samples]):
+        # Observations
+        plt.plot(o[:,0],o[:,1],color='red')
+        # From the last observed point to the first target
+        plt.plot([o[-1,0],p[0,0]],[o[-1,1],p[0,1]],color='blue')
+        plt.arrow(o[-1,0], o[-1,1], 0.5*math.cos(t[-1,0]),0.5*math.sin(t[-1,0]), head_width=0.05, head_length=0.1, fc='k', ec='k')
+        # Prediction targets
+        plt.plot(p[:,0],p[:,1],color='blue')
+    plt.show()
 
 #############################################################
 # Model parameters
-model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social)
+model_parameters = Model_Parameters(add_attention=False,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
 model_parameters.num_epochs = 60
 
 # Get the necessary data
@@ -157,7 +163,6 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 print("[INF] Training")
 perform_training = True
 plot_training    = False
-all_results      = []
 if perform_training==True:
         train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
@@ -179,21 +184,18 @@ if perform_training==True:
             ax.legend()
             plt.show()
 
-        # Testing
-        # Restoring the latest checkpoint in checkpoint_dir
-        print("[INF] Restoring best model")
-        checkpoint.read(checkpoint_prefix+'-best')
+# Testing
+# Restoring the latest checkpoint in checkpoint_dir
+print("[INF] Restoring best model")
+checkpoint.read(checkpoint_prefix+'-best')
 
-        # Quantitative testing: ADE/FDE
-        print("[INF] Quantitative testing")
-        results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
-        print(results)
-        all_results.append(results)
+# Quantitative testing: ADE/FDE
+print("[INF] Quantitative testing")
+results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
+print(results)
 
-
-print(all_results)
 # Qualitative testing
-qualitative = False
+qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
     tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)
