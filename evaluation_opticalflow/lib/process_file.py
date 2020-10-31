@@ -148,11 +148,14 @@ def process_file(data_paths, parameters):
                 else:
                     ped_seq_rel[1:, 0] = np.sqrt(np.sum(np.square(ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]),axis=1))
                     ped_seq_rel[1:, 1] = np.arctan2(ped_seq_pos[1:, 1] - ped_seq_pos[:-1, 1],ped_seq_pos[1:, 0] - ped_seq_pos[:-1, 0])
+                ped_seq_rel[0, :]  = ped_seq_rel[1, :] 
 
                 # Absolute x,y and displacements for all person_id
                 pos_seq_data[ped_count, :, :] = ped_seq_pos
                 rel_seq_data[ped_count, :, :] = ped_seq_rel
-                theta_seq_data[ped_count, :, 0] = ped_seq_rel[:,1]
+                # Orientations
+                theta_seq_data[ped_count,1:, 0] = np.arctan2(ped_seq_pos[1:, 1] - ped_seq_pos[:-1, 1],ped_seq_pos[1:, 0] - ped_seq_pos[:-1, 0])
+                theta_seq_data[ped_count,0,  0] = theta_seq_data[ped_count,1,  0]
 
                 # For each tracked person
                 # we keep the list of all the frames in which it is present
