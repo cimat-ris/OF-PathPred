@@ -30,10 +30,10 @@ from datetime import datetime
 random.seed(datetime.now())
 
 experiment_name  = 'LOO-eth-hotel'
-experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=False)
-use_pickled_data = True
+# Load the default parameters
+experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
+use_pickled_data = False
 if not use_pickled_data:
-    # Load the default parameters
 
     # Dataset to be tested
     dataset_dir               = "../data1/"
@@ -140,9 +140,8 @@ if show_training_samples:
 
 #############################################################
 # Model parameters
-model_parameters = Model_Parameters(add_attention=False,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
-model_parameters.num_epochs = 60
-
+model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
+model_parameters.num_epochs = 50
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
@@ -162,9 +161,9 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 # Training
 print("[INF] Training")
 perform_training = True
-plot_training    = False
+plot_training    = True
 if perform_training==True:
-        train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
+        train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,test_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
             # Plot training results
             fig = plt.figure(figsize=(16,8))
