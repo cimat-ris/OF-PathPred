@@ -3,7 +3,7 @@ import operator
 import os
 from tqdm import tqdm
 from plot_utils import plot_gt_preds
-from traj_utils import relative_to_abs
+from traj_utils import relative_to_abs, vw_to_abs
 from batches_data import get_batch
 import numpy as np
 import tensorflow as tf
@@ -15,7 +15,7 @@ from tensorflow.keras import models
 class Model_Parameters(object):
     """Model parameters.
     """
-    def __init__(self, add_attention=True, add_kp = False, add_social = False):
+    def __init__(self, add_attention=True, add_kp = False, add_social = False, output_representation='dxdy'):
         # -----------------
         # Observation/prediction lengths
         self.obs_len        = 8
@@ -25,6 +25,7 @@ class Model_Parameters(object):
         self.add_social     = add_social
         self.add_attention  = add_attention
         self.add_bidirection= True
+        self.output_representation = output_representation
         # Key points
         self.kp_size        = 18
         # Optical flow
@@ -40,7 +41,7 @@ class Model_Parameters(object):
         self.emb_size       =  64 # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
-        #self.activation_func= tf.nn.relu
+        #self.activation_func= tf.nn.sigmoid
         self.activation_func= tf.nn.tanh
         self.multi_decoder  = False
         self.modelname      = 'gphuctl'
@@ -266,7 +267,7 @@ class TrajectoryDecoder(tf.keras.Model):
         if (self.add_attention):
             self.focal_attention = FocalAttention(config,self.M)
         # Dropout
-        # self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
             activation=tf.identity,
@@ -306,7 +307,7 @@ class TrajectoryDecoder(tf.keras.Model):
         decoder_out_states1= decoder_out[1]
         decoder_out_states2= decoder_out[2]
         # TODO: dropout here?
-        # decoder_out_h = self.dropout(decoder_out_h,training=training)
+        decoder_out_h = self.dropout(decoder_out_h,training=training)
         # Mapping to positions
         decoder_out_xy = self.h_to_xy(decoder_out_h)
         # Concatenate previous xy embedding, attended encoded states
@@ -327,7 +328,7 @@ class TrajectoryEncoderDecoder():
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
 
-        initial_learning_rate = 0.1
+        initial_learning_rate = 0.01
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
                 initial_learning_rate,
                 decay_steps=100000,
@@ -407,7 +408,7 @@ class TrajectoryEncoderDecoder():
                 traj_obs_enc_last_state2 = dec_hidden2
             # L2 weight decay
             loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.0001
+                        if 'bias' not in v.name ]) * 0.0005
         # Get the gradients
         grads = g.gradient(loss_value, variables)
         # Run one step of gradient descent
@@ -511,7 +512,10 @@ class TrajectoryEncoderDecoder():
                 # Conserve the x,y coordinates
                 this_pred_out     = pred_out[i][:, :2] #[pred,2]
                 # Convert it to absolute (starting from the last observed position)
-                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                if config.output_representation=='dxdy':
+                    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                else:
+                    this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
                 # Check shape is OK
                 assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
                 # Error for ade/fde
@@ -541,7 +545,11 @@ class TrajectoryEncoderDecoder():
             # Conserve the x,y coordinates
             this_pred_out     = pred_traj[i][:, :2]
             # Convert it to absolute (starting from the last observed position)
-            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+            if config.output_representation=='dxdy':
+                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+            else:
+                this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
