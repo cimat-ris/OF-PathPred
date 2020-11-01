@@ -49,7 +49,7 @@ if not use_pickled_data:
     n_test_data  = len(test_data[list(test_data.keys())[2]])
     n_train_data = len(train_data[list(train_data.keys())[2]])
     idx          = np.random.permutation(n_train_data)
-    validation_pc= 0.25
+    validation_pc= 0.015
     validation   = int(n_train_data*validation_pc)
     training     = int(n_train_data-validation)
 
@@ -141,7 +141,7 @@ if show_training_samples:
 #############################################################
 # Model parameters
 model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
-model_parameters.num_epochs = 50
+model_parameters.num_epochs = 30
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
@@ -185,8 +185,8 @@ if perform_training==True:
 
 # Testing
 # Restoring the latest checkpoint in checkpoint_dir
-print("[INF] Restoring best model")
-checkpoint.read(checkpoint_prefix+'-best')
+print("[INF] Restoring last model")
+status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
 # Quantitative testing: ADE/FDE
 print("[INF] Quantitative testing")

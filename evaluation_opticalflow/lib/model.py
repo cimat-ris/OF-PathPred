@@ -31,14 +31,14 @@ class Model_Parameters(object):
         # Optical flow
         self.flow_size      = 64
         # For training
-        self.num_epochs     = 100
-        self.batch_size     = 256  # batch size
+        self.num_epochs     = 50
+        self.batch_size     = 512  # batch size
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 128 # Default value in NextP
-        self.dec_hidden_size= 128 # Default value in NextP
-        self.emb_size       =  64 # Default value in NextP
+        self.enc_hidden_size= 256 # Default value in NextP
+        self.dec_hidden_size= 256 # Default value in NextP
+        self.emb_size       = 128 # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
         #self.activation_func= tf.nn.sigmoid
@@ -46,8 +46,6 @@ class Model_Parameters(object):
         self.multi_decoder  = False
         self.modelname      = 'gphuctl'
         self.optimizer      = 'adam'
-        # To save the best model
-        self.load_best      = True
 
 """ Trajectory encoder through embedding+RNN.
 """
@@ -340,8 +338,8 @@ class TrajectoryEncoderDecoder():
         self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
 
         # Instantiate the loss operator
-        self.loss_fn = keras.losses.MeanSquaredError()
-        #self.loss_fn = keras.losses.LogCosh()
+        #self.loss_fn = keras.losses.MeanSquaredError()
+        self.loss_fn = keras.losses.LogCosh()
 
     # Trick to reset th weights: We save them and reload them
     def save_tmp(self):
@@ -408,7 +406,7 @@ class TrajectoryEncoderDecoder():
                 traj_obs_enc_last_state2 = dec_hidden2
             # L2 weight decay
             loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.0005
+                        if 'bias' not in v.name ]) * 0.0008
         # Get the gradients
         grads = g.gradient(loss_value, variables)
         # Run one step of gradient descent
