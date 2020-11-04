@@ -24,7 +24,7 @@ class Model_Parameters(object):
         self.add_kp         = add_kp
         self.add_social     = add_social
         self.add_attention  = add_attention
-        self.add_bidirection= True
+        self.add_bidirection= False
         self.output_representation = output_representation
         # Key points
         self.kp_size        = 18
@@ -43,6 +43,7 @@ class Model_Parameters(object):
 
         #self.activation_func= tf.nn.sigmoid
         self.activation_func= tf.nn.tanh
+        #self.activation_func= tf.nn.relu
         self.multi_decoder  = False
         self.modelname      = 'gphuctl'
         self.optimizer      = 'adam'
@@ -377,40 +378,45 @@ class TrajectoryEncoderDecoder():
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
 
-    # Single training step, for one batch
-    def batch_train_step(self, batch_inputs, batch_targets):
+    # Single training/testing step, for one batch
+    def batch_step(self, batch_inputs, batch_targets, training=True):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
-        # variables
+        # Variables
         variables = self.enc.trainable_weights + self.dec.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
-            traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=True)
+            traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=training)
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
             # Teacher forcing - feeding the target as the next input
             for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=True)
+                t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=training)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
-                # Loss for
+                # Loss
                 loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
-                # Using teacher forcing [Nx1xK]
-                dec_input = tf.expand_dims(batch_targets[:, t], 1)
+                if training==True:
+                    # Using teacher forcing [Nx1xK]
+                    dec_input = tf.expand_dims(batch_targets[:, t], 1)
+                else:
+                    # Next input is the last predicted position
+                    dec_input = t_pred
                 traj_obs_enc_last_state1 = dec_hidden1
                 traj_obs_enc_last_state2 = dec_hidden2
             # L2 weight decay
             loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
-        # Get the gradients
-        grads = g.gradient(loss_value, variables)
-        # Run one step of gradient descent
-        self.optimizer.apply_gradients(zip(grads, variables))
+        if training==True:
+            # Get the gradients
+            grads = g.gradient(loss_value, variables)
+            # Run one step of gradient descent
+            self.optimizer.apply_gradients(zip(grads, variables))
         # Average loss over the predicted times
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
@@ -457,7 +463,7 @@ class TrajectoryEncoderDecoder():
                 batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
                 # Compute the loss value for this minibatch.
-                batch_loss = self.batch_train_step(batch_inputs, batch_targets)
+                batch_loss = self.batch_step(batch_inputs, batch_targets,training=True)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
@@ -475,7 +481,7 @@ class TrajectoryEncoderDecoder():
                 for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
                     # Format the data
                     batch_inputs, batch_targets = get_batch(batch, config)
-                    batch_loss                  = self.batch_test_step(batch_inputs,batch_targets)
+                    batch_loss                  = self.batch_step(batch_inputs,batch_targets,training=False)
                     total_loss+= batch_loss
                 # End epoch
                 total_loss = total_loss / num_batches_per_epoch
