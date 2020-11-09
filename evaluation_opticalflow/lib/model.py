@@ -317,10 +317,10 @@ class TrajectoryDecoder(tf.keras.Model):
         # In this application AhAh
         decoder_seq_h,cur_h,cur_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
         # Apply dropout layer before mapping to positions x,y
-        decoder_latent = self.dropout(cur_h,training=training)
+        decoder_latent = self.dropout(decoder_seq_h,training=training)
         # Mapping to positions x,y
         decoder_out_xy = self.h_to_xy(decoder_latent)
-        decoder_out_xy = tf.expand_dims(decoder_out_xy,1)
+        #decoder_out_xy = tf.expand_dims(decoder_out_xy,1)
         return decoder_out_xy, cur_h, cur_c
 
 # The main class
