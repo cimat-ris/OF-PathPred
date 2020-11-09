@@ -66,6 +66,11 @@ class TrajectoryEncoder(layers.Layer):
                 dropout= config.dropout_rate,
                 recurrent_dropout=config.dropout_rate)
         else:
+            # Stacked configuration.
+            # Output is:
+            # - sequence of h's (from the higher level): h1,h2,...
+            # - pair (h,c) for the first layer
+            # - pair (h,c) for the second layer
             self.lstm_cells = [tf.keras.layers.LSTMCell(config.enc_hidden_size,
                 name   = 'traj_enc_cell',
                 dropout= config.dropout_rate,
@@ -262,6 +267,7 @@ class TrajectoryDecoder(tf.keras.Model):
             dropout= config.dropout_rate,
             recurrent_dropout=config.dropout_rate
             )
+        # RNN layer
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         self.M = 1
         if (self.add_attention and self.add_social):
@@ -270,7 +276,7 @@ class TrajectoryDecoder(tf.keras.Model):
         # Attention layer
         if (self.add_attention):
             self.focal_attention = FocalAttention(config,self.M)
-        # Dropout
+        # Dropout layer
         self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
@@ -282,8 +288,9 @@ class TrajectoryDecoder(tf.keras.Model):
         enc_last_state_shape = (config.dec_hidden_size)
         self.input_layer_hid1= layers.Input(enc_last_state_shape)
         self.input_layer_hid2= layers.Input(enc_last_state_shape)
-        # [N,M,T1,h_dim]
+        # Context shape: [N,M,T1,h_dim]
         ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
+        # Context input
         self.input_layer_ctxt = layers.Input(ctxt_shape)
         self.out = self.call(self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt)
         # Call init again. This is a workaround for being able to use summary
@@ -292,13 +299,13 @@ class TrajectoryDecoder(tf.keras.Model):
                     outputs=self.out)
 
     # Call to the decoder
-    def call(self, dec_input, enc_last_state1, enc_last_state2, context, firstCall=False,training=None):
+    def call(self, dec_input, enc_last_h, enc_last_c, context, firstCall=False,training=None):
         # Decoder inputs: position
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
         # Attention: [N,1,h_dim]
         # query is decoder_out_h: [N,h_dim]
-        query           = enc_last_state1
+        query           = enc_last_h
         if self.add_attention:
             attention       = self.focal_attention(query, context)
             # Augmented input: [N,1,h_dim+emb]
@@ -306,17 +313,15 @@ class TrajectoryDecoder(tf.keras.Model):
         else:
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: [N,T2,dec_hidden_size]
-        decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_state1, enc_last_state2),training=training)
-        decoder_out_h      = decoder_out[0]
-        decoder_out_states1= decoder_out[1]
-        decoder_out_states2= decoder_out[2]
-        # TODO: dropout here?
-        decoder_out_h = self.dropout(decoder_out_h,training=training)
-        # Mapping to positions
-        decoder_out_xy = self.h_to_xy(decoder_out_h)
-        # Concatenate previous xy embedding, attended encoded states
-        # [N,emb+h_dim]
-        return decoder_out_xy, decoder_out_states1, decoder_out_states2
+        decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_h, enc_last_c),training=training)
+        decoder_seq_h       = decoder_out[0]
+        decoder_last_h      = decoder_out[1]
+        decoder_last_c      = decoder_out[2]
+        # Apply dropout layer before mapping to positions x,y
+        decoder_seq_h = self.dropout(decoder_seq_h,training=training)
+        # Mapping to positions x,y
+        decoder_out_xy = self.h_to_xy(decoder_seq_h)
+        return decoder_out_xy, decoder_last_h, decoder_last_c
 
 # The main class
 class TrajectoryEncoderDecoder():
