@@ -299,26 +299,28 @@ class TrajectoryDecoder(tf.keras.Model):
                     outputs=self.out)
 
     # Call to the decoder
-    def call(self, dec_input, enc_last_h, enc_last_c, context, firstCall=False,training=None):
+    def call(self, dec_input, last_h, last_c, context, training=None):
         # Decoder inputs: position
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
-        # Attention: [N,1,h_dim]
-        # query is decoder_out_h: [N,h_dim]
-        query           = enc_last_h
+        # context: [N,1,h_dim]
+        # query is the last h: [N,h_dim]
+        query              = last_h
         if self.add_attention:
             attention       = self.focal_attention(query, context)
             # Augmented input: [N,1,h_dim+emb]
             augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         else:
+            # Input is just the embedded inputs
             augmented_inputs= decoder_inputs_emb
-        # Application of the RNN: [N,T2,dec_hidden_size]
-        decoder_out        = self.recurrentLayer(augmented_inputs,initial_state=(enc_last_h, enc_last_c),training=training)
-        decoder_seq_h       = decoder_out[0]
-        decoder_last_h      = decoder_out[1]
-        decoder_last_c      = decoder_out[2]
+        # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
+        # In this application AhAh
+        decoder_seq_h,decoder_last_h,decoder_last_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
+        print(decoder_seq_h)
         # Apply dropout layer before mapping to positions x,y
         decoder_seq_h = self.dropout(decoder_seq_h,training=training)
+        print(last_h)
+        print("-------\n")
         # Mapping to positions x,y
         decoder_out_xy = self.h_to_xy(decoder_seq_h)
         return decoder_out_xy, decoder_last_h, decoder_last_c
@@ -464,7 +466,7 @@ class TrajectoryEncoderDecoder():
             total_loss = total_loss / num_batches_per_epoch
             train_loss_results.append(total_loss)
 
-                # Saving (checkpoint) the model every 2 epochs
+            # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
             print('Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
