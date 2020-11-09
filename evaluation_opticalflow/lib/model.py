@@ -25,6 +25,7 @@ class Model_Parameters(object):
         self.add_social     = add_social
         self.add_attention  = add_attention
         self.add_bidirection= False
+        self.add_stacked_rnn= True
         self.output_representation = output_representation
         # Key points
         self.kp_size        = 18
@@ -61,14 +62,21 @@ class TrajectoryEncoder(layers.Layer):
             use_bias=True,
             name='traj_enc_emb')
         # LSTM cell, including dropout
-        self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
-            name   = 'traj_enc_cell',
-            dropout= config.dropout_rate,
-            recurrent_dropout=config.dropout_rate
-            )
+        if config.add_stacked_rnn==False:
+            self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
+                name   = 'traj_enc_cell',
+                dropout= config.dropout_rate,
+                recurrent_dropout=config.dropout_rate)
+        else:
+            self.lstm_cells = [tf.keras.layers.LSTMCell(config.enc_hidden_size,
+                name   = 'traj_enc_cell',
+                dropout= config.dropout_rate,
+                recurrent_dropout=config.dropout_rate) for _ in range(2)]
+            self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
+
         # Recurrent neural network using the previous cell
         # Initial state is zero
-        if (self.add_bidirection):
+        if self.add_bidirection:
             self.lstm      = Bidirectional(tf.keras.layers.RNN(self.lstm_cell,
                 return_sequences=True,
                 return_state=True),merge_mode='sum')
@@ -147,6 +155,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
         self.add_bidirection=config.add_bidirection
+        self.add_stacked_rnn= config.add_stacked_rnn
         # Input layers
         obs_shape  = (config.obs_len,config.P)
         soc_shape  = (config.obs_len,config.flow_size)
@@ -181,11 +190,13 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         if self.add_bidirection:
             traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2,__,__ = self.traj_enc(traj_obs_inputs,training=training)
         else:
+            # In the case of stacked cells, output is:
+            # final encoding , last states (h,c) level 1, last states (h,c) level 2, ...
             traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
+
         # Get the hidden states and the last hidden state,
         # separately, and add them to the lists
         enc_h_list          = [traj_obs_enc_h]
-        enc_last_state_list = [traj_obs_enc_last_state1]
         # ----------------------------------------------------------
         # Social interaccion (through optical flow)
         # ----------------------------------------------------------
@@ -194,13 +205,9 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             soc_obs_enc_h, soc_obs_enc_last_state, __, = self.soc_enc(soc_inputs,training=training)
             # Get hidden states and the last hidden state, separately, and add them to the lists
             enc_h_list.append(soc_obs_enc_h)
-            enc_last_state_list.append(soc_obs_enc_last_state)
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
         obs_enc_h          = tf.stack(enc_h_list, axis=1)
-        # Concatenate last states (in the list) from all M features into a tensor
-        # The final size should be [N,M,h_dim]
-        obs_enc_last_state = tf.stack(enc_last_state_list, axis=1)
         return traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h
 
 """ Custom LSTM cell class for our decoder
@@ -217,7 +224,6 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
         # Get memory and carry state
         h_tm1 = states[0]
         c_tm1 = states[1]
-        #tf.print(inputs.shape, output_stream=sys.stderr)
         z  = tf.matmul(inputs, self.kernel)
         z += tf.matmul(h_tm1, self.recurrent_kernel)
         z  = tf.nn.bias_add(z, self.bias)
@@ -243,8 +249,9 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
 class TrajectoryDecoder(tf.keras.Model):
     def __init__(self, config):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
-        self.add_social   = config.add_social
-        self.add_attention= config.add_attention
+        self.add_social     = config.add_social
+        self.add_attention  = config.add_attention
+        self.add_stacked_rnn= config.add_stacked_rnn
         # TODO: multiple decoder to be done
         # Linear embedding of the observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
@@ -318,8 +325,9 @@ class TrajectoryEncoderDecoder():
     # Constructor
     def __init__(self,config):
         # Flags for considering social interations, multiple decoder
-        self.add_social   = config.add_social
-        self.multi_decoder= config.multi_decoder
+        self.add_social     = config.add_social
+        self.multi_decoder  = config.multi_decoder
+        self.add_stacked_rnn= config.add_stacked_rnn
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
@@ -350,34 +358,6 @@ class TrajectoryEncoderDecoder():
         self.enc.load_weights('tmp_enc.h5')
         self.dec.load_weights('tmp_dec.h5')
 
-    # Single testing step, for one batch
-    def batch_test_step(self, batch_inputs, batch_targets):
-        traj_obs_inputs = batch_inputs[0]
-        # Last observed position from the trajectory
-        traj_obs_last = traj_obs_inputs[:, -1]
-        # Open a GradientTape to record the operations run
-        # during the forward pass, which enables auto-differentiation.
-        loss_value = 0
-        # Apply trajectory and context encoding
-        traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=False)
-        # The first input to the decoder is the last observed position [Nx1xK]
-        dec_input = tf.expand_dims(traj_obs_last, 1)
-        # Teacher forcing - feeding the target as the next input
-        for t in range(0, batch_targets.shape[1]):
-            # ------------------------ xy decoder--------------------------------------
-            # Passing enc_output to the decoder
-            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=False)
-            t_target = tf.expand_dims(batch_targets[:, t], 1)
-            # Next input is the last predicted position
-            dec_input = t_pred
-            # Reuse the hidden states for the next step
-            traj_obs_enc_last_state1 = dec_hidden1
-            traj_obs_enc_last_state2 = dec_hidden2
-            loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
-        # Average loss over the predicted times
-        batch_loss = (loss_value / int(batch_targets.shape[1]))
-        return batch_loss
-
     # Single training/testing step, for one batch
     def batch_step(self, batch_inputs, batch_targets, training=True):
         traj_obs_inputs = batch_inputs[0]
@@ -391,6 +371,10 @@ class TrajectoryEncoderDecoder():
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
             traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=training)
+            if self.add_stacked_rnn:
+                traj_obs_enc_last_state1 = traj_obs_enc_last_state1[1]
+                traj_obs_enc_last_state2 = traj_obs_enc_last_state2[1]
+
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
             # Teacher forcing - feeding the target as the next input
@@ -430,6 +414,10 @@ class TrajectoryEncoderDecoder():
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
         traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=False)
+        if self.add_stacked_rnn:
+            traj_obs_enc_last_state1 = traj_obs_enc_last_state1[1]
+            traj_obs_enc_last_state2 = traj_obs_enc_last_state2[1]
+
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
         for t in range(0, n_steps):
