@@ -15,7 +15,7 @@ from tensorflow.keras import models
 class Model_Parameters(object):
     """Model parameters.
     """
-    def __init__(self, add_attention=True, add_kp = False, add_social = False, output_representation='dxdy'):
+    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy'):
         # -----------------
         # Observation/prediction lengths
         self.obs_len        = 8
@@ -42,9 +42,7 @@ class Model_Parameters(object):
         self.emb_size       = 128 # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
-        #self.activation_func= tf.nn.sigmoid
         self.activation_func= tf.nn.tanh
-        #self.activation_func= tf.nn.relu
         self.multi_decoder  = False
         self.modelname      = 'gphuctl'
         self.optimizer      = 'adam'
@@ -78,12 +76,12 @@ class TrajectoryEncoder(layers.Layer):
         # Initial state is zero
         if self.add_bidirection:
             self.lstm      = Bidirectional(tf.keras.layers.RNN(self.lstm_cell,
-                return_sequences=True,
-                return_state=True),merge_mode='sum')
+                return_sequences= True,
+                return_state    = True),merge_mode='sum')
         else:
             self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
-                return_sequences=True,
-                return_state=True)
+                return_sequences= True,
+                return_state    = True)
 
     def call(self,traj_inputs,training=None):
         # Linear embedding of the observed trajectories
@@ -108,8 +106,8 @@ class SocialEncoder(layers.Layer):
             )
         # Recurrent neural network using the previous cell
         self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
-            return_sequences=True,
-            return_state=True)
+            return_sequences= True,
+            return_state    = True)
 
     def call(self,social_inputs,training=None):
         # Linear embedding of the observed trajectories
@@ -154,7 +152,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         super(TrajectoryAndContextEncoder, self).__init__(name="traj_ctxt_enc")
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
-        self.add_bidirection=config.add_bidirection
+        self.add_bidirection= config.add_bidirection
         self.add_stacked_rnn= config.add_stacked_rnn
         # Input layers
         obs_shape  = (config.obs_len,config.P)
@@ -188,23 +186,23 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # ----------------------------------------------------------
         # Applies the position sequence through the LSTM: [N,T1,H]
         if self.add_bidirection:
-            traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2,__,__ = self.traj_enc(traj_obs_inputs,training=training)
+            traj_h_seq, traj_obs_enc_last_state1, traj_obs_enc_last_state2,__,__ = self.traj_enc(traj_obs_inputs,training=training)
         else:
             # In the case of stacked cells, output is:
-            # final encoding , last states (h,c) level 1, last states (h,c) level 2, ...
-            traj_obs_enc_h, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
+            # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
+            traj_h_seq, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
 
         # Get the hidden states and the last hidden state,
         # separately, and add them to the lists
-        enc_h_list          = [traj_obs_enc_h]
+        enc_h_list          = [traj_h_seq]
         # ----------------------------------------------------------
         # Social interaccion (through optical flow)
         # ----------------------------------------------------------
         if self.add_attention and self.add_social:
             # Applies the person pose (keypoints) sequence through the LSTM
-            soc_obs_enc_h, soc_obs_enc_last_state, __, = self.soc_enc(soc_inputs,training=training)
+            soc_h_seq, soc_obs_enc_last_state, __, = self.soc_enc(soc_inputs,training=training)
             # Get hidden states and the last hidden state, separately, and add them to the lists
-            enc_h_list.append(soc_obs_enc_h)
+            enc_h_list.append(soc_h_seq)
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
         obs_enc_h          = tf.stack(enc_h_list, axis=1)
@@ -372,8 +370,12 @@ class TrajectoryEncoderDecoder():
             # Apply trajectory and context encoding
             traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=training)
             if self.add_stacked_rnn:
-                traj_obs_enc_last_state1 = traj_obs_enc_last_state1[1]
-                traj_obs_enc_last_state2 = traj_obs_enc_last_state2[1]
+                # First returned value is the pair (h,c)
+                traj_obs_enc_last_h = traj_obs_enc_last_state1[1]
+                traj_obs_enc_last_c = traj_obs_enc_last_state2[1]
+            else:
+                traj_obs_enc_last_h = traj_obs_enc_last_state1
+                traj_obs_enc_last_c = traj_obs_enc_last_state2
 
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
@@ -381,7 +383,7 @@ class TrajectoryEncoderDecoder():
             for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=training)
+                t_pred, dec_h, dec_c = self.dec(dec_input,traj_obs_enc_last_h,traj_obs_enc_last_c,context,training=training)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss
                 loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
@@ -391,8 +393,8 @@ class TrajectoryEncoderDecoder():
                 else:
                     # Next input is the last predicted position
                     dec_input = t_pred
-                traj_obs_enc_last_state1 = dec_hidden1
-                traj_obs_enc_last_state2 = dec_hidden2
+                traj_obs_enc_last_h = dec_h
+                traj_obs_enc_last_c = dec_c
             # L2 weight decay
             loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
