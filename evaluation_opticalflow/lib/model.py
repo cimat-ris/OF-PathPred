@@ -315,15 +315,13 @@ class TrajectoryDecoder(tf.keras.Model):
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
         # In this application AhAh
-        decoder_seq_h,decoder_last_h,decoder_last_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
-        print(decoder_seq_h)
+        decoder_seq_h,cur_h,cur_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
         # Apply dropout layer before mapping to positions x,y
-        decoder_seq_h = self.dropout(decoder_seq_h,training=training)
-        print(last_h)
-        print("-------\n")
+        decoder_latent = self.dropout(cur_h,training=training)
         # Mapping to positions x,y
-        decoder_out_xy = self.h_to_xy(decoder_seq_h)
-        return decoder_out_xy, decoder_last_h, decoder_last_c
+        decoder_out_xy = self.h_to_xy(decoder_latent)
+        decoder_out_xy = tf.expand_dims(decoder_out_xy,1)
+        return decoder_out_xy, cur_h, cur_c
 
 # The main class
 class TrajectoryEncoderDecoder():
