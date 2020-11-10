@@ -146,7 +146,7 @@ def process_file(data_paths, parameters):
                     # First frame of the relative array is set to zeros
                     ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
                 else:
-                    ped_seq_rel[1:, 0] = np.linalg.norm(ped_seq_pos[1:, :] - ped_seq_pos[:-1, :],axis=1)
+                    ped_seq_rel[1:, 0] = np.log(0.001+np.linalg.norm(ped_seq_pos[1:, :] - ped_seq_pos[:-1, :],axis=1)/0.5)
                     ped_seq_rel[1:, 1] = (np.arctan2(ped_seq_pos[1:, 1] - ped_seq_pos[:-1, 1],ped_seq_pos[1:, 0] - ped_seq_pos[:-1, 0]))/10.0
                     ped_seq_rel[0, :]  = ped_seq_rel[1, :]
 

@@ -25,8 +25,8 @@ def vw_to_abs(vw_traj, start_pos):
     """
     # batch, seq_len, 2
     orientations = 10.0*vw_traj[:,1]
-    dx           = np.multiply(np.cos(orientations),vw_traj[:,0])
-    dy           = np.multiply(np.sin(orientations),vw_traj[:,0])
+    dx           = np.multiply(np.cos(orientations),0.5*np.exp(vw_traj[:,0]))
+    dy           = np.multiply(np.sin(orientations),0.5*np.exp(vw_traj[:,0]))
     abs_traj     = np.zeros_like(vw_traj)
     abs_traj[0,0]=  start_pos[0] + dx[0]
     abs_traj[0,1]=  start_pos[1] + dy[0]

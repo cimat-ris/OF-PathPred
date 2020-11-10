@@ -24,7 +24,7 @@ class Experiment_Parameters:
         self.obstacles    = obstacles
         self.intersection = False
         self.delim        = ','
-        self.output_representation = 'dxdy'
+        self.output_representation = 'dxdy' #
 
 class Trainer(object):
     """Trainer class for model."""

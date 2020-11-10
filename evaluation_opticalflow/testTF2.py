@@ -28,10 +28,12 @@ from tensorflow.keras import models
 import random
 from datetime import datetime
 random.seed(datetime.now())
+from traj_utils import relative_to_abs, vw_to_abs
 
 experiment_name  = 'LOO-eth-hotel'
 # Load the default parameters
 experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
+#experiment_parameters.output_representation = 'vw'
 use_pickled_data = False
 if not use_pickled_data:
 
@@ -117,11 +119,10 @@ else:
 print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
 print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
 print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
-
 # Plot ramdomly a subset of the training data (spatial data only)
 training = len(training_data[list(training_data.keys())[0]])
 nSamples = min(20,training)
-show_training_samples = False
+show_training_samples = True
 if show_training_samples:
     samples  = random.sample(range(1,training), nSamples)
     plt.subplots(1,1,figsize=(10,10))
@@ -135,13 +136,21 @@ if show_training_samples:
         plt.plot([o[-1,0],p[0,0]],[o[-1,1],p[0,1]],color='blue')
         plt.arrow(o[-1,0], o[-1,1], 0.5*math.cos(t[-1,0]),0.5*math.sin(t[-1,0]), head_width=0.05, head_length=0.1, fc='k', ec='k')
         # Prediction targets
-        plt.plot(p[:,0],p[:,1],color='blue')
+        plt.plot(p[:,0],p[:,1],color='blue',linewidth=3)
+        if experiment_parameters.output_representation == 'vw':
+            pred_vw = vw_to_abs(r, o[-1])
+        else:
+            pred_vw = relative_to_abs(r, o[-1])
+        plt.plot(pred_vw[:,0],pred_vw[:,1],color='yellow',linewidth=1)
+
     plt.show()
 
 #############################################################
 # Model parameters
 model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
-model_parameters.num_epochs = 36
+if experiment_parameters.output_representation == 'vw':
+    model_parameters.num_epochs = 100
+    model_parameters.initial_lr = 0.1
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)

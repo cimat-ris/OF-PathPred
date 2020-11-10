@@ -32,7 +32,7 @@ class Model_Parameters(object):
         # Optical flow
         self.flow_size      = 64
         # For training
-        self.num_epochs     = 50
+        self.num_epochs     = 35
         self.batch_size     = 512  # batch size
         self.use_validation = True
         # Network architecture
