@@ -141,7 +141,7 @@ if show_training_samples:
 #############################################################
 # Model parameters
 model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
-model_parameters.num_epochs = 35
+model_parameters.num_epochs = 36
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)

@@ -255,6 +255,7 @@ class TrajectoryDecoder(tf.keras.Model):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
+        # TODO: when using stacked RNN, 
         self.add_stacked_rnn= config.add_stacked_rnn
         # TODO: multiple decoder to be done
         # Linear embedding of the observed trajectories
@@ -375,7 +376,7 @@ class TrajectoryEncoderDecoder():
             # Apply trajectory and context encoding
             traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=training)
             if self.add_stacked_rnn:
-                # First returned value is the pair (h,c)
+                # First returned value is the pair (h,c) for the low level LSTM in the stack
                 traj_cur_h = traj_last_h[0]
                 traj_cur_c = traj_last_h[1]
             else:
