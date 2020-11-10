@@ -196,8 +196,9 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         else:
             # In the case of stacked cells, output is:
             # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
-            traj_h_seq, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
-
+            outputs          = self.traj_enc(traj_obs_inputs,training=training)
+            traj_h_seq       = outputs[0]
+            traj_last_states = outputs[1:3]
         # Get the hidden states and the last hidden state,+
         # separately, and add them to the lists
         enc_h_list          = [traj_h_seq]
@@ -212,7 +213,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
         obs_enc_h          = tf.stack(enc_h_list, axis=1)
-        return traj_obs_enc_last_state1,traj_obs_enc_last_state2,obs_enc_h
+        return traj_last_states,obs_enc_h
 
 """ Custom LSTM cell class for our decoder
 """
@@ -374,12 +375,12 @@ class TrajectoryEncoderDecoder():
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
-            traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=training)
+            traj_last_states, context = self.enc(batch_inputs, training=training)
             if self.add_stacked_rnn:
                 # First returned value is the pair (h,c) for the low level LSTM in the stack
-                traj_cur_states = traj_last_h
+                traj_cur_states = traj_last_states[0]
             else:
-                traj_cur_states = (traj_last_h,traj_last_c)
+                traj_cur_states = traj_last_states
 
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
