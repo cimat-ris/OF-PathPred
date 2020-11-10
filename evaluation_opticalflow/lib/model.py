@@ -294,20 +294,20 @@ class TrajectoryDecoder(tf.keras.Model):
         ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
         # Context input
         self.input_layer_ctxt = layers.Input(ctxt_shape)
-        self.out = self.call(self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt)
+        self.out = self.call(self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2),self.input_layer_ctxt)
         # Call init again. This is a workaround for being able to use summary
         super(TrajectoryDecoder, self).__init__(
                     inputs= [self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt],
                     outputs=self.out)
 
     # Call to the decoder
-    def call(self, dec_input, last_h, last_c, context, training=None):
+    def call(self, dec_input, last_states, context, training=None):
         # Decoder inputs: position
         # Embedding
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
         # context: [N,1,h_dim]
         # query is the last h: [N,h_dim]
-        query              = last_h
+        query              = last_states[0]
         if self.add_attention:
             attention       = self.focal_attention(query, context)
             # Augmented input: [N,1,h_dim+emb]
@@ -316,15 +316,15 @@ class TrajectoryDecoder(tf.keras.Model):
             # Input is just the embedded inputs
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
-        # In this application AhAh
-        decoder_seq_h,cur_h,cur_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
-        # Apply dropout layer before mapping to positions x,y
-        decoder_latent = self.dropout(cur_h,training=training)
+        outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=training)
+        # Last h,c states
+        cur_states = outputs[1:3]
+        # Apply dropout layer on the h  state before mapping to positions x,y
+        decoder_latent = self.dropout(cur_states[0],training=training)
         decoder_latent = tf.expand_dims(decoder_latent,1)
         # Mapping to positions x,y
         decoder_out_xy = self.h_to_xy(decoder_latent)
-
-        return decoder_out_xy, cur_h, cur_c
+        return decoder_out_xy, cur_states
 
 # The main class
 class TrajectoryEncoderDecoder():
@@ -377,11 +377,9 @@ class TrajectoryEncoderDecoder():
             traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=training)
             if self.add_stacked_rnn:
                 # First returned value is the pair (h,c) for the low level LSTM in the stack
-                traj_cur_h = traj_last_h[0]
-                traj_cur_c = traj_last_h[1]
+                traj_cur_states = traj_last_h
             else:
-                traj_cur_h = traj_last_h
-                traj_cur_c = traj_last_c
+                traj_cur_states = (traj_last_h,traj_last_c)
 
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
@@ -389,7 +387,7 @@ class TrajectoryEncoderDecoder():
             for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_h, dec_c = self.dec(dec_input,traj_cur_h,traj_cur_c,context,training=training)
+                t_pred, dec_states = self.dec(dec_input,traj_cur_states,context,training=training)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss
                 loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
@@ -399,9 +397,8 @@ class TrajectoryEncoderDecoder():
                 else:
                     # Next input is the last predicted position
                     dec_input = t_pred
-                # Update the state
-                traj_cur_h = dec_h
-                traj_cur_c = dec_c
+                # Update the states
+                traj_cur_states = dec_states
             # L2 weight decay
             loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
@@ -424,26 +421,24 @@ class TrajectoryEncoderDecoder():
         # Apply trajectory and context encoding
         traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=False)
         if self.add_stacked_rnn:
-            # First returned value is the pair (h,c)
-            traj_cur_h = traj_last_h[0]
-            traj_cur_c = traj_last_h[1]
+            # First returned value is the pair (h,c) for the low level LSTM in the stack
+            traj_cur_states = traj_last_h
         else:
-            traj_cur_h = traj_last_h
-            traj_cur_c = traj_last_c
+            traj_cur_states = (traj_last_h,traj_last_c)
 
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
+
         for t in range(0, n_steps):
             # ------------------------ xy decoder--------------------------------------
             # Passing enc_output to the decoder
-            t_pred, dec_h, dec_c = self.dec(dec_input,traj_cur_h,traj_cur_c,context,training=False)
+            t_pred, dec_states = self.dec(dec_input,traj_cur_states,context,training=False)
             # Next input is the last predicted position
             dec_input = t_pred
             # Add it to the list of predictions
             traj_pred.append(t_pred)
             # Reuse the hidden states for the next step
-            traj_cur_h = dec_h
-            traj_cur_c = dec_c
+            traj_cur_states = dec_states
         return tf.squeeze(tf.stack(traj_pred, axis=1))
 
     # Training loop
