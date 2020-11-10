@@ -255,7 +255,7 @@ class TrajectoryDecoder(tf.keras.Model):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
-        # TODO: when using stacked RNN, 
+        # TODO: when using stacked RNN,
         self.add_stacked_rnn= config.add_stacked_rnn
         # TODO: multiple decoder to be done
         # Linear embedding of the observed trajectories
@@ -319,11 +319,11 @@ class TrajectoryDecoder(tf.keras.Model):
         # In this application AhAh
         decoder_seq_h,cur_h,cur_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
         # Apply dropout layer before mapping to positions x,y
-        # TODO: not sure whether we should use decoder_seq_h or  cur_h?
-        decoder_latent = self.dropout(decoder_seq_h,training=training)
+        decoder_latent = self.dropout(cur_h,training=training)
+        decoder_latent = tf.expand_dims(decoder_latent,1)
         # Mapping to positions x,y
         decoder_out_xy = self.h_to_xy(decoder_latent)
-        #decoder_out_xy = tf.expand_dims(decoder_out_xy,1)
+
         return decoder_out_xy, cur_h, cur_c
 
 # The main class
