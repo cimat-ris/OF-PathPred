@@ -376,8 +376,8 @@ class TrajectoryEncoderDecoder():
             traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=training)
             if self.add_stacked_rnn:
                 # First returned value is the pair (h,c)
-                traj_cur_h = traj_last_h[1]
-                traj_cur_c = traj_last_c[1]
+                traj_cur_h = traj_last_h[0]
+                traj_cur_c = traj_last_h[1]
             else:
                 traj_cur_h = traj_last_h
                 traj_cur_c = traj_last_c
@@ -424,8 +424,8 @@ class TrajectoryEncoderDecoder():
         traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=False)
         if self.add_stacked_rnn:
             # First returned value is the pair (h,c)
-            traj_cur_h = traj_last_h[1]
-            traj_cur_c = traj_last_c[1]
+            traj_cur_h = traj_last_h[0]
+            traj_cur_c = traj_last_h[1]
         else:
             traj_cur_h = traj_last_h
             traj_cur_c = traj_last_c
