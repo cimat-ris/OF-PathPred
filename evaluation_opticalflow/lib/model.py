@@ -46,6 +46,7 @@ class Model_Parameters(object):
         self.multi_decoder  = False
         self.modelname      = 'gphuctl'
         self.optimizer      = 'adam'
+        self.initial_lr     = 0.01
 
 """ Trajectory encoder through embedding+RNN.
 """
@@ -197,7 +198,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
             traj_h_seq, traj_obs_enc_last_state1, traj_obs_enc_last_state2 = self.traj_enc(traj_obs_inputs,training=training)
 
-        # Get the hidden states and the last hidden state,
+        # Get the hidden states and the last hidden state,+
         # separately, and add them to the lists
         enc_h_list          = [traj_h_seq]
         # ----------------------------------------------------------
@@ -317,6 +318,7 @@ class TrajectoryDecoder(tf.keras.Model):
         # In this application AhAh
         decoder_seq_h,cur_h,cur_c        = self.recurrentLayer(augmented_inputs,initial_state=(last_h,last_c),training=training)
         # Apply dropout layer before mapping to positions x,y
+        # TODO: not sure whether we should use decoder_seq_h or  cur_h?
         decoder_latent = self.dropout(decoder_seq_h,training=training)
         # Mapping to positions x,y
         decoder_out_xy = self.h_to_xy(decoder_latent)
@@ -337,10 +339,8 @@ class TrajectoryEncoderDecoder():
         # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
-
-        initial_learning_rate = 0.01
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-                initial_learning_rate,
+                config.initial_lr,
                 decay_steps=100000,
                 decay_rate=0.96,
                 staircase=True)
@@ -373,14 +373,14 @@ class TrajectoryEncoderDecoder():
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
-            traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=training)
+            traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=training)
             if self.add_stacked_rnn:
                 # First returned value is the pair (h,c)
-                traj_obs_enc_last_h = traj_obs_enc_last_state1[1]
-                traj_obs_enc_last_c = traj_obs_enc_last_state2[1]
+                traj_cur_h = traj_last_h[1]
+                traj_cur_c = traj_last_c[1]
             else:
-                traj_obs_enc_last_h = traj_obs_enc_last_state1
-                traj_obs_enc_last_c = traj_obs_enc_last_state2
+                traj_cur_h = traj_last_h
+                traj_cur_c = traj_last_c
 
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
@@ -388,7 +388,7 @@ class TrajectoryEncoderDecoder():
             for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_h, dec_c = self.dec(dec_input,traj_obs_enc_last_h,traj_obs_enc_last_c,context,training=training)
+                t_pred, dec_h, dec_c = self.dec(dec_input,traj_cur_h,traj_cur_c,context,training=training)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss
                 loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
@@ -398,8 +398,9 @@ class TrajectoryEncoderDecoder():
                 else:
                     # Next input is the last predicted position
                     dec_input = t_pred
-                traj_obs_enc_last_h = dec_h
-                traj_obs_enc_last_c = dec_c
+                # Update the state
+                traj_cur_h = dec_h
+                traj_cur_c = dec_c
             # L2 weight decay
             loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
@@ -420,24 +421,28 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
-        traj_obs_enc_last_state1, traj_obs_enc_last_state2, context = self.enc(batch_inputs, training=False)
+        traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=False)
         if self.add_stacked_rnn:
-            traj_obs_enc_last_state1 = traj_obs_enc_last_state1[1]
-            traj_obs_enc_last_state2 = traj_obs_enc_last_state2[1]
+            # First returned value is the pair (h,c)
+            traj_cur_h = traj_last_h[1]
+            traj_cur_c = traj_last_c[1]
+        else:
+            traj_cur_h = traj_last_h
+            traj_cur_c = traj_last_c
 
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
         for t in range(0, n_steps):
             # ------------------------ xy decoder--------------------------------------
             # Passing enc_output to the decoder
-            t_pred, dec_hidden1, dec_hidden2 = self.dec(dec_input,traj_obs_enc_last_state1,traj_obs_enc_last_state2,context,training=False)
+            t_pred, dec_h, dec_c = self.dec(dec_input,traj_cur_h,traj_cur_c,context,training=False)
             # Next input is the last predicted position
             dec_input = t_pred
             # Add it to the list of predictions
             traj_pred.append(t_pred)
             # Reuse the hidden states for the next step
-            traj_obs_enc_last_state1 = dec_hidden1
-            traj_obs_enc_last_state2 = dec_hidden2
+            traj_cur_h = dec_h
+            traj_cur_c = dec_c
         return tf.squeeze(tf.stack(traj_pred, axis=1))
 
     # Training loop
