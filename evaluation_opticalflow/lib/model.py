@@ -25,7 +25,7 @@ class Model_Parameters(object):
         self.add_social     = add_social
         self.add_attention  = add_attention
         self.add_bidirection= False
-        self.add_stacked_rnn= True
+        self.stack_rnn_size = 2
         self.output_representation = output_representation
         # Key points
         self.kp_size        = 18
@@ -53,6 +53,7 @@ class Model_Parameters(object):
 class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
         self.add_bidirection = config.add_bidirection
+        self.stack_rnn_size  = config.stack_rnn_size
         # xy encoder: [N,T1,h_dim]
         super(TrajectoryEncoder, self).__init__(name="traj_enc")
         # Linear embedding of the observed trajectories (for each x,y)
@@ -61,22 +62,17 @@ class TrajectoryEncoder(layers.Layer):
             use_bias=True,
             name='traj_enc_emb')
         # LSTM cell, including dropout
-        if config.add_stacked_rnn==False:
-            self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
+        # Stacked configuration.
+        # Output is:
+        # - sequence of h's (from the higher level): h1,h2,...
+        # - last pair (h,c) for the first layer
+        # - last pair (h,c) for the second layer
+        # - ... and so on
+        self.lstm_cells = [tf.keras.layers.LSTMCell(config.enc_hidden_size,
                 name   = 'traj_enc_cell',
                 dropout= config.dropout_rate,
-                recurrent_dropout=config.dropout_rate)
-        else:
-            # Stacked configuration.
-            # Output is:
-            # - sequence of h's (from the higher level): h1,h2,...
-            # - pair (h,c) for the first layer
-            # - pair (h,c) for the second layer
-            self.lstm_cells = [tf.keras.layers.LSTMCell(config.enc_hidden_size,
-                name   = 'traj_enc_cell',
-                dropout= config.dropout_rate,
-                recurrent_dropout=config.dropout_rate) for _ in range(2)]
-            self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
+                recurrent_dropout=config.dropout_rate) for _ in range(self.stack_rnn_size)]
+        self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
 
         # Recurrent neural network using the previous cell
         # Initial state is zero
@@ -159,7 +155,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
         self.add_bidirection= config.add_bidirection
-        self.add_stacked_rnn= config.add_stacked_rnn
+        self.stack_rnn_size = config.stack_rnn_size
         # Input layers
         obs_shape  = (config.obs_len,config.P)
         soc_shape  = (config.obs_len,config.flow_size)
@@ -192,13 +188,14 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # ----------------------------------------------------------
         # Applies the position sequence through the LSTM: [N,T1,H]
         if self.add_bidirection:
+            # TODO
             traj_h_seq, traj_obs_enc_last_state1, traj_obs_enc_last_state2,__,__ = self.traj_enc(traj_obs_inputs,training=training)
         else:
             # In the case of stacked cells, output is:
             # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
             outputs          = self.traj_enc(traj_obs_inputs,training=training)
             traj_h_seq       = outputs[0]
-            traj_last_states = outputs[1:3]
+            traj_last_states = outputs[1:self.stack_rnn_size+1]
         # Get the hidden states and the last hidden state,+
         # separately, and add them to the lists
         enc_h_list          = [traj_h_seq]
@@ -256,8 +253,7 @@ class TrajectoryDecoder(tf.keras.Model):
         super(TrajectoryDecoder, self).__init__(name="traj_dec")
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
-        # TODO: when using stacked RNN,
-        self.add_stacked_rnn= config.add_stacked_rnn
+        self.stack_rnn_size = config.stack_rnn_size
         # TODO: multiple decoder to be done
         # Linear embedding of the observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
@@ -334,7 +330,7 @@ class TrajectoryEncoderDecoder():
         # Flags for considering social interations, multiple decoder
         self.add_social     = config.add_social
         self.multi_decoder  = config.multi_decoder
-        self.add_stacked_rnn= config.add_stacked_rnn
+        self.stack_rnn_size = config.stack_rnn_size
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
@@ -376,12 +372,8 @@ class TrajectoryEncoderDecoder():
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
             traj_last_states, context = self.enc(batch_inputs, training=training)
-            if self.add_stacked_rnn:
-                # First returned value is the pair (h,c) for the low level LSTM in the stack
-                traj_cur_states = traj_last_states[0]
-            else:
-                traj_cur_states = traj_last_states
-
+            # First returned value is the pair (h,c) for the low level LSTM in the stack
+            traj_cur_states = traj_last_states[0]
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
             # Teacher forcing - feeding the target as the next input
@@ -421,12 +413,8 @@ class TrajectoryEncoderDecoder():
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
         traj_last_states, context = self.enc(batch_inputs, training=False)
-        if self.add_stacked_rnn:
-            # First returned value is the pair (h,c) for the low level LSTM in the stack
-            traj_cur_states = traj_last_states[0]
-        else:
-            traj_cur_states = traj_last_states
-
+        # First returned value is the pair (h,c) for the low level LSTM in the stack
+        traj_cur_states = traj_last_states[0]
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
 
