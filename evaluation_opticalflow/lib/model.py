@@ -420,12 +420,12 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
-        traj_last_h, traj_last_c, context = self.enc(batch_inputs, training=False)
+        traj_last_states, context = self.enc(batch_inputs, training=False)
         if self.add_stacked_rnn:
             # First returned value is the pair (h,c) for the low level LSTM in the stack
-            traj_cur_states = traj_last_h
+            traj_cur_states = traj_last_states[0]
         else:
-            traj_cur_states = (traj_last_h,traj_last_c)
+            traj_cur_states = traj_last_states
 
         # The first input to the decoder is the last observed position [Nx1xK]
         dec_input = tf.expand_dims(traj_obs_last, 1)
