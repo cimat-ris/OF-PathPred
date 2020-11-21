@@ -15,8 +15,6 @@ import tensorflow as tf
 print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 # Important imports
-import pickle
-from process_file import process_file
 import batches_data
 from training_and_testing import Trainer,Tester,Experiment_Parameters
 import matplotlib.pyplot as plt
@@ -29,108 +27,25 @@ import random
 from datetime import datetime
 random.seed(datetime.now())
 from traj_utils import relative_to_abs, vw_to_abs
-
-
+from datasets_utils import setup_experiment
 
 if tf.test.gpu_device_name():
     print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
 else:
     print("[INF] Using CPU")
 
-experiment_name  = 'LOO-eth-hotel'
 # Load the default parameters
 experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 #experiment_parameters.output_representation = 'vw'
-use_pickled_data = False
-if not use_pickled_data:
 
-    # Dataset to be tested
-    dataset_dir               = "../data1/"
-    testing_data_paths        = [dataset_dir+'eth-hotel']
-    training_data_paths       = [dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
+# Load the dataset and perform the split
+training_data,validation_data,test_data = setup_experiment('ETH_UCY',experiment_parameters)
 
-    # Process data specified by the path to get the trajectories with
-    print('[INF] Extracting data from the datasets')
-    test_data  = process_file(testing_data_paths, experiment_parameters)
-    train_data = process_file(training_data_paths, experiment_parameters)
-
-    # Count how many data we have (sub-sequences of length 8, in pred_traj)
-    n_test_data  = len(test_data[list(test_data.keys())[2]])
-    n_train_data = len(train_data[list(train_data.keys())[2]])
-    idx          = np.random.permutation(n_train_data)
-    validation_pc= 0.1
-    validation   = int(n_train_data*validation_pc)
-    training     = int(n_train_data-validation)
-
-    # Indices for training
-    idx_train = idx[0:training]
-    #  Indices for validation
-    idx_val   = idx[training:]
-    # Training set
-    training_data = {
-        "obs_traj":      train_data["obs_traj"][idx_train],
-        "obs_traj_rel":  train_data["obs_traj_rel"][idx_train],
-        "obs_traj_theta":train_data["obs_traj_theta"][idx_train],
-        "pred_traj":     train_data["pred_traj"][idx_train],
-        "pred_traj_rel": train_data["pred_traj_rel"][idx_train],
-    }
-    if experiment_parameters.add_social:
-        training_data["obs_flow"]=train_data["obs_flow"][idx_train]
-    # Test set
-    testing_data = {
-        "obs_traj":     test_data["obs_traj"][:],
-        "obs_traj_rel": test_data["obs_traj_rel"][:],
-        "obs_traj_theta":test_data["obs_traj_theta"][:],
-        "pred_traj":    test_data["pred_traj"][:],
-        "pred_traj_rel":test_data["pred_traj_rel"][:],
-    }
-    if experiment_parameters.add_social:
-        testing_data["obs_flow"]=test_data["obs_flow"][:]
-    # Validation set
-    validation_data ={
-        "obs_traj":     train_data["obs_traj"][idx_val],
-        "obs_traj_rel": train_data["obs_traj_rel"][idx_val],
-        "obs_traj_theta":train_data["obs_traj_theta"][idx_val],
-        "pred_traj":    train_data["pred_traj"][idx_val],
-        "pred_traj_rel":train_data["pred_traj_rel"][idx_val],
-    }
-    if experiment_parameters.add_social:
-        validation_data["obs_flow"]=train_data["obs_flow"][idx_val]
-
-    # Training dataset
-    pickle_out = open('training_data_'+experiment_name+'.pickle',"wb")
-    pickle.dump(training_data, pickle_out, protocol=2)
-    pickle_out.close()
-
-    # Test dataset
-    pickle_out = open('test_data_'+experiment_name+'.pickle',"wb")
-    pickle.dump(test_data, pickle_out, protocol=2)
-    pickle_out.close()
-
-    # Validation dataset
-    pickle_out = open('validation_data_'+experiment_name+'.pickle',"wb")
-    pickle.dump(validation_data, pickle_out, protocol=2)
-    pickle_out.close()
-else:
-    # Unpickle the ready-to-use datasets
-    print("[INF] Unpickling...")
-    pickle_in = open('training_data_'+experiment_name+'.pickle',"rb")
-    training_data = pickle.load(pickle_in)
-    pickle_in = open('test_data_'+experiment_name+'.pickle',"rb")
-    test_data = pickle.load(pickle_in)
-    pickle_in = open('validation_data_'+experiment_name+'.pickle',"rb")
-    validation_data = pickle.load(pickle_in)
-
-
-
-print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
-print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
-print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 # Plot ramdomly a subset of the training data (spatial data only)
-training = len(training_data[list(training_data.keys())[0]])
-nSamples = min(20,training)
-show_training_samples = True
+show_training_samples = False
 if show_training_samples:
+    training = len(training_data[list(training_data.keys())[0]])
+    nSamples = min(20,training)
     samples  = random.sample(range(1,training), nSamples)
     plt.subplots(1,1,figsize=(10,10))
     plt.subplot(1,1,1)
