@@ -12,7 +12,7 @@ import math,numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('Tensorflow version: ',tf.__version__)
+print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 # Important imports
 import pickle
@@ -29,6 +29,13 @@ import random
 from datetime import datetime
 random.seed(datetime.now())
 from traj_utils import relative_to_abs, vw_to_abs
+
+
+
+if tf.test.gpu_device_name():
+    print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+else:
+    print("[INF] Using CPU")
 
 experiment_name  = 'LOO-eth-hotel'
 # Load the default parameters
