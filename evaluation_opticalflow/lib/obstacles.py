@@ -126,7 +126,7 @@ def raycast(pos,obstacles):
     return omin,imin,dmin,inters
 
 def main():
-    dataset_paths = '../data1/'
+    dataset_paths = '../datasets/'
     dataset_name  = 'ucy-univ'
     generate_obstacle_polygons(dataset_paths,dataset_name)
 

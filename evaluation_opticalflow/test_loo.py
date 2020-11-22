@@ -23,11 +23,8 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
-import random
-from datetime import datetime
-random.seed(datetime.now())
-from traj_utils import relative_to_abs, vw_to_abs
 from datasets_utils import setup_loo_experiment
+from plot_utils import plot_training_data
 
 if tf.test.gpu_device_name():
     print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
@@ -38,37 +35,16 @@ else:
 experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 #experiment_parameters.output_representation = 'vw'
 
-dataset_dir       = "../data1/"
+dataset_dir       = "../datasets/"
 dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
 
 # Load the dataset and perform the split
 training_data,validation_data,test_data,test_bckgd,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,0,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
-show_training_samples = False
+show_training_samples = True
 if show_training_samples:
-    training = len(training_data[list(training_data.keys())[0]])
-    nSamples = min(20,training)
-    samples  = random.sample(range(1,training), nSamples)
-    plt.subplots(1,1,figsize=(10,10))
-    plt.subplot(1,1,1)
-    plt.axis('equal')
-    # Plot some of the training data
-    for (o,t,p,r) in zip(training_data["obs_traj"][samples],training_data["obs_traj_theta"][samples],training_data["pred_traj"][samples],training_data["pred_traj_rel"][samples]):
-        # Observations
-        plt.plot(o[:,0],o[:,1],color='red')
-        # From the last observed point to the first target
-        plt.plot([o[-1,0],p[0,0]],[o[-1,1],p[0,1]],color='blue')
-        plt.arrow(o[-1,0], o[-1,1], 0.5*math.cos(t[-1,0]),0.5*math.sin(t[-1,0]), head_width=0.05, head_length=0.1, fc='k', ec='k')
-        # Prediction targets
-        plt.plot(p[:,0],p[:,1],color='blue',linewidth=3)
-        if experiment_parameters.output_representation == 'vw':
-            pred_vw = vw_to_abs(r, o[-1])
-        else:
-            pred_vw = relative_to_abs(r, o[-1])
-        plt.plot(pred_vw[:,0],pred_vw[:,1],color='yellow',linewidth=1)
-
-    plt.show()
+    plot_training_data(training_data,experiment_parameters)
 
 #############################################################
 # Model parameters

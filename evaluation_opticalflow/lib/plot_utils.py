@@ -1,8 +1,38 @@
 from matplotlib import pyplot as plt
 from obstacles import image_to_world_xy
+from traj_utils import relative_to_abs, vw_to_abs
 import numpy as np
+import random
+import math
+from datetime import datetime
+random.seed(datetime.now())
 
-# Useful function to plot
+def plot_training_data(training_data,experiment_parameters):
+    training = len(training_data[list(training_data.keys())[0]])
+    nSamples = min(20,training)
+    samples  = random.sample(range(1,training), nSamples)
+    plt.subplots(1,1,figsize=(10,10))
+    plt.subplot(1,1,1)
+    plt.axis('equal')
+    # Plot some of the training data
+    for (o,t,p,r) in zip(training_data["obs_traj"][samples],training_data["obs_traj_theta"][samples],training_data["pred_traj"][samples],training_data["pred_traj_rel"][samples]):
+        # Observations
+        plt.plot(o[:,0],o[:,1],color='red')
+        # From the last observed point to the first target
+        plt.plot([o[-1,0],p[0,0]],[o[-1,1],p[0,1]],color='blue')
+        plt.arrow(o[-1,0], o[-1,1], 0.5*math.cos(t[-1,0]),0.5*math.sin(t[-1,0]), head_width=0.05, head_length=0.1, fc='k', ec='k')
+        # Prediction targets
+        plt.plot(p[:,0],p[:,1],color='blue',linewidth=3)
+        if experiment_parameters.output_representation == 'vw':
+            pred_vw = vw_to_abs(r, o[-1])
+        else:
+            pred_vw = relative_to_abs(r, o[-1])
+        plt.plot(pred_vw[:,0],pred_vw[:,1],color='yellow',linewidth=1)
+
+    plt.show()
+
+
+# Useful function to plot the predictions vs. the ground truth
 def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,homography=None):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
