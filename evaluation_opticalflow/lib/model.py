@@ -139,13 +139,13 @@ class FocalAttention(layers.Layer):
         context_norm   = tf.nn.l2_normalize(context,   -1)
         # Weights for pairs feature, time: [N, M, T]
         S         = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
-        B         = self.reshape(tf.nn.softmax(self.flatten(S)))
-        BQ        = tf.reduce_sum(tf.expand_dims(B, -1)*context,2)
+        Wft       = self.reshape(tf.nn.softmax(self.flatten(S)))
+        BQ        = tf.reduce_sum(tf.expand_dims(Wft, -1)*context,2)
         # Weigthts for features, maxed over time: [N,M]
         Sm        = tf.reduce_max(S, 2)
-        A         = tf.nn.softmax(Sm)
-        AQ        = tf.reduce_sum(tf.expand_dims(A, -1)*BQ,1)
-        return tf.expand_dims(AQ,1)
+        Wf        = tf.nn.softmax(Sm)
+        AQ        = tf.reduce_sum(tf.expand_dims(Wf, -1)*BQ,1)
+        return tf.expand_dims(AQ,1), Wft
 
 """ Custom model class for the encoding part (trajectory and context)
 """
@@ -306,10 +306,11 @@ class TrajectoryDecoder(tf.keras.Model):
         # query is the last h: [N,h_dim]
         query              = last_states[0]
         if self.add_attention:
-            attention       = self.focal_attention(query, context)
+            attention, Wft = self.focal_attention(query, context)
             # Augmented input: [N,1,h_dim+emb]
             augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         else:
+            Wft = None
             # Input is just the embedded inputs
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
@@ -321,7 +322,7 @@ class TrajectoryDecoder(tf.keras.Model):
         decoder_latent = tf.expand_dims(decoder_latent,1)
         # Mapping to positions x,y
         decoder_out_xy = self.h_to_xy(decoder_latent)
-        return decoder_out_xy, cur_states
+        return decoder_out_xy, cur_states, Wft
 
 # The main class
 class TrajectoryEncoderDecoder():
@@ -380,7 +381,7 @@ class TrajectoryEncoderDecoder():
             for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_states = self.dec(dec_input,traj_cur_states,context,training=training)
+                t_pred, dec_states,__ = self.dec(dec_input,traj_cur_states,context,training=training)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss
                 loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
@@ -407,8 +408,9 @@ class TrajectoryEncoderDecoder():
     # Prediction (testing) for one batch
     def batch_predict(self, batch_inputs, n_steps):
         traj_obs_inputs = batch_inputs[0]
-        # List for the predictions
+        # List for the predictions and attention weights
         traj_pred       = []
+        att_weights_pred= []
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
@@ -421,14 +423,15 @@ class TrajectoryEncoderDecoder():
         for t in range(0, n_steps):
             # ------------------------ xy decoder--------------------------------------
             # Passing enc_output to the decoder
-            t_pred, dec_states = self.dec(dec_input,traj_cur_states,context,training=False)
+            t_pred, dec_states, wft = self.dec(dec_input,traj_cur_states,context,training=False)
             # Next input is the last predicted position
             dec_input = t_pred
             # Add it to the list of predictions
             traj_pred.append(t_pred)
+            att_weights_pred.append(wft)
             # Reuse the hidden states for the next step
             traj_cur_states = dec_states
-        return tf.squeeze(tf.stack(traj_pred, axis=1))
+        return tf.squeeze(tf.stack(traj_pred, axis=1)), tf.squeeze(tf.stack(att_weights_pred, axis=1))
 
     # Training loop
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
@@ -491,7 +494,7 @@ class TrajectoryEncoderDecoder():
         for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
             # Format the data
             batch_inputs, batch_targets = get_batch(batch, config)
-            pred_out               = self.batch_predict(batch_inputs,batch_targets.shape[1])
+            pred_out,__                 = self.batch_predict(batch_inputs,batch_targets.shape[1])
             this_actual_batch_size = batch["original_batch_size"]
             d = []
             # For all the trajectories in the batch
@@ -528,7 +531,7 @@ class TrajectoryEncoderDecoder():
         batch    = dataset.get_by_idxs(trajIds)
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
-        pred_traj                   = self.batch_predict(batch_inputs,batch_targets.shape[1])
+        pred_traj, pred_att_weights = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             # Conserve the x,y coordinates
@@ -544,4 +547,4 @@ class TrajectoryEncoderDecoder():
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights)

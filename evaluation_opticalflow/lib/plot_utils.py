@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 
 
 # Useful function to plot
-def plot_gt_preds(traj_gt,traj_obs,traj_pred):
+def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     ax.set_ylabel('Y (m)')
