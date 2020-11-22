@@ -1,11 +1,11 @@
 import pickle
 import numpy as np
+import matplotlib.image as mpimg
 from process_file import process_file
 
 def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
     if not use_pickled_data:
         # Dataset to be tested
-        dataset_dir               = "../data1/"
         testing_data_paths        = [experiment_paths[leave_id]]
         training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
         print('[INF] Testing dataset:',testing_data_paths)
@@ -85,5 +85,8 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
     print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
     print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
     print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
-
-    return training_data,validation_data,test_data
+    test_bckgd = mpimg.imread(testing_data_paths[0]+'/reference.png')
+    # Load the homography corresponding to this dataset
+    homography_file = os.path.join(testing_data_paths[0]+'/H.txt')
+    test_homography = np.genfromtxt(homography_file)
+    return training_data,validation_data,test_data,test_bckgd,test_homography
