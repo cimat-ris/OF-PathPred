@@ -35,7 +35,7 @@ else:
     print("[INF] Using CPU")
 
 # Load the default parameters
-experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=False)
+experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 #experiment_parameters.output_representation = 'vw'
 
 dataset_dir       = "../data1/"
@@ -76,6 +76,9 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
+
+#model_parameters.num_epochs     = 3
+
 # Get the necessary data
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
@@ -94,8 +97,8 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training")
-perform_training = False
-plot_training    = True
+perform_training = True
+plot_training    = False
 if perform_training==True:
         # TODO: Use ttf.data.Dataset!
         train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
@@ -135,4 +138,5 @@ print(results)
 qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
-    tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10,background=test_bckgd,homography=test_homography)
+    for i in range(10):
+        tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10,background=test_bckgd,homography=test_homography)
