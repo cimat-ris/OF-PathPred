@@ -37,8 +37,8 @@ class Model_Parameters(object):
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 256 # Default value in NextP
-        self.dec_hidden_size= 256 # Default value in NextP
+        self.enc_hidden_size= 512 # Default value in NextP
+        self.dec_hidden_size= 512 # Default value in NextP
         self.emb_size       = 128 # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
@@ -381,10 +381,11 @@ class TrajectoryEncoderDecoder():
             for t in range(0, batch_targets.shape[1]):
                 # ------------------------ xy decoder--------------------------------------
                 # passing enc_output to the decoder
-                t_pred, dec_states,__ = self.dec(dec_input,traj_cur_states,context,training=training)
+                t_pred, dec_states, __ = self.dec(dec_input,traj_cur_states,context,training=training)
                 t_target = tf.expand_dims(batch_targets[:, t], 1)
                 # Loss
-                loss_value += (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
+                loss_value+= (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
+
                 if training==True:
                     # Using teacher forcing [Nx1xK]
                     dec_input = tf.expand_dims(batch_targets[:, t], 1)
