@@ -13,7 +13,7 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights):
     plt.plot(traj_obs[0][0,0],traj_obs[0][0,1],color='red',label='Observations')
     plt.plot(traj_gt[0][0,0],traj_gt[0][0,1],color='blue',label='Ground truth')
     plt.plot(traj_pred[0][0,0],traj_pred[0][0,1],color='green',label='Prediction')
-    for (gt,obs,pred) in zip(traj_gt,traj_obs,traj_pred):
+    for (gt,obs,pred,att_weights) in zip(traj_gt,traj_obs,traj_pred,pred_att_weights):
         plt.plot(obs[:,0],obs[:,1],color='red')
         # Ground truth trajectory
         plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue')
@@ -21,5 +21,6 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights):
         # Predicted trajectory
         plt.plot([obs[-1,0],pred[0,0]],[obs[-1,1],pred[0,1]],color='green')
         plt.plot(pred[:,0],pred[:,1],color='green')
+        plt.scatter(obs[:,0],obs[:,1], s=100.0*att_weights[11], marker='o', color='red')
     ax.legend()
     plt.show()
