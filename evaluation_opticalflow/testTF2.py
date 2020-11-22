@@ -27,7 +27,7 @@ import random
 from datetime import datetime
 random.seed(datetime.now())
 from traj_utils import relative_to_abs, vw_to_abs
-from datasets_utils import setup_experiment
+from datasets_utils import setup_loo_experiment
 
 if tf.test.gpu_device_name():
     print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
@@ -38,8 +38,11 @@ else:
 experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 #experiment_parameters.output_representation = 'vw'
 
+dataset_dir       = "../data1/"
+dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
+
 # Load the dataset and perform the split
-training_data,validation_data,test_data = setup_experiment('ETH_UCY',experiment_parameters)
+training_data,validation_data,test_data = setup_loo_experiment('ETH_UCY',dataset_paths,0,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -94,6 +97,10 @@ print("[INF] Training")
 perform_training = True
 plot_training    = True
 if perform_training==True:
+        # TODO: Use ttf.data.Dataset!
+        train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
+        train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
+
         train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
             # Plot training results

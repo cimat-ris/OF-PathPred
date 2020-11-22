@@ -2,13 +2,14 @@ import pickle
 import numpy as np
 from process_file import process_file
 
-def setup_experiment(experiment_name,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
+def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
     if not use_pickled_data:
         # Dataset to be tested
         dataset_dir               = "../data1/"
-        testing_data_paths        = [dataset_dir+'eth-hotel']
-        training_data_paths       = [dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
-
+        testing_data_paths        = [experiment_paths[leave_id]]
+        training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
+        print('[INF] Testing dataset:',testing_data_paths)
+        print('[INF] Training datasets:',training_data_paths)
         # Process data specified by the path to get the trajectories with
         print('[INF] Extracting data from the datasets')
         test_data  = process_file(testing_data_paths, experiment_parameters)
