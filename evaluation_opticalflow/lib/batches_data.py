@@ -48,6 +48,7 @@ def get_batch(batch_data, config):
                 obs_kp[i, j, :, :] = obs_kp_step
     return returned_inputs,traj_pred_gt
 
+# TODO: replace it by the equivalent tf2 class
 class Dataset(object):
     """Class for batching during training and testing."""
     def __init__(self, data, config):

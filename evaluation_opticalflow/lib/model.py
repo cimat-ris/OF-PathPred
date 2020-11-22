@@ -306,11 +306,11 @@ class TrajectoryDecoder(tf.keras.Model):
         # query is the last h: [N,h_dim]
         query              = last_states[0]
         if self.add_attention:
-            attention, Wft = self.focal_attention(query, context)
+            attention, Wft  = self.focal_attention(query, context)
             # Augmented input: [N,1,h_dim+emb]
             augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         else:
-            Wft = None
+            Wft             = None
             # Input is just the embedded inputs
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
@@ -338,6 +338,7 @@ class TrajectoryEncoderDecoder():
         # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
+        # Optimization scheduling
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
                 config.initial_lr,
                 decay_steps=100000,
@@ -522,7 +523,7 @@ class TrajectoryEncoderDecoder():
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a baych of n_trajectories
-    def qualitative_evaluation(self,dataset,config,n_trajectories):
+    def qualitative_evaluation(self,dataset,config,n_trajectories=10,background=None,homography=None):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
@@ -548,4 +549,4 @@ class TrajectoryEncoderDecoder():
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background,homography)

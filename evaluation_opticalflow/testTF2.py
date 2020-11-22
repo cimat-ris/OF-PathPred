@@ -35,14 +35,14 @@ else:
     print("[INF] Using CPU")
 
 # Load the default parameters
-experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
+experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=False)
 #experiment_parameters.output_representation = 'vw'
 
 dataset_dir       = "../data1/"
 dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
 
 # Load the dataset and perform the split
-training_data,validation_data,test_data = setup_loo_experiment('ETH_UCY',dataset_paths,0,experiment_parameters)
+training_data,validation_data,test_data,test_bckgd,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,0,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -94,7 +94,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training")
-perform_training = True
+perform_training = False
 plot_training    = True
 if perform_training==True:
         # TODO: Use ttf.data.Dataset!
@@ -135,4 +135,4 @@ print(results)
 qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
-    tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10)
+    tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10,background=test_bckgd,homography=test_homography)
