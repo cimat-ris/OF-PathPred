@@ -4,6 +4,7 @@ from traj_utils import relative_to_abs, vw_to_abs
 import numpy as np
 import random
 import math
+import tensorflow as tf
 from datetime import datetime
 random.seed(datetime.now())
 
@@ -40,10 +41,12 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
     plt.axis('equal')
     if background is not None:
         plt.imshow(background)
+    # Get the number of samples per prediction
+    nSamples = traj_pred[0].shape[0]
     # Plot some random testing data and the predicted ones
-    plt.plot(traj_obs[0][0,0],traj_obs[0][0,1],color='red',label='Observations')
-    plt.plot(traj_gt[0][0,0],traj_gt[0][0,1],color='blue',label='Ground truth')
-    plt.plot(traj_pred[0][0,0],traj_pred[0][0,1],color='green',label='Prediction')
+    plt.plot([0],[0],color='red',label='Observations')
+    plt.plot([0],[0],color='blue',label='Ground truth')
+    plt.plot([0],[0],color='green',label='Prediction')
     if homography is not None:
         homography = np.linalg.inv(homography)
     else:
@@ -51,16 +54,18 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
         ax.set_xlabel('X (m)')
     for (gt,obs,pred,att_weights) in zip(traj_gt,traj_obs,traj_pred,pred_att_weights):
         if homography is not None:
-            gt  = image_to_world_xy(gt, homography)
-            obs = image_to_world_xy(obs, homography)
-            pred= image_to_world_xy(pred, homography)
+            gt   = image_to_world_xy(gt, homography)
+            obs  = image_to_world_xy(obs, homography)
+            tpred= image_to_world_xy(tf.reshape(pred,[pred.shape[0]*pred.shape[1],pred.shape[2]]), homography)
+            pred = tf.reshape(tpred,[pred.shape[0],pred.shape[1],pred.shape[2]])
         plt.plot(obs[:,1],obs[:,0],color='red')
         # Ground truth trajectory
         plt.plot([obs[-1,1],gt[0,1]],[obs[-1,0],gt[0,0]],color='blue')
         plt.plot(gt[:,1],gt[:,0],color='blue')
         # Predicted trajectory
-        plt.plot([obs[-1,1],pred[0,1]],[obs[-1,0],pred[0,0]],color='green')
-        plt.plot(pred[:,1],pred[:,0],color='green')
+        for k in range(nSamples):
+            plt.plot([obs[-1,1],pred[k][0,1]],[obs[-1,0],pred[k][0,0]],color='green')
+            plt.plot(pred[k][:,1],pred[k][:,0],color='green')
         plt.scatter(obs[:,1],obs[:,0], s=100.0*att_weights[11], marker='o', color='red')
     ax.legend()
     plt.show()

@@ -27,6 +27,7 @@ class Model_Parameters(object):
         self.add_bidirection= False
         self.stack_rnn_size = 2
         self.output_representation = output_representation
+        self.output_var_dirs= 1
         # Key points
         self.kp_size        = 18
         # Optical flow
@@ -37,8 +38,8 @@ class Model_Parameters(object):
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 512 # Default value in NextP
-        self.dec_hidden_size= 512 # Default value in NextP
+        self.enc_hidden_size= 256 # Default value in NextP
+        self.dec_hidden_size= 256 # Default value in NextP
         self.emb_size       = 128 # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
@@ -245,8 +246,52 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
         h = o * self.activation(c)
         return h, [h, c]
 
+""" Trajectory decoder initializer.
+    Allows
+"""
+class TrajectoryDecoderInitializer(tf.keras.Model):
+    def __init__(self, config):
+        super(TrajectoryDecoderInitializer, self).__init__(name="traj_dec_initializer")
+        # Dropout layer
+        self.dropout        = tf.keras.layers.Dropout(config.dropout_rate)
+        self.output_var_dirs= config.output_var_dirs
+        # Linear embeddings
+        self.traj_enc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.linear,
+            name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
+        self.traj_enc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.linear,
+            name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        # Input layers
+        input_shape      = (config.enc_hidden_size)
+        self.input_h     = layers.Input(input_shape)
+        self.input_c     = layers.Input(input_shape)
+        self.out         = self.call([self.input_h,self.input_c])
+        # Call init again. This is a workaround for being able to use summary
+        super(TrajectoryDecoderInitializer, self).__init__(
+                    inputs = [self.input_h,self.input_c],
+                    outputs=self.out)
+
+    # Call to the decoder
+    def call(self, encoder_states, training=None):
+        # Embeddings
+        decoder_init_states = []
+        # Append the single encoded states
+        decoder_init_states.append(encoder_states)
+        for i in range(self.output_var_dirs):
+            decoder_init_dh  = self.traj_enc_h_to_dec_h[i](encoder_states[0])
+            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](encoder_states[1])
+            # TODO: 0,.1?
+            decoder_init_h   = encoder_states[0]+0.5*decoder_init_dh
+            decoder_init_c   = encoder_states[1]+0.5*decoder_init_dc
+            decoder_init_states.append([decoder_init_h,decoder_init_c])
+            decoder_init_h   = encoder_states[0]-0.5*decoder_init_dh
+            decoder_init_c   = encoder_states[1]-0.5*decoder_init_dc
+            decoder_init_states.append([decoder_init_h,decoder_init_c])
+        return decoder_init_states
+
 """ Trajectory decoder.
-    Generates the next position
+    Generates samples for the next position
 """
 class TrajectoryDecoder(tf.keras.Model):
     def __init__(self, config):
@@ -254,8 +299,7 @@ class TrajectoryDecoder(tf.keras.Model):
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
         self.stack_rnn_size = config.stack_rnn_size
-        # TODO: multiple decoder to be done
-        # Linear embedding of the observed trajectories
+        # Linear embedding of the encoding resulting observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='traj_enc_emb')
@@ -305,6 +349,7 @@ class TrajectoryDecoder(tf.keras.Model):
         # context: [N,1,h_dim]
         # query is the last h: [N,h_dim]
         query              = last_states[0]
+        # Define the input here
         if self.add_attention:
             attention, Wft  = self.focal_attention(query, context)
             # Augmented input: [N,1,h_dim+emb]
@@ -328,13 +373,16 @@ class TrajectoryDecoder(tf.keras.Model):
 class TrajectoryEncoderDecoder():
     # Constructor
     def __init__(self,config):
-        # Flags for considering social interations, multiple decoder
+        # Flags for considering social interations
         self.add_social     = config.add_social
-        self.multi_decoder  = config.multi_decoder
         self.stack_rnn_size = config.stack_rnn_size
+        self.output_samples = 2*config.output_var_dirs+1
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
+        # Encoder to decoder initialization
+        self.enctodec = TrajectoryDecoderInitializer(config)
+        self.enctodec.summary()
         # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
@@ -351,14 +399,17 @@ class TrajectoryEncoderDecoder():
 
         # Instantiate the loss operator
         #self.loss_fn = keras.losses.MeanSquaredError()
-        self.loss_fn = keras.losses.LogCosh()
+        self.loss_fn       = keras.losses.LogCosh()
+        self.loss_fn_local = keras.losses.LogCosh(keras.losses.Reduction.NONE)
 
-    # Trick to reset th weights: We save them and reload them
+    # Trick to reset the weights: We save them and reload them
     def save_tmp(self):
         self.enc.save_weights('tmp_enc.h5')
+        self.enctodec.save_weights('tmp_enctodec.h5')
         self.dec.save_weights('tmp_dec.h5')
     def load_tmp(self):
         self.enc.load_weights('tmp_enc.h5')
+        self.enctodec.load_weights('tmp_enctodec.h5')
         self.dec.load_weights('tmp_dec.h5')
 
     # Single training/testing step, for one batch
@@ -367,36 +418,53 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables
-        variables = self.enc.trainable_weights + self.dec.trainable_weights
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
+        dmin       = 10.0
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
             traj_last_states, context = self.enc(batch_inputs, training=training)
-            # First returned value is the pair (h,c) for the low level LSTM in the stack
-            traj_cur_states = traj_last_states[0]
-            # The first input to the decoder is the last observed position [Nx1xK]
-            dec_input = tf.expand_dims(traj_obs_last, 1)
-            # Teacher forcing - feeding the target as the next input
-            for t in range(0, batch_targets.shape[1]):
-                # ------------------------ xy decoder--------------------------------------
-                # passing enc_output to the decoder
-                t_pred, dec_states, __ = self.dec(dec_input,traj_cur_states,context,training=training)
-                t_target = tf.expand_dims(batch_targets[:, t], 1)
-                # Loss
-                loss_value+= (batch_targets.shape[1]-t)*self.loss_fn(t_target, t_pred)
-
-                if training==True:
-                    # Using teacher forcing [Nx1xK]
-                    dec_input = tf.expand_dims(batch_targets[:, t], 1)
-                else:
-                    # Next input is the last predicted position
-                    dec_input = t_pred
-                # Update the states
-                traj_cur_states = dec_states
+            # Returns a set of self.output_samples possible initializing states for the decoder
+            # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+            traj_cur_states_set = self.enctodec(traj_last_states[0])
+            losses = []
+            # Iterate over these possible initializing states
+            for k in range(self.output_samples):
+                # Sample-wise loss values
+                loss_values         = 0
+                # Decoder state is initialized here
+                traj_cur_states     = traj_cur_states_set[k]
+                # The first input to the decoder is the last observed position [Nx1xK]
+                dec_input = tf.expand_dims(traj_obs_last, 1)
+                # Iterate over timesteps
+                for t in range(0, batch_targets.shape[1]):
+                    # ------------------------ xy decoder--------------------------------------
+                    # passing enc_output to the decoder
+                    t_pred, dec_states, __ = self.dec(dec_input,traj_cur_states,context,training=training)
+                    t_target               = tf.expand_dims(batch_targets[:, t], 1)
+                    # Loss
+                    loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
+                    if training==True:
+                        # Using teacher forcing [Nx1xK]
+                        # Teacher forcing - feeding the target as the next input
+                        dec_input = tf.expand_dims(batch_targets[:, t], 1)
+                    else:
+                        # Next input is the last predicted position
+                        dec_input = t_pred
+                    # Update the states
+                    traj_cur_states = dec_states
+                # Keep loss values for all self.output_samples cases
+                losses.append(tf.squeeze(loss_values,axis=1))
+            # Stack into a tensor batch_size x self.output_samples
+            losses       = tf.stack(losses, axis=1)
+            # Get the vector of losses at the minimal value for each sample of the batch
+            losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),tf.math.argmin(losses, axis=1)],axis=1))
+            # Sum over the samples, divided by the batch size
+            loss_value  += tf.reduce_sum(losses_at_min)/losses.shape[0]
             # L2 weight decay
-            loss_value += tf.add_n([ tf.nn.l2_loss(v) for v in variables
+            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
         if training==True:
             # Get the gradients
@@ -410,30 +478,41 @@ class TrajectoryEncoderDecoder():
     # Prediction (testing) for one batch
     def batch_predict(self, batch_inputs, n_steps):
         traj_obs_inputs = batch_inputs[0]
-        # List for the predictions and attention weights
-        traj_pred       = []
-        att_weights_pred= []
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
         # Apply trajectory and context encoding
         traj_last_states, context = self.enc(batch_inputs, training=False)
-        # First returned value is the pair (h,c) for the low level LSTM in the stack
-        traj_cur_states = traj_last_states[0]
-        # The first input to the decoder is the last observed position [Nx1xK]
-        dec_input = tf.expand_dims(traj_obs_last, 1)
-
-        for t in range(0, n_steps):
-            # ------------------------ xy decoder--------------------------------------
-            # Passing enc_output to the decoder
-            t_pred, dec_states, wft = self.dec(dec_input,traj_cur_states,context,training=False)
-            # Next input is the last predicted position
-            dec_input = t_pred
-            # Add it to the list of predictions
-            traj_pred.append(t_pred)
-            att_weights_pred.append(wft)
-            # Reuse the hidden states for the next step
-            traj_cur_states = dec_states
-        return tf.squeeze(tf.stack(traj_pred, axis=1)), tf.squeeze(tf.stack(att_weights_pred, axis=1))
+        # Returns a set of self.output_samples possible initializing states for the decoder
+        # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+        traj_cur_states_set = self.enctodec(traj_last_states[0])
+        traj_pred_set       = []
+        att_weights_pred_set= []
+        # Iterate over these possible initializing states
+        for k in range(self.output_samples):
+            # List for the predictions and attention weights
+            traj_pred       = []
+            att_weights_pred= []
+            # Decoder state is initialized here
+            traj_cur_states     = traj_cur_states_set[k]
+            # The first input to the decoder is the last observed position [Nx1xK]
+            dec_input = tf.expand_dims(traj_obs_last, 1)
+            # Iterate over timesteps
+            for t in range(0, n_steps):
+                # ------------------------ xy decoder--------------------------------------
+                # Passing enc_output to the decoder
+                t_pred, dec_states, wft = self.dec(dec_input,traj_cur_states,context,training=False)
+                # Next input is the last predicted position
+                dec_input = t_pred
+                # Add it to the list of predictions
+                traj_pred.append(t_pred)
+                att_weights_pred.append(wft)
+                # Reuse the hidden states for the next step
+                traj_cur_states = dec_states
+            traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
+            att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
+            traj_pred_set.append(traj_pred)
+            att_weights_pred_set.append(att_weights_pred)
+        return traj_pred_set,att_weights_pred_set
 
     # Training loop
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
@@ -497,56 +576,67 @@ class TrajectoryEncoderDecoder():
             # Format the data
             batch_inputs, batch_targets = get_batch(batch, config)
             pred_out,__                 = self.batch_predict(batch_inputs,batch_targets.shape[1])
-            this_actual_batch_size = batch["original_batch_size"]
+            this_actual_batch_size      = batch["original_batch_size"]
             d = []
             # For all the trajectories in the batch
             for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
                 if i >= this_actual_batch_size:
                     break
-                # Conserve the x,y coordinates
-                this_pred_out     = pred_out[i][:, :2] #[pred,2]
-                # Convert it to absolute (starting from the last observed position)
-                if config.output_representation=='dxdy':
-                    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                else:
-                    this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                # Check shape is OK
-                assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
-                # Error for ade/fde
-                diff = pred_traj_gt - this_pred_out_abs
-                diff = diff**2
-                diff = np.sqrt(np.sum(diff, axis=1))
-                d.append(diff)
+                # TODO: replace
+                normin = 1000.0
+                diffmin= None
+                for k in range(self.output_samples):
+                    # Conserve the x,y coordinates of the kth trajectory
+                    this_pred_out     = pred_out[k][i][:, :2] #[pred,2]
+                    # Convert it to absolute (starting from the last observed position)
+                    if config.output_representation=='dxdy':
+                        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                    else:
+                        this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+                    # Check shape is OK
+                    assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+                    # Error for ade/fde
+                    diff = pred_traj_gt - this_pred_out_abs
+                    diff = diff**2
+                    diff = np.sqrt(np.sum(diff, axis=1))
+                    # To keep the min
+                    if tf.norm(diff)<normin:
+                        normin  = tf.norm(diff)
+                        diffmin = diff
+                d.append(diffmin)
             l2dis += d
         ade = [t for o in l2dis for t in o] # average displacement
         fde = [o[-1] for o in l2dis] # final displacement
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
-    # Perform a qualitative evaluation over a baych of n_trajectories
+    # Perform a qualitative evaluation over a batch of n_trajectories
     def qualitative_evaluation(self,dataset,config,n_trajectories=10,background=None,homography=None):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
-        # Select n_trajectories indices
+        # Select n_trajectories indices randomly
         trajIds  = np.random.randint(dataset.get_data_size(),size=n_trajectories)
-        # Form th batch
-        batch    = dataset.get_by_idxs(trajIds)
+        # Form the batch
+        batch                       = dataset.get_by_idxs(trajIds)
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         pred_traj, pred_att_weights = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            # Conserve the x,y coordinates
-            this_pred_out     = pred_traj[i][:, :2]
-            # Convert it to absolute (starting from the last observed position)
-            if config.output_representation=='dxdy':
-                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-            else:
-                this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-
+            this_pred_out_abs_set = []
+            for k in range(self.output_samples):
+                # Conserve the x,y coordinates
+                this_pred_out     = pred_traj[k][i][:, :2]
+                # Convert it to absolute (starting from the last observed position)
+                if config.output_representation=='dxdy':
+                    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                else:
+                    this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+                this_pred_out_abs_set.append(this_pred_out_abs)
+            this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
-            traj_pred.append(this_pred_out_abs)
+            traj_pred.append(this_pred_out_abs_set)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background,homography)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights[0],background,homography)

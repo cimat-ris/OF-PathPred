@@ -42,7 +42,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 training_data,validation_data,test_data,test_bckgd,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,0,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
-show_training_samples = True
+show_training_samples = False
 if show_training_samples:
     plot_training_data(training_data,experiment_parameters)
 
@@ -53,9 +53,8 @@ if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
 
-#model_parameters.num_epochs     = 3
-
 # Get the necessary data
+# TODO: replace these structures by the tf ones
 train_data       = batches_data.Dataset(training_data,model_parameters)
 val_data         = batches_data.Dataset(validation_data,model_parameters)
 test_data        = batches_data.Dataset(test_data, model_parameters)
@@ -69,7 +68,8 @@ checkpoint_dir = './training_checkpoints'
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
 checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                             encoder=tj_enc_dec.enc,
-                                            decoder=tj_enc_dec.dec)
+                                            decoder=tj_enc_dec.dec,
+                                            enctodec=tj_enc_dec.enctodec)
 
 # Training
 print("[INF] Training")
@@ -79,7 +79,6 @@ if perform_training==True:
         # TODO: Use ttf.data.Dataset!
         train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
         train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
-
         train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
             # Plot training results

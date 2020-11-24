@@ -11,7 +11,7 @@ def image_to_world_xy(image_xy, H):
     :param H: homography matrix
     :return: world (x, y) positions
     """
-    image_xy = np.array(image_xy)
+    image_xy  = np.array(image_xy)
     image_xy1 = np.concatenate([image_xy, np.ones((len(image_xy), 1))],axis=1)
     world_xy1 = H.dot(image_xy1.T).T
     return world_xy1[:, :2] / np.expand_dims(world_xy1[:, 2], axis=1)
