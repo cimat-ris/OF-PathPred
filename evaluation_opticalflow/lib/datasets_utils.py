@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.image as mpimg
 from process_file import process_file
 import numpy as np
-import cv2
+from batches_data import get_batch
 
 def get_testing_batch(testing_data,testing_data_path,config):
     # Get the video corresponding to the testing
@@ -21,9 +21,8 @@ def get_testing_batch(testing_data,testing_data_path,config):
     trajIds        = np.random.randint(testing_data.get_data_size(),size=n_trajectories)
     # Form the batch
     batch                       = testing_data.get_by_idxs(trajIds)
-    batch_inputs, batch_targets = get_batch(batch, config)
-    test_bckgd = mpimg.imread(testing_data_paths[0]+'/reference.png')
-    return batch_inputs, batch_targets, test_bckgd
+    test_bckgd = mpimg.imread(testing_data_path+'/reference.png')
+    return batch, test_bckgd
 
 def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
     if not use_pickled_data:

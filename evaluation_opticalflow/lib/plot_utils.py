@@ -4,6 +4,7 @@ from traj_utils import relative_to_abs, vw_to_abs
 import numpy as np
 import random
 import math
+import cv2
 import tensorflow as tf
 from datetime import datetime
 random.seed(datetime.now())
@@ -61,17 +62,6 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
     plt.axis('equal')
     if background is not None:
         plt.imshow(background)
-
-    # Get the video corresponding to the testing
-    cap     = cv2.VideoCapture(testing_data_paths[0]+'/video.avi')
-    frame_id= 0
-    while(cap.isOpened()):
-        ret, frame = cap.read()
-        cv2.imshow('frame',frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-        test_bckgd = mpimg.imread(testing_data_paths[0]+'/reference.png')
 
     # Get the number of samples per prediction
     nSamples = traj_pred[0].shape[0]

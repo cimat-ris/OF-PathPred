@@ -23,7 +23,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
-from datasets_utils import setup_loo_experiment
+from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data
 
 if tf.test.gpu_device_name():
@@ -39,7 +39,8 @@ dataset_dir       = "../datasets/"
 dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
 
 # Load the dataset and perform the split
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,2,experiment_parameters)
+idTest = 2
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -73,7 +74,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training the model")
-perform_training = True
+perform_training = False
 plot_training    = False
 if perform_training==True:
     # TODO: Use tf.data.Dataset!
@@ -98,5 +99,5 @@ qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
     for i in range(10):
-        batch_inputs, batch_targets, test_bckgd = get_testing_batch(test_data)
-        tj_enc_dec.qualitative_evaluation(batch_inputs, batch_targets,model_parameters,background=test_bckgd,homography=test_homography)
+        batch, test_bckgd = get_testing_batch(test_data,dataset_paths[idTest],model_parameters)
+        tj_enc_dec.qualitative_evaluation(batch,model_parameters,background=test_bckgd,homography=test_homography)

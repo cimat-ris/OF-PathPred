@@ -617,10 +617,11 @@ class TrajectoryEncoderDecoder():
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a batch of n_trajectories
-    def qualitative_evaluation(self,batch_inputs,batch_targets,config,background=None,homography=None):
+    def qualitative_evaluation(self,batch,config,background=None,homography=None):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
+        batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         pred_traj, pred_att_weights = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict
