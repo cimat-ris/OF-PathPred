@@ -39,7 +39,7 @@ dataset_dir       = "../datasets/"
 dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
 
 # Load the dataset and perform the split
-training_data,validation_data,test_data,test_bckgd,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,2,experiment_parameters)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,2,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -76,12 +76,12 @@ print("[INF] Training the model")
 perform_training = True
 plot_training    = False
 if perform_training==True:
-        # TODO: Use tf.data.Dataset!
-        train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
-        train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
-        train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
-        if plot_training==True:
-            plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
+    # TODO: Use tf.data.Dataset!
+    train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
+    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
+    train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
+    if plot_training==True:
+        plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
 # Testing
 # Restoring the latest checkpoint in checkpoint_dir
@@ -98,4 +98,5 @@ qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
     for i in range(10):
-        tj_enc_dec.qualitative_evaluation(test_data,model_parameters,10,background=test_bckgd,homography=test_homography)
+        batch_inputs, batch_targets, test_bckgd = get_testing_batch(test_data)
+        tj_enc_dec.qualitative_evaluation(batch_inputs, batch_targets,model_parameters,background=test_bckgd,homography=test_homography)

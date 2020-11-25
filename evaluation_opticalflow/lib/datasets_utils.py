@@ -3,6 +3,27 @@ import pickle
 import numpy as np
 import matplotlib.image as mpimg
 from process_file import process_file
+import numpy as np
+import cv2
+
+def get_testing_batch(testing_data,testing_data_path,config):
+    # Get the video corresponding to the testing
+    # TODO!
+    # cap     = cv2.VideoCapture(testing_data_path+'/video.avi')
+    # frame_id= 0
+    # while(cap.isOpened()):
+    #    ret, frame = cap.read()
+        #cv2.imshow('frame',frame)
+    #    if cv2.waitKey(1) & 0xFF == ord('q'):
+    #        break
+    # Select n_trajectories indices randomly
+    n_trajectories = 10
+    trajIds        = np.random.randint(testing_data.get_data_size(),size=n_trajectories)
+    # Form the batch
+    batch                       = testing_data.get_by_idxs(trajIds)
+    batch_inputs, batch_targets = get_batch(batch, config)
+    test_bckgd = mpimg.imread(testing_data_paths[0]+'/reference.png')
+    return batch_inputs, batch_targets, test_bckgd
 
 def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
     if not use_pickled_data:
@@ -35,27 +56,31 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             "obs_traj_theta":train_data["obs_traj_theta"][idx_train],
             "pred_traj":     train_data["pred_traj"][idx_train],
             "pred_traj_rel": train_data["pred_traj_rel"][idx_train],
+            "frames_ids":    train_data["frames_ids"][idx_train]
         }
         if experiment_parameters.add_social:
             training_data["obs_flow"]=train_data["obs_flow"][idx_train]
         # Test set
         testing_data = {
-            "obs_traj":     test_data["obs_traj"][:],
-            "obs_traj_rel": test_data["obs_traj_rel"][:],
+            "obs_traj":      test_data["obs_traj"][:],
+            "obs_traj_rel":  test_data["obs_traj_rel"][:],
             "obs_traj_theta":test_data["obs_traj_theta"][:],
-            "pred_traj":    test_data["pred_traj"][:],
-            "pred_traj_rel":test_data["pred_traj_rel"][:],
+            "pred_traj":     test_data["pred_traj"][:],
+            "pred_traj_rel": test_data["pred_traj_rel"][:],
+            "frames_ids":    test_data["frames_ids"][:]
         }
         if experiment_parameters.add_social:
             testing_data["obs_flow"]=test_data["obs_flow"][:]
         # Validation set
         validation_data ={
-            "obs_traj":     train_data["obs_traj"][idx_val],
-            "obs_traj_rel": train_data["obs_traj_rel"][idx_val],
+            "obs_traj":      train_data["obs_traj"][idx_val],
+            "obs_traj_rel":  train_data["obs_traj_rel"][idx_val],
             "obs_traj_theta":train_data["obs_traj_theta"][idx_val],
-            "pred_traj":    train_data["pred_traj"][idx_val],
-            "pred_traj_rel":train_data["pred_traj_rel"][idx_val],
+            "pred_traj":     train_data["pred_traj"][idx_val],
+            "pred_traj_rel": train_data["pred_traj_rel"][idx_val],
+            "frames_ids":    train_data["frames_ids"][idx_val]
         }
+        print(validation_data["frames_ids"])
         if experiment_parameters.add_social:
             validation_data["obs_flow"]=train_data["obs_flow"][idx_val]
 
@@ -86,8 +111,8 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
     print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
     print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
     print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
-    test_bckgd = mpimg.imread(testing_data_paths[0]+'/reference.png')
+
     # Load the homography corresponding to this dataset
     homography_file = os.path.join(testing_data_paths[0]+'/H.txt')
     test_homography = np.genfromtxt(homography_file)
-    return training_data,validation_data,test_data,test_bckgd,test_homography
+    return training_data,validation_data,test_data,test_homography

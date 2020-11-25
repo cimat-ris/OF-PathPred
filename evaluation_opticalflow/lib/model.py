@@ -548,7 +548,7 @@ class TrajectoryEncoderDecoder():
             # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
-            print('Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+            print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
 
             if config.use_validation:
                 # Compute validation loss
@@ -561,7 +561,7 @@ class TrajectoryEncoderDecoder():
                     total_loss+= batch_loss
                 # End epoch
                 total_loss = total_loss / num_batches_per_epoch
-                print('Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
+                print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
                 val_loss_results.append(total_loss)
                 # Evaluat ADE, FDE metrics on validation data
                 val_metrics = self.quantitative_evaluation(val_data,config)
@@ -573,7 +573,7 @@ class TrajectoryEncoderDecoder():
                     best["patchId"]= idx
                     # Save the best model so far
                     checkpoint.write(checkpoint_prefix+'-best')
-                print('Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_metrics['ade']))
+                print('[TRN] Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_metrics['ade']))
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
 
     def quantitative_evaluation(self,test_data,config):
@@ -617,15 +617,10 @@ class TrajectoryEncoderDecoder():
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a batch of n_trajectories
-    def qualitative_evaluation(self,dataset,config,n_trajectories=10,background=None,homography=None):
+    def qualitative_evaluation(self,batch_inputs,batch_targets,config,background=None,homography=None):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
-        # Select n_trajectories indices randomly
-        trajIds  = np.random.randint(dataset.get_data_size(),size=n_trajectories)
-        # Form the batch
-        batch                       = dataset.get_by_idxs(trajIds)
-        batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         pred_traj, pred_att_weights = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict

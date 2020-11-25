@@ -233,7 +233,7 @@ def process_file(data_paths, parameters):
         "obs_traj_theta":obs_traj_theta,
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
-        "frames_obs": frame_obs
+        "frames_ids": frame_obs
     }
 
     # Optical flow
