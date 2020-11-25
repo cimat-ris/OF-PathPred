@@ -48,6 +48,9 @@ class Model_Parameters(object):
         self.modelname      = 'gphuctl'
         self.optimizer      = 'adam'
         self.initial_lr     = 0.01
+        # MC dropout
+        self.is_mc_dropout         = True
+        self.mc_samples            = 20
 
 """ Trajectory encoder through embedding+RNN.
 """
@@ -55,6 +58,7 @@ class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
         self.add_bidirection = config.add_bidirection
         self.stack_rnn_size  = config.stack_rnn_size
+        self.is_mc_dropout   = config.is_mc_dropout
         # xy encoder: [N,T1,h_dim]
         super(TrajectoryEncoder, self).__init__(name="traj_enc")
         # Linear embedding of the observed trajectories (for each x,y)
@@ -90,13 +94,15 @@ class TrajectoryEncoder(layers.Layer):
         # Linear embedding of the observed trajectories
         x = self.traj_xy_emb_enc(traj_inputs)
         # Applies the position sequence through the LSTM
-        return self.lstm(x,training=training)
+        # The training parameter is important for dropout
+        return self.lstm(x,training=(training or self.is_mc_dropout))
 
 """ Social encoding through embedding+RNN.
 """
 class SocialEncoder(layers.Layer):
     def __init__(self, config):
         super(SocialEncoder, self).__init__(name="social_encoder")
+        self.is_mc_dropout   = config.is_mc_dropout
         # Linear embedding of the social part
         self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
@@ -116,7 +122,7 @@ class SocialEncoder(layers.Layer):
         # Linear embedding of the observed trajectories
         x = self.traj_social_emb_enc(social_inputs)
         # Applies the position sequence through the LSTM
-        return self.lstm(x,training=training)
+        return self.lstm(x,training=(training or self.is_mc_dropout))
 
 """ Focal attention layer.
 """
@@ -252,6 +258,7 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
 class TrajectoryDecoderInitializer(tf.keras.Model):
     def __init__(self, config):
         super(TrajectoryDecoderInitializer, self).__init__(name="traj_dec_initializer")
+        self.is_mc_dropout  = config.is_mc_dropout
         # Dropout layer
         self.dropout        = tf.keras.layers.Dropout(config.dropout_rate)
         self.output_var_dirs= config.output_var_dirs
@@ -281,7 +288,6 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         for i in range(self.output_var_dirs):
             decoder_init_dh  = self.traj_enc_h_to_dec_h[i](encoder_states[0])
             decoder_init_dc  = self.traj_enc_c_to_dec_c[i](encoder_states[1])
-            # TODO: 0,.1?
             decoder_init_h   = encoder_states[0]+decoder_init_dh
             decoder_init_c   = encoder_states[1]+decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
@@ -299,6 +305,7 @@ class TrajectoryDecoder(tf.keras.Model):
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
         self.stack_rnn_size = config.stack_rnn_size
+        self.is_mc_dropout  = config.is_mc_dropout
         # Linear embedding of the encoding resulting observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
@@ -359,7 +366,7 @@ class TrajectoryDecoder(tf.keras.Model):
             # Input is just the embedded inputs
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
-        outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=training)
+        outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=(training or self.is_mc_dropout))
         # Last h,c states
         cur_states = outputs[1:3]
         # Apply dropout layer on the h  state before mapping to positions x,y
