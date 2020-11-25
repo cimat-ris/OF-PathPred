@@ -39,7 +39,7 @@ dataset_dir       = "../datasets/"
 dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
 
 # Load the dataset and perform the split
-training_data,validation_data,test_data,test_bckgd,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,0,experiment_parameters)
+training_data,validation_data,test_data,test_bckgd,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,2,experiment_parameters)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False

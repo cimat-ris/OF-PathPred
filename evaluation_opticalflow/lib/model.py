@@ -27,14 +27,14 @@ class Model_Parameters(object):
         self.add_bidirection= False
         self.stack_rnn_size = 2
         self.output_representation = output_representation
-        self.output_var_dirs= 1
+        self.output_var_dirs= 5
         # Key points
         self.kp_size        = 18
         # Optical flow
         self.flow_size      = 64
         # For training
         self.num_epochs     = 35
-        self.batch_size     = 512  # batch size
+        self.batch_size     = 256  # batch size 512
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
@@ -282,11 +282,11 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
             decoder_init_dh  = self.traj_enc_h_to_dec_h[i](encoder_states[0])
             decoder_init_dc  = self.traj_enc_c_to_dec_c[i](encoder_states[1])
             # TODO: 0,.1?
-            decoder_init_h   = encoder_states[0]+0.5*decoder_init_dh
-            decoder_init_c   = encoder_states[1]+0.5*decoder_init_dc
+            decoder_init_h   = encoder_states[0]+decoder_init_dh
+            decoder_init_c   = encoder_states[1]+decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
-            decoder_init_h   = encoder_states[0]-0.5*decoder_init_dh
-            decoder_init_c   = encoder_states[1]-0.5*decoder_init_dc
+            decoder_init_h   = encoder_states[0]-decoder_init_dh
+            decoder_init_c   = encoder_states[1]-decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
         return decoder_init_states
 
