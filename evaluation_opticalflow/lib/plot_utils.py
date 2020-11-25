@@ -32,6 +32,26 @@ def plot_training_data(training_data,experiment_parameters):
 
     plt.show()
 
+# Plot training rep_results
+def plot_training_results(train_loss_results,val_loss_results,val_metrics_results):
+    # Plot training results
+    fig = plt.figure(figsize=(16,8))
+    ax = fig.add_subplot(1, 2, 1)
+    ax.plot(train_loss_results,'b',label='Training')
+    ax.plot(val_loss_results,'r',label='Validation')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Loss')
+    ax.set_title('Training and validation losses')
+    ax.legend()
+    ax = fig.add_subplot(1, 2, 2)
+    ax.plot(val_metrics_results["ade"],'b',label='ADE in validation')
+    ax.plot(val_metrics_results["fde"],'r',label='FDE in validation')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Error (m)')
+    ax.set_title('Metrics at validation')
+    ax.legend()
+    plt.show()
+
 
 # Useful function to plot the predictions vs. the ground truth
 def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,homography=None):

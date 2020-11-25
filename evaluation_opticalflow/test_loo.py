@@ -72,32 +72,16 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                             enctodec=tj_enc_dec.enctodec)
 
 # Training
-print("[INF] Training")
+print("[INF] Training the model")
 perform_training = True
 plot_training    = False
 if perform_training==True:
-        # TODO: Use ttf.data.Dataset!
+        # TODO: Use tf.data.Dataset!
         train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
         train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
         train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
-            # Plot training results
-            fig = plt.figure(figsize=(16,8))
-            ax = fig.add_subplot(1, 2, 1)
-            ax.plot(train_loss_results,'b',label='Training')
-            ax.plot(val_loss_results,'r',label='Validation')
-            ax.set_xlabel("Epoch")
-            ax.set_ylabel("Loss")
-            ax.set_title('Training and validation losses')
-            ax.legend()
-            ax = fig.add_subplot(1, 2, 2)
-            ax.plot(val_metrics_results["ade"],'b',label='ADE in validation')
-            ax.plot(val_metrics_results["fde"],'r',label='FDE in validation')
-            ax.set_xlabel("Epoch")
-            ax.set_ylabel("Error (m)")
-            ax.set_title('Metrics at validation')
-            ax.legend()
-            plt.show()
+            plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
 # Testing
 # Restoring the latest checkpoint in checkpoint_dir
