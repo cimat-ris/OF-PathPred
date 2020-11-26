@@ -27,7 +27,7 @@ class Model_Parameters(object):
         self.add_bidirection= False
         self.stack_rnn_size = 2
         self.output_representation = output_representation
-        self.output_var_dirs= 5
+        self.output_var_dirs= 0
         # Key points
         self.kp_size        = 18
         # Optical flow
@@ -209,15 +209,21 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # ----------------------------------------------------------
         # Social interaccion (through optical flow)
         # ----------------------------------------------------------
-        if self.add_attention and self.add_social:
-            # Applies the person pose (keypoints) sequence through the LSTM
-            soc_h_seq, soc_obs_enc_last_state, __, = self.soc_enc(soc_inputs,training=training)
-            # Get hidden states and the last hidden state, separately, and add them to the lists
-            enc_h_list.append(soc_h_seq)
+        if self.add_social:
+            # Applies the optical flow descriptor through the LSTM
+            outputs = self.soc_enc(soc_inputs,training=training)
+            soc_last_states = [outputs[1],outputs[2]]
+            if self.add_attention:
+                soc_h_seq       = outputs[0]
+                # Get hidden states and the last hidden state, separately, and add them to the lists
+                enc_h_list.append(soc_h_seq)
         # Pack all observed hidden states (lists) from all M features into a tensor
         # The final size should be [N,M,T_obs,h_dim]
         obs_enc_h          = tf.stack(enc_h_list, axis=1)
-        return traj_last_states,obs_enc_h
+        if self.add_social:
+            return traj_last_states,soc_last_states, obs_enc_h
+        else:
+            return traj_last_states, obs_enc_h
 
 """ Custom LSTM cell class for our decoder
 """
@@ -259,40 +265,62 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
     def __init__(self, config):
         super(TrajectoryDecoderInitializer, self).__init__(name="traj_dec_initializer")
         self.is_mc_dropout  = config.is_mc_dropout
+        self.add_social     = config.add_social
         # Dropout layer
         self.dropout        = tf.keras.layers.Dropout(config.dropout_rate)
         self.output_var_dirs= config.output_var_dirs
-        # Linear embeddings
+        # Linear embeddings from trajectory to hidden state
         self.traj_enc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.linear,
             name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
         self.traj_enc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.linear,
             name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        # Linear embeddings from social state to hidden state
+        self.traj_soc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.linear,
+            name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
+        self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.linear,
+            name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
         # Input layers
         input_shape      = (config.enc_hidden_size)
         self.input_h     = layers.Input(input_shape)
         self.input_c     = layers.Input(input_shape)
-        self.out         = self.call([self.input_h,self.input_c])
-        # Call init again. This is a workaround for being able to use summary
-        super(TrajectoryDecoderInitializer, self).__init__(
+        if self.add_social:
+            self.input_sh    = layers.Input(input_shape)
+            self.input_sc    = layers.Input(input_shape)
+            self.out         = self.call([[self.input_h,self.input_c],[self.input_sh,self.input_sc]])
+            super(TrajectoryDecoderInitializer, self).__init__(
+            inputs = [[self.input_h,self.input_c],[self.input_sh,self.input_sc]],
+            outputs=self.out)
+        else:
+            self.out         = self.call([[self.input_h,self.input_c]])
+            # Call init again. This is a workaround for being able to use summary
+            super(TrajectoryDecoderInitializer, self).__init__(
                     inputs = [self.input_h,self.input_c],
                     outputs=self.out)
 
     # Call to the decoder
-    def call(self, encoder_states, training=None):
+    def call(self, encoders_states, training=None):
         # Embeddings
         decoder_init_states = []
+        traj_encoder_states  = encoders_states[0]
+        if self.add_social:
+            soc_encoder_states = encoders_states[1]
         # Append the single encoded states
-        decoder_init_states.append(encoder_states)
+        decoder_init_states.append(traj_encoder_states)
         for i in range(self.output_var_dirs):
-            decoder_init_dh  = self.traj_enc_h_to_dec_h[i](encoder_states[0])
-            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](encoder_states[1])
-            decoder_init_h   = encoder_states[0]+decoder_init_dh
-            decoder_init_c   = encoder_states[1]+decoder_init_dc
+            decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
+            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
+            if self.add_social:
+                decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
+                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+            decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
+            decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
-            decoder_init_h   = encoder_states[0]-decoder_init_dh
-            decoder_init_c   = encoder_states[1]-decoder_init_dc
+            decoder_init_h   = traj_encoder_states[0]-decoder_init_dh
+            decoder_init_c   = traj_encoder_states[1]-decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
         return decoder_init_states
 
@@ -432,10 +460,14 @@ class TrajectoryEncoderDecoder():
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
-            traj_last_states, context = self.enc(batch_inputs, training=training)
-            # Returns a set of self.output_samples possible initializing states for the decoder
-            # Each value in the set is a pair (h,c) for the low level LSTM in the stack
-            traj_cur_states_set = self.enctodec(traj_last_states[0])
+            if self.add_social:
+                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=training)
+                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+            else:
+                traj_last_states, context = self.enc(batch_inputs, training=training)
+                # Returns a set of self.output_samples possible initializing states for the decoder
+                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+                traj_cur_states_set = self.enctodec([traj_last_states[0]])
             losses = []
             # Iterate over these possible initializing states
             for k in range(self.output_samples):
@@ -487,11 +519,15 @@ class TrajectoryEncoderDecoder():
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
-        # Apply trajectory and context encoding
-        traj_last_states, context = self.enc(batch_inputs, training=False)
-        # Returns a set of self.output_samples possible initializing states for the decoder
-        # Each value in the set is a pair (h,c) for the low level LSTM in the stack
-        traj_cur_states_set = self.enctodec(traj_last_states[0])
+        if self.add_social:
+            traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
+            traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+        else:
+            traj_last_states, context = self.enc(batch_inputs, training=False)
+            # Returns a set of self.output_samples possible initializing states for the decoder
+            # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+            traj_cur_states_set = self.enctodec([traj_last_states[0]])
+
         traj_pred_set       = []
         att_weights_pred_set= []
         # Iterate over these possible initializing states
