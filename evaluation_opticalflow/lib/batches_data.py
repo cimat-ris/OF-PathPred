@@ -69,6 +69,18 @@ class Dataset(object):
             out[key].extend(val[idx] for idx in idxs)
         return out
 
+    def get_by_frame_id(self, frame_id):
+        out  = {}
+        idxs = []
+        for idx,frame in enumerate(self.data["frames_ids"]):
+            if frame[0]==frame_id:
+                idxs.append(idx)
+        for key, val in self.data.items():
+            if not key in out:
+                out[key] = []
+            out[key].extend(val[idx] for idx in idxs)
+        return out
+
     def get_num_batches(self):
         """ Number of batches."""
         return int(math.ceil(self.num_examples / float(self.config.batch_size)))

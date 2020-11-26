@@ -617,7 +617,7 @@ class TrajectoryEncoderDecoder():
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a batch of n_trajectories
-    def qualitative_evaluation(self,batch,config,background=None,homography=None):
+    def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False):
         traj_obs = []
         traj_gt  = []
         traj_pred= []
@@ -642,4 +642,4 @@ class TrajectoryEncoderDecoder():
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs_set)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights[0],background,homography)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights[0],background,homography,flip=flip)

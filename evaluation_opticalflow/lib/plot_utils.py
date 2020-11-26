@@ -55,7 +55,7 @@ def plot_training_results(train_loss_results,val_loss_results,val_metrics_result
 
 
 # Useful function to plot the predictions vs. the ground truth
-def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,homography=None):
+def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,homography=None,flip=False):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     ax.set_title('Trajectory samples')
@@ -80,14 +80,25 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
             obs  = image_to_world_xy(obs, homography)
             tpred= image_to_world_xy(tf.reshape(pred,[pred.shape[0]*pred.shape[1],pred.shape[2]]), homography)
             pred = tf.reshape(tpred,[pred.shape[0],pred.shape[1],pred.shape[2]])
-        plt.plot(obs[:,1],obs[:,0],color='red')
-        # Ground truth trajectory
-        plt.plot([obs[-1,1],gt[0,1]],[obs[-1,0],gt[0,0]],color='blue')
-        plt.plot(gt[:,1],gt[:,0],color='blue')
-        # Predicted trajectory
-        for k in range(nSamples):
-            plt.plot([obs[-1,1],pred[k][0,1]],[obs[-1,0],pred[k][0,0]],color='green')
-            plt.plot(pred[k][:,1],pred[k][:,0],color='green')
-        plt.scatter(obs[:,1],obs[:,0], s=100.0*att_weights[11], marker='o', color='red')
+        if flip:
+            plt.plot(obs[:,1],obs[:,0],color='red')
+            plt.scatter(obs[:,1],obs[:,0],s=100.0*att_weights[11],marker='o',color='red')
+            # Predicted trajectory
+            for k in range(nSamples):
+                plt.plot([obs[-1,1],pred[k][0,1]],[obs[-1,0],pred[k][0,0]],color='green')
+                plt.plot(pred[k][:,1],pred[k][:,0],color='green')
+            # Ground truth trajectory
+            plt.plot([obs[-1,1],gt[0,1]],[obs[-1,0],gt[0,0]],color='blue',linewidth=2)
+            plt.plot(gt[:,1],gt[:,0],color='blue',linewidth=32)
+        else:
+            plt.plot(obs[:,0],obs[:,1],color='red')
+            plt.scatter(obs[:,0],obs[:,1],s=100.0*att_weights[11],marker='o',color='red')
+            # Predicted trajectory
+            for k in range(nSamples):
+                plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
+                plt.plot(pred[k][:,0],pred[k][:,1],color='green')
+            # Ground truth trajectory
+            plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue',linewidth=2)
+            plt.plot(gt[:,0],gt[:,1],color='blue',linewidth=2)
     ax.legend()
     plt.show()

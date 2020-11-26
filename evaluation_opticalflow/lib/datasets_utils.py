@@ -5,23 +5,22 @@ import matplotlib.image as mpimg
 from process_file import process_file
 import numpy as np
 from batches_data import get_batch
+import cv2
 
 def get_testing_batch(testing_data,testing_data_path,config):
+    # A trajectory id
+    randomtrajId= np.random.randint(testing_data.get_data_size(),size=1)
+    frame_id    = testing_data.data["frames_ids"][randomtrajId][0][0]
     # Get the video corresponding to the testing
-    # TODO!
-    # cap     = cv2.VideoCapture(testing_data_path+'/video.avi')
-    # frame_id= 0
-    # while(cap.isOpened()):
-    #    ret, frame = cap.read()
-        #cv2.imshow('frame',frame)
-    #    if cv2.waitKey(1) & 0xFF == ord('q'):
-    #        break
-    # Select n_trajectories indices randomly
-    n_trajectories = 10
-    trajIds        = np.random.randint(testing_data.get_data_size(),size=n_trajectories)
+    cap   = cv2.VideoCapture(testing_data_path+'/video.avi')
+    frame = 0
+    while(cap.isOpened()):
+        ret, test_bckgd = cap.read()
+        if frame == frame_id:
+            break
+        frame = frame + 1
     # Form the batch
-    batch                       = testing_data.get_by_idxs(trajIds)
-    test_bckgd = mpimg.imread(testing_data_path+'/reference.png')
+    batch = testing_data.get_by_frame_id(frame_id)
     return batch, test_bckgd
 
 def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
@@ -79,7 +78,6 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             "pred_traj_rel": train_data["pred_traj_rel"][idx_val],
             "frames_ids":    train_data["frames_ids"][idx_val]
         }
-        print(validation_data["frames_ids"])
         if experiment_parameters.add_social:
             validation_data["obs_flow"]=train_data["obs_flow"][idx_val]
 
