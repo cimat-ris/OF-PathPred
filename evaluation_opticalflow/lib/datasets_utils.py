@@ -24,12 +24,12 @@ def get_testing_batch(testing_data,testing_data_path,config):
     return batch, test_bckgd
 
 def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
+    # Dataset to be tested
+    testing_data_paths        = [experiment_paths[leave_id]]
+    training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
+    print('[INF] Testing dataset:',testing_data_paths)
+    print('[INF] Training datasets:',training_data_paths)
     if not use_pickled_data:
-        # Dataset to be tested
-        testing_data_paths        = [experiment_paths[leave_id]]
-        training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
-        print('[INF] Testing dataset:',testing_data_paths)
-        print('[INF] Training datasets:',training_data_paths)
         # Process data specified by the path to get the trajectories with
         print('[INF] Extracting data from the datasets')
         test_data  = process_file(testing_data_paths, experiment_parameters)
