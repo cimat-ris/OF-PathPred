@@ -82,7 +82,7 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
             pred = tf.reshape(tpred,[pred.shape[0],pred.shape[1],pred.shape[2]])
         if flip:
             plt.plot(obs[:,1],obs[:,0],color='red')
-            plt.scatter(obs[:,1],obs[:,0],s=100.0*att_weights[11],marker='o',color='red')
+            # plt.scatter(obs[:,1],obs[:,0],s=100.0*att_weights[11],marker='o',color='red')
             # Predicted trajectory
             for k in range(nSamples):
                 plt.plot([obs[-1,1],pred[k][0,1]],[obs[-1,0],pred[k][0,0]],color='green')
@@ -92,7 +92,7 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
             plt.plot(gt[:,1],gt[:,0],color='blue',linewidth=32)
         else:
             plt.plot(obs[:,0],obs[:,1],color='red')
-            plt.scatter(obs[:,0],obs[:,1],s=100.0*att_weights[11],marker='o',color='red')
+            # plt.scatter(obs[:,0],obs[:,1],s=100.0*att_weights[11],marker='o',color='red')
             # Predicted trajectory
             for k in range(nSamples):
                 plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
