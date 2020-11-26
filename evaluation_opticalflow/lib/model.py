@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense, Bidirectional
+from tensorflow.keras.layers import Dense
 from tensorflow.keras import models
 
 class Model_Parameters(object):
@@ -24,7 +24,6 @@ class Model_Parameters(object):
         self.add_kp         = add_kp
         self.add_social     = add_social
         self.add_attention  = add_attention
-        self.add_bidirection= False
         self.stack_rnn_size = 2
         self.output_representation = output_representation
         self.output_var_dirs= 0
@@ -56,16 +55,15 @@ class Model_Parameters(object):
 """
 class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
-        self.add_bidirection = config.add_bidirection
         self.stack_rnn_size  = config.stack_rnn_size
         self.is_mc_dropout   = config.is_mc_dropout
         # xy encoder: [N,T1,h_dim]
-        super(TrajectoryEncoder, self).__init__(name="traj_enc")
+        super(TrajectoryEncoder, self).__init__(name="trajectory_encoder")
         # Linear embedding of the observed trajectories (for each x,y)
         self.traj_xy_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             use_bias=True,
-            name='traj_enc_emb')
+            name='position_embedding')
         # LSTM cell, including dropout
         # Stacked configuration.
         # Output is:
@@ -73,20 +71,15 @@ class TrajectoryEncoder(layers.Layer):
         # - last pair (h,c) for the first layer
         # - last pair (h,c) for the second layer
         # - ... and so on
-        self.lstm_cells = [tf.keras.layers.LSTMCell(config.enc_hidden_size,
-                name   = 'traj_enc_cell',
+        self.lstm_cells= [tf.keras.layers.LSTMCell(config.enc_hidden_size,
+                name   = 'trajectory_encoder_cell',
                 dropout= config.dropout_rate,
                 recurrent_dropout=config.dropout_rate) for _ in range(self.stack_rnn_size)]
         self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
 
         # Recurrent neural network using the previous cell
         # Initial state is zero
-        if self.add_bidirection:
-            self.lstm      = Bidirectional(tf.keras.layers.RNN(self.lstm_cell,
-                return_sequences= True,
-                return_state    = True),merge_mode='sum')
-        else:
-            self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
                 return_sequences= True,
                 return_state    = True)
 
@@ -106,13 +99,12 @@ class SocialEncoder(layers.Layer):
         # Linear embedding of the social part
         self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
-            name='social_enc_emb')
+            name='social_feature_embedding')
         # LSTM cell, including dropout
         self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
-            name   = 'social_enc_cell',
+            name   = 'social_encoder_cell',
             dropout= config.dropout_rate,
-            recurrent_dropout= config.dropout_rate
-            )
+            recurrent_dropout= config.dropout_rate)
         # Recurrent neural network using the previous cell
         self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
             return_sequences= True,
@@ -158,20 +150,19 @@ class FocalAttention(layers.Layer):
 """
 class TrajectoryAndContextEncoder(tf.keras.Model):
     def __init__(self,config):
-        super(TrajectoryAndContextEncoder, self).__init__(name="traj_ctxt_enc")
+        super(TrajectoryAndContextEncoder, self).__init__(name="trajectory_context_encoder")
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
-        self.add_bidirection= config.add_bidirection
         self.stack_rnn_size = config.stack_rnn_size
         # Input layers
         obs_shape  = (config.obs_len,config.P)
         soc_shape  = (config.obs_len,config.flow_size)
-        self.input_layer_traj = layers.Input(obs_shape)
+        self.input_layer_traj = layers.Input(obs_shape,name="observed_trajectory")
         # Encoding: Positions
         self.traj_enc     = TrajectoryEncoder(config)
         if (self.add_attention and self.add_social):
             # In the case of handling social interactions, add a third input
-            self.input_layer_social = layers.Input(soc_shape)
+            self.input_layer_social = layers.Input(soc_shape,name="social_features")
             # Encoding: Social interactions
             self.soc_enc            = SocialEncoder(config)
             # Get output layer now with `call` method
@@ -194,15 +185,11 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # Encoding
         # ----------------------------------------------------------
         # Applies the position sequence through the LSTM: [N,T1,H]
-        if self.add_bidirection:
-            # TODO
-            traj_h_seq, traj_obs_enc_last_state1, traj_obs_enc_last_state2,__,__ = self.traj_enc(traj_obs_inputs,training=training)
-        else:
-            # In the case of stacked cells, output is:
-            # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
-            outputs          = self.traj_enc(traj_obs_inputs,training=training)
-            traj_h_seq       = outputs[0]
-            traj_last_states = outputs[1:self.stack_rnn_size+1]
+        # In the case of stacked cells, output is:
+        # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
+        outputs          = self.traj_enc(traj_obs_inputs,training=training)
+        traj_h_seq       = outputs[0]
+        traj_last_states = outputs[1:self.stack_rnn_size+1]
         # Get the hidden states and the last hidden state,+
         # separately, and add them to the lists
         enc_h_list          = [traj_h_seq]
@@ -263,7 +250,7 @@ class DecoderLSTMCell(tf.keras.layers.LSTMCell):
 """
 class TrajectoryDecoderInitializer(tf.keras.Model):
     def __init__(self, config):
-        super(TrajectoryDecoderInitializer, self).__init__(name="traj_dec_initializer")
+        super(TrajectoryDecoderInitializer, self).__init__(name="trajectory_decoder_initializer")
         self.is_mc_dropout  = config.is_mc_dropout
         self.add_social     = config.add_social
         # Dropout layer
@@ -285,11 +272,11 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
             name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
         # Input layers
         input_shape      = (config.enc_hidden_size)
-        self.input_h     = layers.Input(input_shape)
-        self.input_c     = layers.Input(input_shape)
+        self.input_h     = layers.Input(input_shape,name="trajectory_encoding_h")
+        self.input_c     = layers.Input(input_shape,name="trajectory_encoding_c")
         if self.add_social:
-            self.input_sh    = layers.Input(input_shape)
-            self.input_sc    = layers.Input(input_shape)
+            self.input_sh    = layers.Input(input_shape,name="social_encoding_h")
+            self.input_sc    = layers.Input(input_shape,name="social_encoding_c")
             self.out         = self.call([[self.input_h,self.input_c],[self.input_sh,self.input_sc]])
             super(TrajectoryDecoderInitializer, self).__init__(
             inputs = [[self.input_h,self.input_c],[self.input_sh,self.input_sc]],
@@ -329,7 +316,7 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
 """
 class TrajectoryDecoder(tf.keras.Model):
     def __init__(self, config):
-        super(TrajectoryDecoder, self).__init__(name="traj_dec")
+        super(TrajectoryDecoder, self).__init__(name="trajectory_decoder")
         self.add_social     = config.add_social
         self.add_attention  = config.add_attention
         self.stack_rnn_size = config.stack_rnn_size
@@ -337,11 +324,11 @@ class TrajectoryDecoder(tf.keras.Model):
         # Linear embedding of the encoding resulting observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
-            name='traj_enc_emb')
+            name='trajectory_position_embedding')
         # RNN cell
         self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
             recurrent_initializer='glorot_uniform',
-            name='traj_dec',
+            name='trajectory_decoder_cell',
             dropout= config.dropout_rate,
             recurrent_dropout=config.dropout_rate
             )
@@ -355,21 +342,21 @@ class TrajectoryDecoder(tf.keras.Model):
         if (self.add_attention):
             self.focal_attention = FocalAttention(config,self.M)
         # Dropout layer
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate)
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decoder_h")
         # Mapping from h to positions
         self.h_to_xy = tf.keras.layers.Dense(config.P,
             activation=tf.identity,
             name='h_to_xy')
         # Input layers
         dec_input_shape      = (1,config.P)
-        self.input_layer_pos = layers.Input(dec_input_shape)
+        self.input_layer_pos = layers.Input(dec_input_shape,name="position")
         enc_last_state_shape = (config.dec_hidden_size)
-        self.input_layer_hid1= layers.Input(enc_last_state_shape)
-        self.input_layer_hid2= layers.Input(enc_last_state_shape)
+        self.input_layer_hid1= layers.Input(enc_last_state_shape,name="initial_state_h")
+        self.input_layer_hid2= layers.Input(enc_last_state_shape,name="initial_state_c")
         # Context shape: [N,M,T1,h_dim]
         ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
         # Context input
-        self.input_layer_ctxt = layers.Input(ctxt_shape)
+        self.input_layer_ctxt = layers.Input(ctxt_shape,name="context")
         self.out = self.call(self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2),self.input_layer_ctxt)
         # Call init again. This is a workaround for being able to use summary
         super(TrajectoryDecoder, self).__init__(
