@@ -16,7 +16,7 @@ print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 # Important imports
 import batches_data
-from training_and_testing import Trainer,Tester,Experiment_Parameters
+from training_and_testing import Experiment_Parameters
 import matplotlib.pyplot as plt
 from model import TrajectoryEncoderDecoder, Model_Parameters
 import tensorflow as tf
@@ -24,7 +24,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
 from datasets_utils import setup_loo_experiment, get_testing_batch
-from plot_utils import plot_training_data
+from plot_utils import plot_training_data,plot_training_results
 
 if tf.test.gpu_device_name():
     print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
@@ -32,7 +32,7 @@ else:
     print("[INF] Using CPU")
 
 # Load the default parameters
-experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
+experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=False)
 #experiment_parameters.output_representation = 'vw'
 
 dataset_dir       = "../datasets/"
@@ -40,7 +40,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=True)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -53,6 +53,8 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
+model_parameters.num_epochs      = 35
+model_parameters.output_var_dirs = 1
 
 # Get the necessary data
 # TODO: replace these structures by the tf ones
@@ -74,8 +76,8 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training the model")
-perform_training = False
-plot_training    = False
+perform_training = True
+plot_training    = True
 if perform_training==True:
     # TODO: Use tf.data.Dataset!
     train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
