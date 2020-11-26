@@ -57,7 +57,7 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             "frames_ids":    train_data["frames_ids"][idx_train]
         }
         if experiment_parameters.add_social:
-            training_data["obs_flow"]=train_data["obs_flow"][idx_train]
+            training_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_train]
         # Test set
         testing_data = {
             "obs_traj":      test_data["obs_traj"][:],
@@ -68,7 +68,7 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             "frames_ids":    test_data["frames_ids"][:]
         }
         if experiment_parameters.add_social:
-            testing_data["obs_flow"]=test_data["obs_flow"][:]
+            testing_data["obs_optical_flow"]=test_data["obs_optical_flow"][:]
         # Validation set
         validation_data ={
             "obs_traj":      train_data["obs_traj"][idx_val],
@@ -79,7 +79,7 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             "frames_ids":    train_data["frames_ids"][idx_val]
         }
         if experiment_parameters.add_social:
-            validation_data["obs_flow"]=train_data["obs_flow"][idx_val]
+            validation_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_val]
 
         # Training dataset
         pickle_out = open('training_data_'+experiment_name+'.pickle',"wb")

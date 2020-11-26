@@ -12,7 +12,8 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 from interaction_optical_flow import OpticalFlowSimulator
-from process_file import process_file, predictor_parameters
+from process_file import process_file
+from training_and_testing import Experiment_Parameters
 import random
 from datetime import datetime
 random.seed(datetime.now())
@@ -20,35 +21,37 @@ random.seed(datetime.now())
 from obstacles import image_to_world_xy,generate_obstacle_polygons,load_world_obstacle_polygons
 import matplotlib.pyplot as plt
 
+
+# Load the default parameters
+experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False,obstacles=False)
 # Dataset to be tested
-dataset_paths  = "../../data1/"
+dataset_paths  = "../../datasets/"
 #dataset_name = 'eth-hotel'
 #dataset_name = 'eth-univ'
 #dataset_name = 'ucy-zara01'
 dataset_name = 'ucy-zara02'
-
 # File of trajectories coordinates. Coordinates are in world frame
-data_path = dataset_paths+dataset_name
+data_paths = [dataset_paths+dataset_name]
 # Load the saved obstacles
 obstacles_world = load_world_obstacle_polygons(dataset_paths,dataset_name)
-# Load the default parameters
-parameters = predictor_parameters(add_social=True)
 # Process data to get the trajectories
-data = process_file(data_path, parameters, ',')
+data = process_file(data_paths, experiment_parameters)
 # Select a random sequence
 idSample = random.sample(range(1,data["obs_traj"].shape[0]), 1)
 # The random sequence selected
-traj_sample   = data['obs_traj'][idSample][0]
-traj_neighbors= data['obs_neighbors'][idSample][0]
-traj_id       = data['key_idx'][idSample]
+traj_sample             = data['obs_traj'][idSample][0]
+traj_neighbors          = data['obs_neighbors'][idSample][0]
+optical_flow_sample     = data['obs_optical_flow'][idSample][0]
+visible_neighbors_sample= data['obs_visible_neighbors'][idSample][0]
+if experiment_parameters.obstacles:
+    visible_obst_sample     = data['visible_obstacles'][idSample][0]
+else:
+    visible_obst_sample     = None
 OFSimulator          = OpticalFlowSimulator()
 
-# Optical flow: no obstacle
-optical_flow_sample,visible_neighbors_sample,visible_obst_sample = OFSimulator.compute_opticalflow_seq(traj_id,traj_sample,traj_neighbors,obstacles_world)
 # Plot
 OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow, with obstacles")
 
 # Optical flow: with obstacles
-optical_flow_sample,visible_neighbors_sample,visible_obst_sample = OFSimulator.compute_opticalflow_seq(traj_id,traj_sample,traj_neighbors,None)
 # Plot
-OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,None,None,title="Sample optical flow, with no obstacle")
+#OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,None,None,title="Sample optical flow, with no obstacle")

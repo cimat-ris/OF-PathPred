@@ -27,6 +27,8 @@ def process_file(data_paths, parameters):
     seq_neighbors_all            = []
     seq_frames_all               = []  # [N, seq_len]
     all_flow                     = []
+    all_vis_neigh                = []
+    all_vis_obst                 = []
     # Scan all the datasets
     for idx,directory in enumerate(used_data_dirs):
         seq_neighbors_dataset= []
@@ -202,9 +204,10 @@ def process_file(data_paths, parameters):
                 flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],parameters.obs_len,obstacles_world)
             else:
                 of_sim = OpticalFlowSimulator()
-                flow,vis_neigh,_ = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],parameters.obs_len,None)
+                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],parameters.obs_len,None)
             all_flow.append(flow)
-
+            all_vis_neigh.append(vis_neigh)
+            all_vis_obst.append(vis_obst)
     # Upper level (all datasets)
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
     seq_pos_all   = np.concatenate(seq_pos_all, axis=0)
@@ -238,9 +241,16 @@ def process_file(data_paths, parameters):
 
     # Optical flow
     if parameters.add_social:
-        all_flow = np.concatenate(all_flow,axis=0)
+        all_flow     = np.concatenate(all_flow,axis=0)
+        all_vis_neigh= np.concatenate(all_vis_neigh,axis=0)
         data.update({
-            "obs_flow": all_flow,
-            "neighbors_obs": neighbors_obs
+            "obs_optical_flow": all_flow,
+            "obs_visible_neighbors": all_vis_neigh,
+            "obs_neighbors": neighbors_obs
         })
+        if parameters.obstacles:
+            all_vis_obst = np.concatenate(all_vis_obst,axis=0)
+            data.update({
+                "obs_visible_obstacles": all_vis_obst
+            })
     return data
