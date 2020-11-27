@@ -78,7 +78,9 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,background=None,homogr
         ax.set_xlabel('X (m)')
     for (gt,obs,pred,neighbors) in zip(traj_gt,traj_obs,traj_pred,neighbors_gt):
         neighbors = neighbors[0,:,1:3]
-        neighbors = np.array([x for x in neighbors[:] if x[0] !=0.])
+        neighbors = np.array([x for x in neighbors[:] if abs(x[0])>0.001])
+        if (pred.shape[0]<1):
+            continue
         if homography is not None:
             gt       = image_to_world_xy(gt, homography,flip=flip)
             obs      = image_to_world_xy(obs, homography,flip=flip)
