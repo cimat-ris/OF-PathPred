@@ -644,11 +644,12 @@ class TrajectoryEncoderDecoder():
         traj_obs = []
         traj_gt  = []
         traj_pred= []
+        neighbors= []
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         pred_traj, pred_att_weights = self.batch_predict(batch_inputs,batch_targets.shape[1])
         # Cycle over the instants to predict
-        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+        for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
             this_pred_out_abs_set = []
             for k in range(self.output_samples):
                 # Conserve the x,y coordinates
@@ -664,5 +665,6 @@ class TrajectoryEncoderDecoder():
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs_set)
+            neighbors.append(neighbors_gt)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights[0],background,homography,flip=flip)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,background,homography,flip=flip)

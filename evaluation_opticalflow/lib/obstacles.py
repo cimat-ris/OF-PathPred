@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 # Image-to-world mapping
-def image_to_world_xy(image_xy, H):
+def image_to_world_xy(image_xy, H,flip=False):
     """Convert image (x, y) position to world (x, y) position.
     This function use the homography for do the transform.
 
@@ -14,7 +14,11 @@ def image_to_world_xy(image_xy, H):
     image_xy  = np.array(image_xy)
     image_xy1 = np.concatenate([image_xy, np.ones((len(image_xy), 1))],axis=1)
     world_xy1 = H.dot(image_xy1.T).T
-    return world_xy1[:, :2] / np.expand_dims(world_xy1[:, 2], axis=1)
+    if flip:
+        world_xy1 = world_xy1[:,::-1]
+        return world_xy1[:,1:] / np.expand_dims(world_xy1[:, 0], axis=1)
+    else:
+        return world_xy1[:, :2] / np.expand_dims(world_xy1[:, 2], axis=1)
 
 # This function generates both image and world coordinates of the obstacle polygons.
 # It saves both as files
