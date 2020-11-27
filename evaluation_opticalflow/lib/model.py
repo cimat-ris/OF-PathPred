@@ -513,47 +513,51 @@ class TrajectoryEncoderDecoder():
         return batch_loss
 
     # Prediction (testing) for one batch
-    def batch_predict(self, batch_inputs, n_steps):
+    def batch_predict(self, batch_inputs, n_steps, mc_samples=1):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
-        if self.add_social:
-            traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
-            traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
-        else:
-            traj_last_states, context = self.enc(batch_inputs, training=False)
-            # Returns a set of self.output_samples possible initializing states for the decoder
-            # Each value in the set is a pair (h,c) for the low level LSTM in the stack
-            traj_cur_states_set = self.enctodec([traj_last_states[0]])
+        all_samples   = []
+        for i in range(mc_samples):
+            # Feed-forward start here
+            if self.add_social:
+                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
+                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+            else:
+                traj_last_states, context = self.enc(batch_inputs, training=False)
+                # Returns a set of self.output_samples possible initializing states for the decoder
+                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+                traj_cur_states_set = self.enctodec([traj_last_states[0]])
 
-        traj_pred_set       = []
-        att_weights_pred_set= []
-        # Iterate over these possible initializing states
-        for k in range(self.output_samples):
-            # List for the predictions and attention weights
-            traj_pred       = []
-            att_weights_pred= []
-            # Decoder state is initialized here
-            traj_cur_states     = traj_cur_states_set[k]
-            # The first input to the decoder is the last observed position [Nx1xK]
-            dec_input = tf.expand_dims(traj_obs_last, 1)
-            # Iterate over timesteps
-            for t in range(0, n_steps):
-                # ------------------------ xy decoder--------------------------------------
-                # Passing enc_output to the decoder
-                t_pred, dec_states, wft = self.dec(dec_input,traj_cur_states,context,training=False)
-                # Next input is the last predicted position
-                dec_input = t_pred
-                # Add it to the list of predictions
-                traj_pred.append(t_pred)
-                att_weights_pred.append(wft)
-                # Reuse the hidden states for the next step
-                traj_cur_states = dec_states
-            traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
-            att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
-            traj_pred_set.append(traj_pred)
-            att_weights_pred_set.append(att_weights_pred)
-        return traj_pred_set,att_weights_pred_set
+            traj_pred_set       = []
+            att_weights_pred_set= []
+            # Iterate over these possible initializing states
+            for k in range(self.output_samples):
+                # List for the predictions and attention weights
+                traj_pred       = []
+                att_weights_pred= []
+                # Decoder state is initialized here
+                traj_cur_states     = traj_cur_states_set[k]
+                # The first input to the decoder is the last observed position [Nx1xK]
+                dec_input = tf.expand_dims(traj_obs_last, 1)
+                # Iterate over timesteps
+                for t in range(0, n_steps):
+                    # ------------------------ xy decoder--------------------------------------
+                    # Passing enc_output to the decoder
+                    t_pred, dec_states, wft = self.dec(dec_input,traj_cur_states,context,training=False)
+                    # Next input is the last predicted position
+                    dec_input = t_pred
+                    # Add it to the list of predictions
+                    traj_pred.append(t_pred)
+                    att_weights_pred.append(wft)
+                    # Reuse the hidden states for the next step
+                    traj_cur_states = dec_states
+                traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
+                att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
+                traj_pred_set.append(traj_pred)
+                att_weights_pred_set.append(att_weights_pred)
+            all_samples.append([traj_pred_set,att_weights_pred_set])
+        return all_samples
 
     # Training loop
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
@@ -616,7 +620,8 @@ class TrajectoryEncoderDecoder():
         for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
             # Format the data
             batch_inputs, batch_targets = get_batch(batch, config)
-            pred_out,__                 = self.batch_predict(batch_inputs,batch_targets.shape[1])
+            pred_out                    = self.batch_predict(batch_inputs,batch_targets.shape[1],1)
+            pred_out                    = pred_out[0][0]
             this_actual_batch_size      = batch["original_batch_size"]
             d = []
             # For all the trajectories in the batch
@@ -655,25 +660,36 @@ class TrajectoryEncoderDecoder():
         traj_obs = []
         traj_gt  = []
         traj_pred= []
+        neighbors= []
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
-        pred_traj, pred_att_weights = self.batch_predict(batch_inputs,batch_targets.shape[1])
-        # Cycle over the instants to predict
-        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+        if config.is_mc_dropout:
+             mc_samples = self.batch_predict(batch_inputs,batch_targets.shape[1],config.mc_samples)
+        else:
+             mc_samples = self.batch_predict(batch_inputs,batch_targets.shape[1])
+
+        # Cycle over the trajectories
+        for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
             this_pred_out_abs_set = []
-            for k in range(self.output_samples):
-                # Conserve the x,y coordinates
-                this_pred_out     = pred_traj[k][i][:, :2]
-                # Convert it to absolute (starting from the last observed position)
-                if config.output_representation=='dxdy':
-                    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                else:
-                    this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                this_pred_out_abs_set.append(this_pred_out_abs)
+            for l in range(len(mc_samples)):
+                pred_traj, pred_att_weights = mc_samples[l]
+                for k in range(self.output_samples):
+                    # Conserve the x,y coordinates
+                    if (pred_traj[k][i].shape[0]==config.pred_len):
+                        this_pred_out     = pred_traj[k][i][:, :2]
+                        # Convert it to absolute (starting from the last observed position)
+                        if config.output_representation=='dxdy':
+                            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                        else:
+                            this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+                        this_pred_out_abs_set.append(this_pred_out_abs)
+                    else:
+                        print(pred_traj[k][i])    
             this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs_set)
+            neighbors.append(neighbors_gt)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights[0],background,homography,flip=flip)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,background,homography,flip=flip)

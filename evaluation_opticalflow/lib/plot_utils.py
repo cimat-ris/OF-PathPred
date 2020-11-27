@@ -7,8 +7,10 @@ import math
 import cv2
 import tensorflow as tf
 from datetime import datetime
+import seaborn as sns
 random.seed(datetime.now())
 
+# Visualization of the training data
 def plot_training_data(training_data,experiment_parameters):
     training = len(training_data[list(training_data.keys())[0]])
     nSamples = min(20,training)
@@ -33,7 +35,7 @@ def plot_training_data(training_data,experiment_parameters):
 
     plt.show()
 
-# Plot training rep_results
+# Visualization of the training results
 def plot_training_results(train_loss_results,val_loss_results,val_metrics_results):
     # Plot training results
     fig = plt.figure(figsize=(16,8))
@@ -54,18 +56,18 @@ def plot_training_results(train_loss_results,val_loss_results,val_metrics_result
     plt.show()
 
 
-# Useful function to plot the predictions vs. the ground truth
-def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,homography=None,flip=False):
+# Visualization of the predictions vs. the ground truth
+def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,background=None,homography=None,flip=False):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     ax.set_title('Trajectory samples')
     plt.axis('equal')
     if background is not None:
         plt.imshow(background)
-
     # Get the number of samples per prediction
     nSamples = traj_pred[0].shape[0]
     # Plot some random testing data and the predicted ones
+    plt.plot([0],[0],color='purple',label='Neighbors')
     plt.plot([0],[0],color='red',label='Observations')
     plt.plot([0],[0],color='blue',label='Ground truth')
     plt.plot([0],[0],color='green',label='Prediction')
@@ -74,31 +76,30 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,pred_att_weights,background=None,ho
     else:
         ax.set_ylabel('Y (m)')
         ax.set_xlabel('X (m)')
-    for (gt,obs,pred,att_weights) in zip(traj_gt,traj_obs,traj_pred,pred_att_weights):
+    for (gt,obs,pred,neighbors) in zip(traj_gt,traj_obs,traj_pred,neighbors_gt):
+        neighbors = neighbors[0,:,1:3]
+        neighbors = np.array([x for x in neighbors[:] if abs(x[0])>0.001])
+        if (pred.shape[0]<1):
+            continue
         if homography is not None:
-            gt   = image_to_world_xy(gt, homography)
-            obs  = image_to_world_xy(obs, homography)
-            tpred= image_to_world_xy(tf.reshape(pred,[pred.shape[0]*pred.shape[1],pred.shape[2]]), homography)
+            gt       = image_to_world_xy(gt, homography,flip=flip)
+            obs      = image_to_world_xy(obs, homography,flip=flip)
+            neighbors= image_to_world_xy(neighbors, homography,flip=flip)
+            tpred= image_to_world_xy(tf.reshape(pred,[pred.shape[0]*pred.shape[1],pred.shape[2]]), homography,flip=flip)
             pred = tf.reshape(tpred,[pred.shape[0],pred.shape[1],pred.shape[2]])
-        if flip:
-            plt.plot(obs[:,1],obs[:,0],color='red')
-            # plt.scatter(obs[:,1],obs[:,0],s=100.0*att_weights[11],marker='o',color='red')
-            # Predicted trajectory
-            for k in range(nSamples):
-                plt.plot([obs[-1,1],pred[k][0,1]],[obs[-1,0],pred[k][0,0]],color='green')
-                plt.plot(pred[k][:,1],pred[k][:,0],color='green')
-            # Ground truth trajectory
-            plt.plot([obs[-1,1],gt[0,1]],[obs[-1,0],gt[0,0]],color='blue',linewidth=2)
-            plt.plot(gt[:,1],gt[:,0],color='blue',linewidth=32)
-        else:
-            plt.plot(obs[:,0],obs[:,1],color='red')
-            # plt.scatter(obs[:,0],obs[:,1],s=100.0*att_weights[11],marker='o',color='red')
-            # Predicted trajectory
-            for k in range(nSamples):
-                plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
-                plt.plot(pred[k][:,0],pred[k][:,1],color='green')
-            # Ground truth trajectory
-            plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue',linewidth=2)
-            plt.plot(gt[:,0],gt[:,1],color='blue',linewidth=2)
+
+        # Observed trajectory
+        plt.plot(obs[:,0],obs[:,1],color='red')
+        plt.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
+        # Predicted trajectory
+        for k in range(nSamples):
+            plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
+            plt.plot(pred[k][:,0],pred[k][:,1],color='green')
+            #sns.kdeplot(
+            #    x=pred[k][1:,0],y=pred[k][1:,1], fill=True,ax=ax,color='green',bw_adjust=2.0,thresh=0.01
+            #)
+        # Ground truth trajectory
+        plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue',linewidth=2)
+        plt.plot(gt[:,0],gt[:,1],color='blue',linewidth=2)
     ax.legend()
     plt.show()
