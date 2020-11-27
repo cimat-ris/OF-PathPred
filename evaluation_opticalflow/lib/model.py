@@ -37,8 +37,8 @@ class Model_Parameters(object):
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 256 # Default value in NextP
-        self.dec_hidden_size= 256 # Default value in NextP
+        self.enc_hidden_size= 256                  # Default value in NextP
+        self.dec_hidden_size= self.enc_hidden_size # Default value in NextP
         self.emb_size       = 128 # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
@@ -48,7 +48,7 @@ class Model_Parameters(object):
         self.optimizer      = 'adam'
         self.initial_lr     = 0.01
         # MC dropout
-        self.is_mc_dropout         = True
+        self.is_mc_dropout         = False
         self.mc_samples            = 20
 
 """ Trajectory encoder through embedding+RNN.
@@ -258,18 +258,19 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         self.output_var_dirs= config.output_var_dirs
         # Linear embeddings from trajectory to hidden state
         self.traj_enc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.linear,
+            activation=tf.keras.activations.relu,
             name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
         self.traj_enc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.linear,
+            activation=tf.keras.activations.relu,
             name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
-        # Linear embeddings from social state to hidden state
-        self.traj_soc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.linear,
-            name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-        self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.linear,
-            name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        if self.add_social:
+            # Linear embeddings from social state to hidden state
+            self.traj_soc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+                activation=tf.keras.activations.relu,
+                name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
+            self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+                activation=tf.keras.activations.relu,
+                name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
         # Input layers
         input_shape      = (config.enc_hidden_size)
         self.input_h     = layers.Input(input_shape,name="trajectory_encoding_h")
@@ -300,9 +301,9 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         for i in range(self.output_var_dirs):
             decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
             decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
-            if self.add_social:
-                decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
-                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+            #if self.add_social:
+            #    decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
+            #    decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
             decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
             decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
@@ -399,6 +400,7 @@ class TrajectoryEncoderDecoder():
         self.add_social     = config.add_social
         self.stack_rnn_size = config.stack_rnn_size
         self.output_samples = 2*config.output_var_dirs+1
+        self.output_var_dirs= config.output_var_dirs
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
@@ -456,6 +458,15 @@ class TrajectoryEncoderDecoder():
                 # Each value in the set is a pair (h,c) for the low level LSTM in the stack
                 traj_cur_states_set = self.enctodec([traj_last_states[0]])
             losses = []
+            # Iterate over the possible initializing states and penalize the cosines
+            for k in range(self.output_var_dirs):
+                vk = tf.keras.utils.normalize(traj_cur_states_set[2*k+1][0]-traj_cur_states_set[0][0],axis=1)
+                for l in range(self.output_var_dirs):
+                    if l>k:
+                        vl = tf.keras.utils.normalize(traj_cur_states_set[2*l+1][0]-traj_cur_states_set[0][0],axis=1)
+                        loss_value  += 0.1*tf.reduce_sum(-tf.keras.losses.cosine_similarity(vk,vl,axis=1))/traj_obs_inputs.shape[0]
+
+
             # Iterate over these possible initializing states
             for k in range(self.output_samples):
                 # Sample-wise loss values
