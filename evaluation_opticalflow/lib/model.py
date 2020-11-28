@@ -508,6 +508,7 @@ class TrajectoryEncoderDecoder():
         variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights + self.ft_class.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
+        # The total loss will be accumulated on this variable
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
@@ -642,8 +643,8 @@ class TrajectoryEncoderDecoder():
         val_metrics_results  = { "ade": [], "fde": [], "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
         train_metrics_results= { "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
         best                 = {'ade':999999, 'fde':0, 'batchId':-1}
-        train_metrics        = { 'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
-        val_metrics          = { 'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
+        train_metrics        = {'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
+        val_metrics          = {'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
 
         # Epochs
         for epoch in range(config.num_epochs):
@@ -685,16 +686,16 @@ class TrajectoryEncoderDecoder():
                 print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
                 val_loss_results.append(total_loss)
                 # Evaluate ADE, FDE metrics on validation data
-                val_metrics = self.quantitative_evaluation(val_data,config)
-                val_metrics_results['ade'].append(val_metrics['ade'])
-                val_metrics_results['fde'].append(val_metrics['fde'])
-                if val_metrics["ade"]< best['ade']:
-                    best['ade'] = val_metrics["ade"]
-                    best['fde'] = val_metrics["fde"]
+                val_quantitative_metrics = self.quantitative_evaluation(val_data,config)
+                val_metrics_results['ade'].append(val_quantitative_metrics['ade'])
+                val_metrics_results['fde'].append(val_quantitative_metrics['fde'])
+                if val_quantitative_metrics["ade"]< best['ade']:
+                    best['ade'] = val_quantitative_metrics["ade"]
+                    best['fde'] = val_quantitative_metrics["fde"]
                     best["patchId"]= idx
                     # Save the best model so far
                     checkpoint.write(checkpoint_prefix+'-best')
-                print('[TRN] Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_metrics['ade']))
+                print('[TRN] Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['ade']))
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
 
     def quantitative_evaluation(self,test_data,config):
