@@ -458,6 +458,9 @@ class TrajectoryEncoderDecoder():
         self.stack_rnn_size = config.stack_rnn_size
         self.output_samples = 2*config.output_var_dirs+1
         self.output_var_dirs= config.output_var_dirs
+
+        #########################################################################################
+        # The components of our model are instantiated here
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
@@ -473,6 +476,8 @@ class TrajectoryEncoderDecoder():
         # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
+        #########################################################################################
+
         # Optimization scheduling
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
                 config.initial_lr,
@@ -505,12 +510,14 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables to be trained
-        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights + self.ft_class.trainable_weights
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights + self.ft_class.trainable_weights+ self.ot_class.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         # The total loss will be accumulated on this variable
         loss_value = 0
         with tf.GradientTape() as g:
+            #########################################################################################
+            # Encoding is done here
             # Apply trajectory and context encoding
             if self.add_social:
                 traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=training)
@@ -520,19 +527,14 @@ class TrajectoryEncoderDecoder():
                 # Returns a set of self.output_samples possible initializing states for the decoder
                 # Each value in the set is a pair (h,c) for the low level LSTM in the stack
                 traj_cur_states_set = self.enctodec([traj_last_states[0]])
-            losses = []
-            # Iterate over the possible initializing states and penalize the cosines
-            for k in range(self.output_var_dirs):
-                vk = tf.keras.utils.normalize(traj_cur_states_set[2*k+1][0]-traj_cur_states_set[0][0],axis=1)
-                for l in range(self.output_var_dirs):
-                    if l>k:
-                        vl = tf.keras.utils.normalize(traj_cur_states_set[2*l+1][0]-traj_cur_states_set[0][0],axis=1)
-                        loss_value  += 0.1*tf.reduce_sum(-tf.keras.losses.cosine_similarity(vk,vl,axis=1))/traj_obs_inputs.shape[0]
-
-            # Apply the classifier
+            # Apply the classifiers
             ft_logits = self.ft_class(traj_last_states[0][0],tf.reduce_sum(batch_targets,axis=1))
             ot_logits = self.ot_class(traj_last_states[0][0])
+
+            #########################################################################################
+            # Decoding is done here
             # Iterate over these possible initializing states
+            losses = []
             for k in range(self.output_samples):
                 # Sample-wise loss values
                 loss_values         = 0
@@ -562,13 +564,20 @@ class TrajectoryEncoderDecoder():
             # Stack into a tensor batch_size x self.output_samples
             losses          = tf.stack(losses, axis=1)
             closest_samples = tf.math.argmin(losses, axis=1)
+            #########################################################################################
 
+            #########################################################################################
             # Losses are accumulated here
             # Classification loss p(z|x,y)
             loss_ft_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ft_logits)
             metrics['ft_sca'].update_state(closest_samples,ft_logits)
-
-            loss_value  += 0.1*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
+            # TODO: tune this value in a more principled way?
+            loss_value  += 0.25*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
+            # Classification loss p(z|x)
+            loss_ot_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ot_logits)
+            metrics['ot_sca'].update_state(closest_samples,ot_logits)
+            # TODO: tune this value in a more principled way?
+            loss_value  += 0.25*tf.reduce_sum(loss_ot_classifier)/loss_ot_classifier.shape[0]
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
             # Sum over the samples, divided by the batch size
@@ -577,6 +586,9 @@ class TrajectoryEncoderDecoder():
             # L2 weight decay
             loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
+            #########################################################################################
+
+
         if training==True:
             # Get the gradients
             grads = g.gradient(loss_value, variables)
@@ -643,8 +655,8 @@ class TrajectoryEncoderDecoder():
         val_metrics_results  = { "ade": [], "fde": [], "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
         train_metrics_results= { "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
         best                 = {'ade':999999, 'fde':0, 'batchId':-1}
-        train_metrics        = {'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
-        val_metrics          = {'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
+        train_metrics        = {'ft_sca':keras.metrics.SparseCategoricalAccuracy(),'ot_sca':keras.metrics.SparseCategoricalAccuracy()}
+        val_metrics          = {'ft_sca':keras.metrics.SparseCategoricalAccuracy(),'ot_sca':keras.metrics.SparseCategoricalAccuracy()}
 
         # Epochs
         for epoch in range(config.num_epochs):
@@ -670,7 +682,9 @@ class TrajectoryEncoderDecoder():
             # Display information about the current state of the training loop
             print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
             print('[TRN] Training accuracy of classifier p(z|x,y) {:.4f}'.format(float(train_metrics['ft_sca'].result()),))
+            print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['ot_sca'].result()),))
             train_metrics['ft_sca'].reset_states()
+            train_metrics['ot_sca'].reset_states()
 
             if config.use_validation:
                 # Compute validation loss
