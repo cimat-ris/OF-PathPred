@@ -500,12 +500,12 @@ class TrajectoryEncoderDecoder():
         self.dec.load_weights('tmp_dec.h5')
 
     # Single training/testing step, for one batch
-    def batch_step(self, batch_inputs, batch_targets, training=True):
+    def batch_step(self, batch_inputs, batch_targets, metric, training=True):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables
-        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights + self.ft_class.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         dmin       = 10.0
@@ -530,9 +530,8 @@ class TrajectoryEncoderDecoder():
                         loss_value  += 0.1*tf.reduce_sum(-tf.keras.losses.cosine_similarity(vk,vl,axis=1))/traj_obs_inputs.shape[0]
 
             # Apply the classifier
-            ft_logits = self.ft_class(traj_last_states[0][0],traj_obs_last)
+            ft_logits = self.ft_class(traj_last_states[0][0],batch_targets[:, -1])
             ot_logits = self.ot_class(traj_last_states[0][0])
-
             # Iterate over these possible initializing states
             for k in range(self.output_samples):
                 # Sample-wise loss values
@@ -561,11 +560,21 @@ class TrajectoryEncoderDecoder():
                 # Keep loss values for all self.output_samples cases
                 losses.append(tf.squeeze(loss_values,axis=1))
             # Stack into a tensor batch_size x self.output_samples
-            losses       = tf.stack(losses, axis=1)
+            losses          = tf.stack(losses, axis=1)
+            closest_samples = tf.math.argmin(losses, axis=1)
+
+            # Losses are accumulated here
+            # Classification loss p(z|x,y)
+            labels_target     = tf.one_hot(closest_samples,depth=self.output_samples)
+            loss_ft_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ft_logits)
+            metric.update_state(closest_samples,ft_logits)
+
+            loss_value  += 0.1*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
             # Get the vector of losses at the minimal value for each sample of the batch
-            losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),tf.math.argmin(losses, axis=1)],axis=1))
+            losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
             # Sum over the samples, divided by the batch size
             loss_value  += tf.reduce_sum(losses_at_min)/losses.shape[0]
+            # TODO: tune this value in a more principled way?
             # L2 weight decay
             loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
                         if 'bias' not in v.name ]) * 0.0008
@@ -634,6 +643,9 @@ class TrajectoryEncoderDecoder():
         val_loss_results     = []
         val_metrics_results  = { "ade": [], "fde": []}
         best                 = {'ade':999999, 'fde':0, 'batchId':-1}
+        train_metric = keras.metrics.SparseCategoricalAccuracy()
+        val_metric = keras.metrics.SparseCategoricalAccuracy()
+
         # Epochs
         for epoch in range(config.num_epochs):
             print('Epoch {}.'.format(epoch + 1))
@@ -645,7 +657,7 @@ class TrajectoryEncoderDecoder():
                 batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
                 # Compute the loss value for this minibatch.
-                batch_loss = self.batch_step(batch_inputs, batch_targets,training=True)
+                batch_loss = self.batch_step(batch_inputs, batch_targets, train_metric, training=True)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
@@ -655,7 +667,7 @@ class TrajectoryEncoderDecoder():
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
             print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
-
+            print('[TRN] Classifier {:.4f} '.format(float(train_metric.result()),))
             if config.use_validation:
                 # Compute validation loss
                 total_loss = 0
@@ -663,7 +675,7 @@ class TrajectoryEncoderDecoder():
                 for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
                     # Format the data
                     batch_inputs, batch_targets = get_batch(batch, config)
-                    batch_loss                  = self.batch_step(batch_inputs,batch_targets,training=False)
+                    batch_loss                  = self.batch_step(batch_inputs,batch_targets, val_metric, training=False)
                     total_loss+= batch_loss
                 # End epoch
                 total_loss = total_loss / num_batches_per_epoch
