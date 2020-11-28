@@ -499,16 +499,15 @@ class TrajectoryEncoderDecoder():
         self.enctodec.load_weights('tmp_enctodec.h5')
         self.dec.load_weights('tmp_dec.h5')
 
-    # Single training/testing step, for one batch
-    def batch_step(self, batch_inputs, batch_targets, metric, training=True):
+    # Single training/testing step, for one batch: batch_inputs are the observations, batch_targets are the targets
+    def batch_step(self, batch_inputs, batch_targets, metrics, training=True):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
-        # Variables
+        # Variables to be trained
         variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights + self.ft_class.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
-        dmin       = 10.0
         loss_value = 0
         with tf.GradientTape() as g:
             # Apply trajectory and context encoding
@@ -565,9 +564,8 @@ class TrajectoryEncoderDecoder():
 
             # Losses are accumulated here
             # Classification loss p(z|x,y)
-            labels_target     = tf.one_hot(closest_samples,depth=self.output_samples)
             loss_ft_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ft_logits)
-            metric.update_state(closest_samples,ft_logits)
+            metrics['ft_sca'].update_state(closest_samples,ft_logits)
 
             loss_value  += 0.1*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
             # Get the vector of losses at the minimal value for each sample of the batch
@@ -641,10 +639,11 @@ class TrajectoryEncoderDecoder():
         num_batches_per_epoch= train_data.get_num_batches()
         train_loss_results   = []
         val_loss_results     = []
-        val_metrics_results  = { "ade": [], "fde": []}
+        val_metrics_results  = { "ade": [], "fde": [], "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
+        train_metrics_results= { "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
         best                 = {'ade':999999, 'fde':0, 'batchId':-1}
-        train_metric = keras.metrics.SparseCategoricalAccuracy()
-        val_metric = keras.metrics.SparseCategoricalAccuracy()
+        train_metrics        = { 'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
+        val_metrics          = { 'ft_sca':keras.metrics.SparseCategoricalAccuracy()}
 
         # Epochs
         for epoch in range(config.num_epochs):
@@ -657,7 +656,7 @@ class TrajectoryEncoderDecoder():
                 batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
                 # Compute the loss value for this minibatch.
-                batch_loss = self.batch_step(batch_inputs, batch_targets, train_metric, training=True)
+                batch_loss = self.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
@@ -666,8 +665,12 @@ class TrajectoryEncoderDecoder():
             # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 2 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
+
+            # Display information about the current state of the training loop
             print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
-            print('[TRN] Classifier {:.4f} '.format(float(train_metric.result()),))
+            print('[TRN] Training accuracy of classifier p(z|x,y) {:.4f}'.format(float(train_metrics['ft_sca'].result()),))
+            train_metrics['ft_sca'].reset_states()
+
             if config.use_validation:
                 # Compute validation loss
                 total_loss = 0
@@ -675,13 +678,13 @@ class TrajectoryEncoderDecoder():
                 for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
                     # Format the data
                     batch_inputs, batch_targets = get_batch(batch, config)
-                    batch_loss                  = self.batch_step(batch_inputs,batch_targets, val_metric, training=False)
+                    batch_loss                  = self.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
                     total_loss+= batch_loss
                 # End epoch
                 total_loss = total_loss / num_batches_per_epoch
                 print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
                 val_loss_results.append(total_loss)
-                # Evaluat ADE, FDE metrics on validation data
+                # Evaluate ADE, FDE metrics on validation data
                 val_metrics = self.quantitative_evaluation(val_data,config)
                 val_metrics_results['ade'].append(val_metrics['ade'])
                 val_metrics_results['fde'].append(val_metrics['fde'])
