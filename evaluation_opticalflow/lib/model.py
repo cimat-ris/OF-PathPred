@@ -39,7 +39,7 @@ class Model_Parameters(object):
         self.P              =   2 # Dimensions of the position vectors
         self.enc_hidden_size= 256                  # Default value in NextP
         self.dec_hidden_size= self.enc_hidden_size # Default value in NextP
-        self.emb_size       = 128 # Default value in NextP
+        self.emb_size       = 64  # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
         self.activation_func= tf.nn.tanh
@@ -684,7 +684,7 @@ class TrajectoryEncoderDecoder():
                             this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
                         this_pred_out_abs_set.append(this_pred_out_abs)
                     else:
-                        print(pred_traj[k][i])    
+                        print(pred_traj[k][i])
             this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
