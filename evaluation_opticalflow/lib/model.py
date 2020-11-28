@@ -530,7 +530,7 @@ class TrajectoryEncoderDecoder():
                         loss_value  += 0.1*tf.reduce_sum(-tf.keras.losses.cosine_similarity(vk,vl,axis=1))/traj_obs_inputs.shape[0]
 
             # Apply the classifier
-            ft_logits = self.ft_class(traj_last_states[0][0],batch_targets[:, -1])
+            ft_logits = self.ft_class(traj_last_states[0][0],tf.reduce_sum(batch_targets,axis=1))
             ot_logits = self.ot_class(traj_last_states[0][0])
             # Iterate over these possible initializing states
             for k in range(self.output_samples):
