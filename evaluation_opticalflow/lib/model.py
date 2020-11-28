@@ -569,12 +569,12 @@ class TrajectoryEncoderDecoder():
             #########################################################################################
             # Losses are accumulated here
             # Classification loss p(z|x,y)
-            loss_ft_classifier= tf.keras.losses.categorical_crossentropy(tf.nn.softmax(losses),ft_logits)
+            loss_ft_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ft_logits)
             metrics['ft_sca'].update_state(closest_samples,ft_logits)
             # TODO: tune this value in a more principled way?
             loss_value  += 0.25*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
             # Classification loss p(z|x)
-            loss_ot_classifier= tf.keras.losses.categorical_crossentropy(tf.nn.softmax(losses),ot_logits)
+            loss_ot_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ot_logits)
             metrics['ot_sca'].update_state(closest_samples,ot_logits)
             # TODO: tune this value in a more principled way?
             loss_value  += 0.25*tf.reduce_sum(loss_ot_classifier)/loss_ot_classifier.shape[0]
