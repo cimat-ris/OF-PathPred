@@ -604,7 +604,6 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectories
         traj_obs_last = traj_obs_inputs[:, -1]
         all_samples   = []
-
         for i in range(mc_samples):
             # Feed-forward start here
             if self.add_social:
@@ -615,7 +614,10 @@ class TrajectoryEncoderDecoder():
                 # Returns a set of self.output_samples possible initializing states for the decoder
                 # Each value in the set is a pair (h,c) for the low level LSTM in the stack
                 traj_cur_states_set = self.enctodec([traj_last_states[0]])
+            # Apply the classifier to the encoding of the observed part
+            ot_logits = self.ot_class(traj_last_states[0][0])
 
+            # This will store the trajectories and the attention weights
             traj_pred_set       = []
             att_weights_pred_set= []
 
@@ -644,7 +646,7 @@ class TrajectoryEncoderDecoder():
                 att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
                 traj_pred_set.append(traj_pred)
                 att_weights_pred_set.append(att_weights_pred)
-            all_samples.append([traj_pred_set,att_weights_pred_set])
+            all_samples.append([traj_pred_set,att_weights_pred_set,ot_logits])
         return all_samples
 
     # Training loop
@@ -755,10 +757,11 @@ class TrajectoryEncoderDecoder():
 
     # Perform a qualitative evaluation over a batch of n_trajectories
     def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False):
-        traj_obs = []
-        traj_gt  = []
-        traj_pred= []
-        neighbors= []
+        traj_obs      = []
+        traj_gt       = []
+        traj_pred     = []
+        neighbors     = []
+        distributions = []
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         if config.is_mc_dropout:
@@ -769,8 +772,9 @@ class TrajectoryEncoderDecoder():
         # Cycle over the trajectories
         for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
             this_pred_out_abs_set = []
+            probabilities_set = []
             for l in range(len(mc_samples)):
-                pred_traj, pred_att_weights = mc_samples[l]
+                pred_traj, pred_att_weights, probabilities = mc_samples[l]
                 for k in range(self.output_samples):
                     # Conserve the x,y coordinates
                     if (pred_traj[k][i].shape[0]==config.pred_len):
@@ -781,12 +785,14 @@ class TrajectoryEncoderDecoder():
                         else:
                             this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
                         this_pred_out_abs_set.append(this_pred_out_abs)
-
+                        probabilities_set.append(probabilities)
             this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
+            probabilities_set     = tf.stack(probabilities_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs_set)
             neighbors.append(neighbors_gt)
+            distributions.append(probabilities_set)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,background,homography,flip=flip)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,distributions,background,homography,flip=flip)
