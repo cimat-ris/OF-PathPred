@@ -40,7 +40,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=True)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=False)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -53,8 +53,9 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
-model_parameters.num_epochs      = 35
-model_parameters.output_var_dirs = 1
+model_parameters.num_epochs     = 45
+model_parameters.output_var_dirs= 2
+model_parameters.batch_size     = 256
 
 # Get the necessary data
 # TODO: replace these structures by the tf ones

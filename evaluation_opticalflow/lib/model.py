@@ -39,7 +39,7 @@ class Model_Parameters(object):
         self.P              =   2 # Dimensions of the position vectors
         self.enc_hidden_size= 256                  # Default value in NextP
         self.dec_hidden_size= self.enc_hidden_size # Default value in NextP
-        self.emb_size       = 64  # Default value in NextP
+        self.emb_size       = 128  # Default value in NextP
         self.dropout_rate   = 0.3 # Default value in NextP
 
         self.activation_func= tf.nn.tanh
@@ -301,9 +301,9 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         for i in range(self.output_var_dirs):
             decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
             decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
-            #if self.add_social:
-            #    decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
-            #    decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+            if self.add_social:
+                decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
+                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
             decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
             decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
@@ -572,12 +572,12 @@ class TrajectoryEncoderDecoder():
             loss_ft_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ft_logits)
             metrics['ft_sca'].update_state(closest_samples,ft_logits)
             # TODO: tune this value in a more principled way?
-            loss_value  += 0.25*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
+            # loss_value  += 0.1*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
             # Classification loss p(z|x)
             loss_ot_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ot_logits)
             metrics['ot_sca'].update_state(closest_samples,ot_logits)
             # TODO: tune this value in a more principled way?
-            loss_value  += 0.25*tf.reduce_sum(loss_ot_classifier)/loss_ot_classifier.shape[0]
+            # loss_value  += 0.1*tf.reduce_sum(loss_ot_classifier)/loss_ot_classifier.shape[0]
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
             # Sum over the samples, divided by the batch size
