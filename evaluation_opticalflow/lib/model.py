@@ -602,8 +602,9 @@ class TrajectoryEncoderDecoder():
     def batch_predict(self, batch_inputs, n_steps, mc_samples=1):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectories
-        traj_obs_last = traj_obs_inputs[:, -1]
-        all_samples   = []
+        traj_obs_last     = traj_obs_inputs[:, -1]
+        all_samples       = []
+        all_probabilities = []
         for i in range(mc_samples):
             # Feed-forward start here
             if self.add_social:
@@ -646,8 +647,9 @@ class TrajectoryEncoderDecoder():
                 att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
                 traj_pred_set.append(traj_pred)
                 att_weights_pred_set.append(att_weights_pred)
-            all_samples.append([traj_pred_set,att_weights_pred_set,ot_logits])
-        return all_samples
+            all_samples.append([traj_pred_set,att_weights_pred_set])
+            all_probabilities.append(ot_logits)
+        return all_samples, all_probabilities
 
     # Training loop
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
@@ -720,7 +722,7 @@ class TrajectoryEncoderDecoder():
         for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
             # Format the data
             batch_inputs, batch_targets = get_batch(batch, config)
-            pred_out                    = self.batch_predict(batch_inputs,batch_targets.shape[1],1)
+            pred_out,__                 = self.batch_predict(batch_inputs,batch_targets.shape[1],1)
             pred_out                    = pred_out[0][0]
             this_actual_batch_size      = batch["original_batch_size"]
             d = []
@@ -765,16 +767,15 @@ class TrajectoryEncoderDecoder():
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
         if config.is_mc_dropout:
-             mc_samples = self.batch_predict(batch_inputs,batch_targets.shape[1],config.mc_samples)
+             mc_samples, mc_probabilities = self.batch_predict(batch_inputs,batch_targets.shape[1],config.mc_samples)
         else:
-             mc_samples = self.batch_predict(batch_inputs,batch_targets.shape[1])
+             mc_samples, mc_probabilities = self.batch_predict(batch_inputs,batch_targets.shape[1])
 
         # Cycle over the trajectories
         for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
             this_pred_out_abs_set = []
-            probabilities_set = []
             for l in range(len(mc_samples)):
-                pred_traj, pred_att_weights, probabilities = mc_samples[l]
+                pred_traj, pred_att_weights = mc_samples[l]
                 for k in range(self.output_samples):
                     # Conserve the x,y coordinates
                     if (pred_traj[k][i].shape[0]==config.pred_len):
@@ -785,14 +786,12 @@ class TrajectoryEncoderDecoder():
                         else:
                             this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
                         this_pred_out_abs_set.append(this_pred_out_abs)
-                        probabilities_set.append(probabilities)
+
             this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
-            probabilities_set     = tf.stack(probabilities_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
             traj_gt.append(pred_traj_gt)
             traj_pred.append(this_pred_out_abs_set)
             neighbors.append(neighbors_gt)
-            distributions.append(probabilities_set)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,distributions,background,homography,flip=flip)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,mc_probabilities,background,homography,flip=flip)
