@@ -53,9 +53,9 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
-model_parameters.num_epochs     = 45
-model_parameters.output_var_dirs= 2
-model_parameters.batch_size     = 256
+model_parameters.num_epochs      = 35
+model_parameters.output_var_dirs = 3
+model_parameters.batch_size      = 128
 
 # Get the necessary data
 # TODO: replace these structures by the tf ones
@@ -71,9 +71,11 @@ tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 checkpoint_dir = './training_checkpoints'
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
 checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
-                                            encoder=tj_enc_dec.enc,
-                                            decoder=tj_enc_dec.dec,
-                                            enctodec=tj_enc_dec.enctodec)
+                                encoder=tj_enc_dec.enc,
+                                decoder=tj_enc_dec.dec,
+                                enctodec=tj_enc_dec.enctodec,
+                                ft_class=tj_enc_dec.ft_class,
+                                ot_class=tj_enc_dec.ot_class)
 
 # Training
 print("[INF] Training the model")
