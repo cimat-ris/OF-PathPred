@@ -82,27 +82,27 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             validation_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_val]
 
         # Training dataset
-        pickle_out = open('training_data_'+experiment_name+'.pickle',"wb")
+        pickle_out = open('pickle/training_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(training_data, pickle_out, protocol=2)
         pickle_out.close()
 
         # Test dataset
-        pickle_out = open('test_data_'+experiment_name+'.pickle',"wb")
+        pickle_out = open('pickle/test_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(test_data, pickle_out, protocol=2)
         pickle_out.close()
 
         # Validation dataset
-        pickle_out = open('validation_data_'+experiment_name+'.pickle',"wb")
+        pickle_out = open('pickle/validation_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(validation_data, pickle_out, protocol=2)
         pickle_out.close()
     else:
         # Unpickle the ready-to-use datasets
         print("[INF] Unpickling...")
-        pickle_in = open('training_data_'+experiment_name+'.pickle',"rb")
+        pickle_in = open('pickle/training_data_'+experiment_name+'.pickle',"rb")
         training_data = pickle.load(pickle_in)
-        pickle_in = open('test_data_'+experiment_name+'.pickle',"rb")
+        pickle_in = open('pickle/test_data_'+experiment_name+'.pickle',"rb")
         test_data = pickle.load(pickle_in)
-        pickle_in = open('validation_data_'+experiment_name+'.pickle',"rb")
+        pickle_in = open('pickle/validation_data_'+experiment_name+'.pickle',"rb")
         validation_data = pickle.load(pickle_in)
 
     print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
