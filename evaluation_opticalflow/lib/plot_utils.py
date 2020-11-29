@@ -57,13 +57,14 @@ def plot_training_results(train_loss_results,val_loss_results,val_metrics_result
 
 
 # Visualization of the predictions vs. the ground truth
-def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,background=None,homography=None,flip=False):
+def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,background=None,homography=None,flip=False):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     ax.set_title('Trajectory samples')
     plt.axis('equal')
     if background is not None:
         plt.imshow(background)
+    print(distributions_pred)
     # Get the number of samples per prediction
     nSamples = traj_pred[0].shape[0]
     # Plot some random testing data and the predicted ones
@@ -95,6 +96,7 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,background=None,homogr
         for k in range(nSamples):
             plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
             plt.plot(pred[k][:,0],pred[k][:,1],color='green')
+            plt.text(pred[k][-1,0]+10*(pred[k][-1,0]-pred[k][-2,0])/tf.norm(pred[k][-1,0]-pred[k][-2,0]),pred[k][-1,1]+10*(pred[k][-1,1]-pred[k][-2,1])/tf.norm(pred[k][-1,1]-pred[k][-2,1]),"{}".format((k+1)//2))
             #sns.kdeplot(
             #    x=pred[k][1:,0],y=pred[k][1:,1], fill=True,ax=ax,color='green',bw_adjust=2.0,thresh=0.01
             #)
