@@ -93,12 +93,10 @@ def process_file(data_paths, parameters):
             # Is the array that have the sequence of Id_person of all people that there are in frame sequence
             frame_ids_seq_data = np.zeros((num_peds_in_seq, seq_len), dtype="int32")
 
-            # When using social context information
-            if parameters.add_social:
-                # Maximum number of persons in a frame
-                person_max = parameters.person_max
-                # Absolute pixel-based data: id_person, x, y
-                neighbors_data = np.zeros((num_peds_in_seq, seq_len, person_max, 3),dtype="float32")
+            # Maximum number of persons in a frame
+            person_max = parameters.person_max
+            # Absolute pixel-based data: id_person, x, y
+            neighbors_data = np.zeros((num_peds_in_seq, seq_len, person_max, 3),dtype="float32")
 
             ped_count = 0
             # For all the persons appearing in this sequence
@@ -179,26 +177,24 @@ def process_file(data_paths, parameters):
             seq_frames_all.append(frame_ids_seq_data[:ped_count])
             # Information used locally for this dataset
             seq_pos_dataset.append(pos_seq_data[:ped_count])
-            # Social interactions
-            if parameters.add_social:
-                # Neighbours
-                seq_neighbors_all.append(neighbors_data[:ped_count])
-                # Append all the neighbor data (neighbors_data) starting at this frame
-                seq_neighbors_dataset.append(neighbors_data[:ped_count])
+            # Neighbours
+            seq_neighbors_all.append(neighbors_data[:ped_count])
+            # Append all the neighbor data (neighbors_data) starting at this frame
+            seq_neighbors_dataset.append(neighbors_data[:ped_count])
 
+        # Neighbors information
+        seq_neighbors_dataset = np.concatenate(seq_neighbors_dataset, axis = 0)
+        obs_neighbors         = seq_neighbors_dataset[:,:obs_len,:,:]
+        seq_pos_dataset = np.concatenate(seq_pos_dataset,axis=0)
+        obs_traj        = seq_pos_dataset[:, :obs_len, :]
+        vec = {
+            "obs_neighbors": obs_neighbors,
+            "key_idx": np.array(seq_ids_dataset),
+            "obs_traj":  obs_traj
+        }
         # At the dataset level
         if parameters.add_social:
             print("[INF] Add social interaction data (optical flow)")
-            # Neighbors information
-            seq_neighbors_dataset = np.concatenate(seq_neighbors_dataset, axis = 0)
-            obs_neighbors         = seq_neighbors_dataset[:,:obs_len,:,:]
-            seq_pos_dataset = np.concatenate(seq_pos_dataset,axis=0)
-            obs_traj        = seq_pos_dataset[:, :obs_len, :]
-            vec = {
-                "obs_neighbors": obs_neighbors,
-                "key_idx": np.array(seq_ids_dataset),
-                "obs_traj":  obs_traj
-            }
             if parameters.obstacles:
                 of_sim = OpticalFlowSimulator()
                 flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],parameters.obs_len,obstacles_world)
@@ -214,8 +210,7 @@ def process_file(data_paths, parameters):
     seq_rel_all   = np.concatenate(seq_rel_all, axis=0)
     seq_theta_all = np.concatenate(seq_theta_all, axis=0)
     seq_frames_all= np.concatenate(seq_frames_all, axis=0)
-    if parameters.add_social:
-        seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
+    seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
     print("[INF] Total number of sample sequences: ",len(seq_pos_all))
 
     # We get the obs traj and pred_traj
@@ -227,8 +222,7 @@ def process_file(data_paths, parameters):
     frame_obs     = seq_frames_all[:, :obs_len]
     obs_traj_rel  = seq_rel_all[:, :obs_len, :]
     pred_traj_rel = seq_rel_all[:, obs_len:, :]
-    if parameters.add_social:
-        neighbors_obs= seq_neighbors_all[:, :obs_len, :]
+    neighbors_obs= seq_neighbors_all[:, :obs_len, :]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
@@ -236,7 +230,8 @@ def process_file(data_paths, parameters):
         "obs_traj_theta":obs_traj_theta,
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
-        "frames_ids": frame_obs
+        "frames_ids": frame_obs,
+        "obs_neighbors": neighbors_obs
     }
 
     # Optical flow
@@ -245,8 +240,7 @@ def process_file(data_paths, parameters):
         all_vis_neigh= np.concatenate(all_vis_neigh,axis=0)
         data.update({
             "obs_optical_flow": all_flow,
-            "obs_visible_neighbors": all_vis_neigh,
-            "obs_neighbors": neighbors_obs
+            "obs_visible_neighbors": all_vis_neigh
         })
         if parameters.obstacles:
             all_vis_obst = np.concatenate(all_vis_obst,axis=0)

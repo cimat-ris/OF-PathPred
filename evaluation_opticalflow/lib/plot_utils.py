@@ -85,13 +85,15 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,bac
         if homography is not None:
             gt       = image_to_world_xy(gt, homography,flip=flip)
             obs      = image_to_world_xy(obs, homography,flip=flip)
-            neighbors= image_to_world_xy(neighbors, homography,flip=flip)
+            if neighbors.shape[0]>0:
+                neighbors= image_to_world_xy(neighbors, homography,flip=flip)
             tpred= image_to_world_xy(tf.reshape(pred,[pred.shape[0]*pred.shape[1],pred.shape[2]]), homography,flip=flip)
             pred = tf.reshape(tpred,[pred.shape[0],pred.shape[1],pred.shape[2]])
 
         # Observed trajectory
         plt.plot(obs[:,0],obs[:,1],color='red')
-        plt.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
+        if neighbors.shape[0]>0:
+            plt.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
         # Predicted trajectory
         for k in range(nSamples):
             plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
