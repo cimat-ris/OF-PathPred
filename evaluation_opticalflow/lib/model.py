@@ -758,7 +758,7 @@ class TrajectoryEncoderDecoder():
         return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a batch of n_trajectories
-    def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False):
+    def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
         traj_obs      = []
         traj_gt       = []
         traj_pred     = []
@@ -773,9 +773,12 @@ class TrajectoryEncoderDecoder():
 
         # Cycle over the trajectories
         for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
+            if i>=n_peds_max:
+                break
             this_pred_out_abs_set = []
             for l in range(len(mc_samples)):
                 pred_traj, pred_att_weights = mc_samples[l]
+                mc_pred_set = []
                 for k in range(self.output_samples):
                     # Conserve the x,y coordinates
                     if (pred_traj[k][i].shape[0]==config.pred_len):
@@ -785,8 +788,9 @@ class TrajectoryEncoderDecoder():
                             this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
                         else:
                             this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                        this_pred_out_abs_set.append(this_pred_out_abs)
-
+                        mc_pred_set.append(this_pred_out_abs)
+                mc_pred_set = tf.stack(mc_pred_set,axis=0)
+                this_pred_out_abs_set.append(mc_pred_set)
             this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
@@ -794,4 +798,4 @@ class TrajectoryEncoderDecoder():
             traj_pred.append(this_pred_out_abs_set)
             neighbors.append(neighbors_gt)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,mc_probabilities,background,homography,flip=flip)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,mc_probabilities,background,homography,flip=flip,display_mode=display_mode)

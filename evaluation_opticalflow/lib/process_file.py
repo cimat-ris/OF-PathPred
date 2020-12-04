@@ -109,35 +109,34 @@ def process_file(data_paths, parameters):
                     # We do not have enough observations for this person
                     continue
 
-                # Social context information is extracted here
                 # List of all the persons in the frame, to build the neighbors array
-                if parameters.add_social:
-                    # TODO: is it OK to do that?
-                    # Check whether the first 8 positions are not the same
-                    equal_consecutive = 0
-                    for n in range(obs_len-1):
-                        if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
-                            equal_consecutive +=1
-                    if(equal_consecutive==obs_len-1):
-                        continue
+                # Check whether the first 8 positions are not the same
+                # TODO: is it OK to do that?
+                equal_consecutive = 0
+                for n in range(obs_len-1):
+                    if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
+                        equal_consecutive +=1
+                if(equal_consecutive==obs_len-1):
+                    continue
 
-                    # To keep neighbors data for the person ped_id
-                    neighbors_ped_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
-                    # Scan all the frames of the sequence
-                    for frame_idx,frame_id in enumerate(np.unique(raw_seq_data[:,0]).tolist()):
-                        # Information of frame "frame_id"
-                        frame_data = raw_seq_data[raw_seq_data[:,0]==frame_id,:]
-                        # Id, x, y of the pedestrians of frame "frame_id"
-                        frame_data = frame_data[:,1:4]
-                        # For all the persons in the sequence
-                        for neighbor_ped_idx,neighbor_ped_id in enumerate(peds_in_seq):
-                            # Get the data of this specific person
-                            neighbor_data = frame_data[frame_data[:, 0]==neighbor_ped_id,:]
-                            # If we have information for this pedestrian, add it to the neighbors struture
-                            if neighbor_data.size != 0:
-                                neighbors_ped_seq[frame_idx,neighbor_ped_idx,:] = neighbor_data
-                    # Contains the neighbor data for ped_count
-                    neighbors_data[ped_count,:,:,:] = neighbors_ped_seq
+                # To keep neighbors data for the person ped_id
+                neighbors_ped_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
+                # Scan all the frames of the sequence
+                for frame_idx,frame_id in enumerate(np.unique(raw_seq_data[:,0]).tolist()):
+                    # Information of frame "frame_id"
+                    frame_data = raw_seq_data[raw_seq_data[:,0]==frame_id,:]
+                    # Id, x, y of the pedestrians of frame "frame_id"
+                    frame_data = frame_data[:,1:4]
+                    # For all the persons in the sequence
+                    for neighbor_ped_idx,neighbor_ped_id in enumerate(peds_in_seq):
+                        # Get the data of this specific person
+                        neighbor_data = frame_data[frame_data[:, 0]==neighbor_ped_id,:]
+                        # If we have information for this pedestrian, add it to the neighbors struture
+                        if neighbor_data.size != 0:
+                            neighbors_ped_seq[frame_idx,neighbor_ped_idx,:] = neighbor_data
+                # Contains the neighbor data for ped_count
+                neighbors_data[ped_count,:,:,:] = neighbors_ped_seq
+
                 # Spatial data (absolute positions) for ped
                 ped_seq_pos = ped_seq_data[:,2:]
                 # Spatial data (relative)

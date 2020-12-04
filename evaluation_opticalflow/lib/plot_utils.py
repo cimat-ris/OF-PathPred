@@ -57,51 +57,51 @@ def plot_training_results(train_loss_results,val_loss_results,val_metrics_result
 
 
 # Visualization of the predictions vs. the ground truth
-def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,background=None,homography=None,flip=False):
+def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,background=None,homography=None,flip=False,display_mode=None):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     ax.set_title('Trajectory samples')
     plt.axis('equal')
     if background is not None:
         plt.imshow(background)
-    print(distributions_pred)
     # Get the number of samples per prediction
-    nSamples = traj_pred[0].shape[0]
+    nMCSamples  = traj_pred[0].shape[0]
+    nModeSamples= traj_pred[0].shape[1]
     # Plot some random testing data and the predicted ones
     plt.plot([0],[0],color='purple',label='Neighbors')
-    plt.plot([0],[0],color='red',label='Observations')
-    plt.plot([0],[0],color='blue',label='Ground truth')
-    plt.plot([0],[0],color='green',label='Prediction')
+    plt.plot([0],[0],color='red',   label='Observations')
+    plt.plot([0],[0],color='blue',  label='Ground truth')
+    plt.plot([0],[0],color='green', label='Prediction')
     if homography is not None:
         homography = np.linalg.inv(homography)
     else:
         ax.set_ylabel('Y (m)')
         ax.set_xlabel('X (m)')
-    for (gt,obs,pred,neighbors) in zip(traj_gt,traj_obs,traj_pred,neighbors_gt):
+    for i,(gt,obs,neighbors) in enumerate(zip(traj_gt,traj_obs,neighbors_gt)):
         neighbors = neighbors[0,:,1:3]
         neighbors = np.array([x for x in neighbors[:] if abs(x[0])>0.001])
-        if (pred.shape[0]<1):
-            continue
+        mc_preds  = traj_pred[i]
         if homography is not None:
             gt       = image_to_world_xy(gt, homography,flip=flip)
             obs      = image_to_world_xy(obs, homography,flip=flip)
             if neighbors.shape[0]>0:
                 neighbors= image_to_world_xy(neighbors, homography,flip=flip)
-            tpred= image_to_world_xy(tf.reshape(pred,[pred.shape[0]*pred.shape[1],pred.shape[2]]), homography,flip=flip)
-            pred = tf.reshape(tpred,[pred.shape[0],pred.shape[1],pred.shape[2]])
+            tpred= image_to_world_xy(tf.reshape(mc_preds,[mc_preds.shape[0]*mc_preds.shape[1]*mc_preds.shape[2],mc_preds.shape[3]]), homography,flip=flip)
+            mc_preds = tf.reshape(tpred,[mc_preds.shape[0],mc_preds.shape[1],mc_preds.shape[2],mc_preds.shape[3]])
 
         # Observed trajectory
         plt.plot(obs[:,0],obs[:,1],color='red')
         if neighbors.shape[0]>0:
             plt.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
-        # Predicted trajectory
-        for k in range(nSamples):
-            plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
-            plt.plot(pred[k][:,0],pred[k][:,1],color='green')
-            plt.text(pred[k][-1,0]+10*(pred[k][-1,0]-pred[k][-2,0])/tf.norm(pred[k][-1,0]-pred[k][-2,0]),pred[k][-1,1]+10*(pred[k][-1,1]-pred[k][-2,1])/tf.norm(pred[k][-1,1]-pred[k][-2,1]),"{}".format((k+1)//2))
-            #sns.kdeplot(
-            #    x=pred[k][1:,0],y=pred[k][1:,1], fill=True,ax=ax,color='green',bw_adjust=2.0,thresh=0.01
-            #)
+        # Predicted trajectories.
+        # Scanning the MC samples
+        for pred in mc_preds:
+            for k in range(nModeSamples):
+                if display_mode is not None and k!=display_mode:
+                    continue
+                plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
+                plt.plot(pred[k][:,0],pred[k][:,1],color='green')
+                plt.text(pred[k][-1,0]+10*(pred[k][-1,0]-pred[k][-2,0])/tf.norm(pred[k][-1,0]-pred[k][-2,0]),pred[k][-1,1]+10*(pred[k][-1,1]-pred[k][-2,1])/tf.norm(pred[k][-1,1]-pred[k][-2,1]),"{}{}".format((k+1)//2,'+' if k%2==1 else '-'))
         # Ground truth trajectory
         plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue',linewidth=2)
         plt.plot(gt[:,0],gt[:,1],color='blue',linewidth=2)
