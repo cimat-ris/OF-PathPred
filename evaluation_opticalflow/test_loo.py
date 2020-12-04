@@ -39,7 +39,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=False)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=True)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -53,7 +53,9 @@ if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
 model_parameters.num_epochs     = 40
-model_parameters.output_var_dirs= 3
+model_parameters.output_var_dirs= 4
+model_parameters.is_mc_dropout  = False
+
 #model_parameters.batch_size   = 128
 
 # Get the necessary data
@@ -78,7 +80,7 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
 
 # Training
 print("[INF] Training the model")
-perform_training = True
+perform_training = False
 plot_training    = True
 if perform_training==True:
     # TODO: Use tf.data.Dataset!
@@ -104,4 +106,4 @@ if qualitative==True:
     print("[INF] Qualitative testing")
     for i in range(10):
         batch, test_bckgd = get_testing_batch(test_data,dataset_paths[idTest],model_parameters)
-        tj_enc_dec.qualitative_evaluation(batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False)
+        tj_enc_dec.qualitative_evaluation(batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
