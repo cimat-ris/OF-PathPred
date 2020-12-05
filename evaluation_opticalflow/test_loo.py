@@ -39,7 +39,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=True)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=False)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -55,9 +55,9 @@ if experiment_parameters.output_representation == 'vw':
 model_parameters.num_epochs     = 40
 model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
-
-#model_parameters.batch_size   = 128
-
+if tf.test.is_gpu_available()==False:
+    model_parameters.batch_size     = 128
+    model_parameters.output_var_dirs= 1
 # Get the necessary data
 # TODO: replace these structures by the tf ones
 train_data       = batches_data.Dataset(training_data,model_parameters)
@@ -79,10 +79,10 @@ checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                             ot_class=tj_enc_dec.ot_class)
 
 # Training
-print("[INF] Training the model")
-perform_training = False
+perform_training = True
 plot_training    = True
 if perform_training==True:
+    print("[INF] Training the model")
     # TODO: Use tf.data.Dataset!
     train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
     train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
