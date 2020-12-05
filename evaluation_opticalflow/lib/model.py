@@ -389,7 +389,8 @@ class TrajectoryDecoder(tf.keras.Model):
         decoder_latent = self.dropout(cur_states[0],training=training)
         decoder_latent = tf.expand_dims(decoder_latent,1)
         # Mapping to positions x,y
-        decoder_out_xy = self.h_to_xy(decoder_latent)
+        # decoder_out_xy = self.h_to_xy(decoder_latent)
+        decoder_out_xy = self.h_to_xy(decoder_latent) + dec_input
         return decoder_out_xy, cur_states, Wft
 
 """ Trajectory classifier: during training, takes the observed trajectory and the prediction
