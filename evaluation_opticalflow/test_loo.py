@@ -6,7 +6,7 @@ import sys,os
 2 = INFO and WARNING messages are not printed
 3 = INFO, WARNING, and ERROR messages are not printed
 '''
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.append('./lib')
 import math,numpy as np
 import warnings
@@ -52,12 +52,15 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
-model_parameters.num_epochs     = 40
+model_parameters.num_epochs     = 35
 model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
+model_parameters.initial_lr     = 0.03
+
 if tf.test.is_gpu_available()==False:
     model_parameters.batch_size     = 128
     model_parameters.output_var_dirs= 1
+
 # Get the necessary data
 # TODO: replace these structures by the tf ones
 train_data       = batches_data.Dataset(training_data,model_parameters)
