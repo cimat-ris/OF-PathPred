@@ -108,5 +108,5 @@ qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
     for i in range(10):
-        batch, test_bckgd = get_testing_batch(test_data,dataset_paths[idTest],model_parameters)
+        batch, test_bckgd = get_testing_batch(test_data,dataset_paths[idTest])
         tj_enc_dec.qualitative_evaluation(batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)

@@ -7,7 +7,7 @@ import numpy as np
 from batches_data import get_batch
 import cv2
 
-def get_testing_batch(testing_data,testing_data_path,config):
+def get_testing_batch(testing_data,testing_data_path):
     # A trajectory id
     randomtrajId= np.random.randint(testing_data.get_data_size(),size=1)
     frame_id    = testing_data.data["frames_ids"][randomtrajId][0][0]
@@ -23,7 +23,7 @@ def get_testing_batch(testing_data,testing_data_path,config):
     batch = testing_data.get_by_frame_id(frame_id)
     return batch, test_bckgd
 
-def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,validation_proportion=0.1):
+def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
     testing_data_paths        = [experiment_paths[leave_id]]
     training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
@@ -82,27 +82,27 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
             validation_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_val]
 
         # Training dataset
-        pickle_out = open('pickle/training_data_'+experiment_name+'.pickle',"wb")
+        pickle_out = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(training_data, pickle_out, protocol=2)
         pickle_out.close()
 
         # Test dataset
-        pickle_out = open('pickle/test_data_'+experiment_name+'.pickle',"wb")
+        pickle_out = open(pickle_dir+'/test_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(test_data, pickle_out, protocol=2)
         pickle_out.close()
 
         # Validation dataset
-        pickle_out = open('pickle/validation_data_'+experiment_name+'.pickle',"wb")
+        pickle_out = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(validation_data, pickle_out, protocol=2)
         pickle_out.close()
     else:
         # Unpickle the ready-to-use datasets
         print("[INF] Unpickling...")
-        pickle_in = open('pickle/training_data_'+experiment_name+'.pickle',"rb")
+        pickle_in = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"rb")
         training_data = pickle.load(pickle_in)
-        pickle_in = open('pickle/test_data_'+experiment_name+'.pickle',"rb")
+        pickle_in = open(pickle_dir+'/test_data_'+experiment_name+'.pickle',"rb")
         test_data = pickle.load(pickle_in)
-        pickle_in = open('pickle/validation_data_'+experiment_name+'.pickle',"rb")
+        pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
         validation_data = pickle.load(pickle_in)
 
     print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
