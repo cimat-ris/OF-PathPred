@@ -390,6 +390,7 @@ class TrajectoryDecoder(tf.keras.Model):
         decoder_latent = tf.expand_dims(decoder_latent,1)
         # Mapping to positions x,y
         # decoder_out_xy = self.h_to_xy(decoder_latent)
+        # Something new: we try to learn the residual to the constant velocity case
         decoder_out_xy = self.h_to_xy(decoder_latent) + dec_input
         return decoder_out_xy, cur_states, Wft
 
@@ -404,7 +405,9 @@ class FullTrajectoryClassifier(tf.keras.Model):
         self.output_samples = 2*config.output_var_dirs+1
         input_observed_shape= (config.enc_hidden_size)
         input_final_shape   = (config.P)
+        # Inputs: hidden vector corresponding to the observations
         self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
+        # Inputs: overall displacement along the second part of the trajectory
         self.input_final    = keras.Input(shape=input_final_shape, name="final_displacement")
         self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
         self.dense_layer_final    = tf.keras.layers.Dense(64, activation="relu", name="final_dense")
@@ -465,12 +468,9 @@ class TrajectoryEncoderDecoder():
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
-        # Classifier p(z|x,y)
-        self.ft_class = FullTrajectoryClassifier(config)
-        self.ft_class.summary()
         # Classifier p(z|x)
-        self.ot_class = ObservedTrajectoryClassifier(config)
-        self.ot_class.summary()
+        self.obs_classif = ObservedTrajectoryClassifier(config)
+        self.obs_classif.summary()
         # Encoder to decoder initialization
         self.enctodec = TrajectoryDecoderInitializer(config)
         self.enctodec.summary()
@@ -500,10 +500,12 @@ class TrajectoryEncoderDecoder():
         self.enc.save_weights('tmp_enc.h5')
         self.enctodec.save_weights('tmp_enctodec.h5')
         self.dec.save_weights('tmp_dec.h5')
+        self.obs_classif.save_weights('tmp_obs_classif.h5')
     def load_tmp(self):
         self.enc.load_weights('tmp_enc.h5')
         self.enctodec.load_weights('tmp_enctodec.h5')
         self.dec.load_weights('tmp_dec.h5')
+        self.obs_classif.load_weights('tmp_obs_classif.h5')
 
     # Single training/testing step, for one batch: batch_inputs are the observations, batch_targets are the targets
     def batch_step(self, batch_inputs, batch_targets, metrics, training=True):
@@ -511,7 +513,7 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables to be trained
-        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights + self.ft_class.trainable_weights+ self.ot_class.trainable_weights
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights +self.obs_classif.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         # The total loss will be accumulated on this variable
@@ -529,8 +531,7 @@ class TrajectoryEncoderDecoder():
                 # Each value in the set is a pair (h,c) for the low level LSTM in the stack
                 traj_cur_states_set = self.enctodec([traj_last_states[0]])
             # Apply the classifiers
-            ft_logits = self.ft_class(traj_last_states[0][0],tf.reduce_sum(batch_targets,axis=1))
-            ot_logits = self.ot_class(traj_last_states[0][0])
+            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
 
             #########################################################################################
             # Decoding is done here
@@ -565,20 +566,14 @@ class TrajectoryEncoderDecoder():
             # Stack into a tensor batch_size x self.output_samples
             losses          = tf.stack(losses, axis=1)
             closest_samples = tf.math.argmin(losses, axis=1)
+            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
             #########################################################################################
 
             #########################################################################################
             # Losses are accumulated here
-            # Classification loss p(z|x,y)
-            loss_ft_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ft_logits)
-            metrics['ft_sca'].update_state(closest_samples,ft_logits)
-            # TODO: tune this value in a more principled way?
-            loss_value  += 0.1*tf.reduce_sum(loss_ft_classifier)/loss_ft_classifier.shape[0]
-            # Classification loss p(z|x)
-            loss_ot_classifier= tf.keras.losses.sparse_categorical_crossentropy(closest_samples,ot_logits)
-            metrics['ot_sca'].update_state(closest_samples,ot_logits)
-            # TODO: tune this value in a more principled way?
-            loss_value  += 0.1*tf.reduce_sum(loss_ot_classifier)/loss_ot_classifier.shape[0]
+            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
+            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
+
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
             # Sum over the samples, divided by the batch size
@@ -617,7 +612,7 @@ class TrajectoryEncoderDecoder():
                 # Each value in the set is a pair (h,c) for the low level LSTM in the stack
                 traj_cur_states_set = self.enctodec([traj_last_states[0]])
             # Apply the classifier to the encoding of the observed part
-            ot_logits = self.ot_class(traj_last_states[0][0])
+            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
 
             # This will store the trajectories and the attention weights
             traj_pred_set       = []
@@ -649,7 +644,7 @@ class TrajectoryEncoderDecoder():
                 traj_pred_set.append(traj_pred)
                 att_weights_pred_set.append(att_weights_pred)
             all_samples.append([traj_pred_set,att_weights_pred_set])
-            all_probabilities.append(ot_logits)
+            all_probabilities.append(obs_classif_logits)
         return all_samples, all_probabilities
 
     # Training loop
@@ -657,11 +652,11 @@ class TrajectoryEncoderDecoder():
         num_batches_per_epoch= train_data.get_num_batches()
         train_loss_results   = []
         val_loss_results     = []
-        val_metrics_results  = { "ade": [], "fde": [], "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
-        train_metrics_results= { "ft_classifier_accuracy": [], "ot_classifier_accuracy": []}
+        val_metrics_results  = {'ade': [], 'fde': [], 'obs_classif_accuracy': []}
+        train_metrics_results= {'obs_classif_accuracy': []}
         best                 = {'ade':999999, 'fde':0, 'batchId':-1}
-        train_metrics        = {'ft_sca':keras.metrics.SparseCategoricalAccuracy(),'ot_sca':keras.metrics.SparseCategoricalAccuracy()}
-        val_metrics          = {'ft_sca':keras.metrics.SparseCategoricalAccuracy(),'ot_sca':keras.metrics.SparseCategoricalAccuracy()}
+        train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+        val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
 
         # Epochs
         for epoch in range(config.num_epochs):
@@ -686,10 +681,8 @@ class TrajectoryEncoderDecoder():
 
             # Display information about the current state of the training loop
             print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
-            print('[TRN] Training accuracy of classifier p(z|x,y) {:.4f}'.format(float(train_metrics['ft_sca'].result()),))
-            print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['ot_sca'].result()),))
-            train_metrics['ft_sca'].reset_states()
-            train_metrics['ot_sca'].reset_states()
+            print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+            train_metrics['obs_classif_sca'].reset_states()
 
             if config.use_validation:
                 # Compute validation loss

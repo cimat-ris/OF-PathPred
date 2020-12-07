@@ -39,7 +39,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=False)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=True)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -72,14 +72,13 @@ tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 
 
 # Checkpoints
-checkpoint_dir = './training_checkpoints'
-checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-checkpoint = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
-                                            encoder=tj_enc_dec.enc,
-                                            decoder=tj_enc_dec.dec,
-                                            enctodec=tj_enc_dec.enctodec,
-                                            ft_class=tj_enc_dec.ft_class,
-                                            ot_class=tj_enc_dec.ot_class)
+checkpoint_dir   = './training_checkpoints'
+checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
+checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
+                                        encoder=tj_enc_dec.enc,
+                                        decoder=tj_enc_dec.dec,
+                                        enctodec=tj_enc_dec.enctodec,
+                                        obs_classif=tj_enc_dec.obs_classif)
 
 # Training
 perform_training = True

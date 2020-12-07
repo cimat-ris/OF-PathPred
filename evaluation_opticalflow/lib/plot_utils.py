@@ -96,6 +96,7 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,bac
         # Predicted trajectories.
         # Scanning the MC samples
         for pred in mc_preds:
+            print(pred.shape)
             for k in range(nModeSamples):
                 if display_mode is not None and k!=display_mode:
                     continue
