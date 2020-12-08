@@ -594,6 +594,82 @@ class TrajectoryEncoderDecoder():
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
 
+    # Single training/testing step, for one batch: training the classifier
+    def batch_step_classifier(self, batch_inputs, batch_targets, metrics, training=True):
+        traj_obs_inputs = batch_inputs[0]
+        # Last observed position from the trajectory
+        traj_obs_last = traj_obs_inputs[:, -1]
+        # Variables to be trained
+        variables = self.obs_classif.trainable_weights
+        # Open a GradientTape to record the operations run
+        # during the forward pass, which enables auto-differentiation.
+        # The total loss will be accumulated on this variable
+        loss_value = 0
+        with tf.GradientTape() as g:
+            #########################################################################################
+            # Encoding is done here
+            # Apply trajectory and context encoding
+            if self.add_social:
+                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
+                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+            else:
+                traj_last_states, context = self.enc(batch_inputs, training=False)
+                # Returns a set of self.output_samples possible initializing states for the decoder
+                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+                traj_cur_states_set = self.enctodec([traj_last_states[0]])
+            # Apply the classifiers
+            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
+            #########################################################################################
+            # Decoding is done here
+            # Iterate over these possible initializing states
+            losses = []
+            for k in range(self.output_samples):
+                # Sample-wise loss values
+                loss_values         = 0
+                # Decoder state is initialized here
+                traj_cur_states     = traj_cur_states_set[k]
+                # The first input to the decoder is the last observed position [Nx1xK]
+                dec_input = tf.expand_dims(traj_obs_last, 1)
+                # Iterate over timesteps
+                for t in range(0, batch_targets.shape[1]):
+                    # ------------------------ xy decoder--------------------------------------
+                    # passing enc_output to the decoder
+                    t_pred, dec_states, __ = self.dec(dec_input,traj_cur_states,context,training=training)
+                    t_target               = tf.expand_dims(batch_targets[:, t], 1)
+                    # Loss
+                    loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
+                    # Next input is the last predicted position
+                    dec_input = t_pred
+                    # Update the states
+                    traj_cur_states = dec_states
+                # Keep loss values for all self.output_samples cases
+                losses.append(tf.squeeze(loss_values,axis=1))
+            # Stack into a tensor batch_size x self.output_samples
+            losses          = tf.stack(losses, axis=1)
+            closest_samples = tf.math.argmin(losses, axis=1)
+            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
+            #########################################################################################
+
+            #########################################################################################
+            # Losses are accumulated here
+            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
+            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
+            # TODO: tune this value in a more principled way?
+            # L2 weight decay
+            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
+                        if 'bias' not in v.name ]) * 0.0008
+            #########################################################################################
+
+
+        if training==True:
+            # Get the gradients
+            grads = g.gradient(loss_value, variables)
+            # Run one step of gradient descent
+            self.optimizer.apply_gradients(zip(grads, variables))
+        # Average loss over the predicted times
+        batch_loss = (loss_value / int(batch_targets.shape[1]))
+        return batch_loss
+
     # Prediction (testing) for one batch
     def batch_predict(self, batch_inputs, n_steps, mc_samples=1):
         traj_obs_inputs = batch_inputs[0]
@@ -658,13 +734,13 @@ class TrajectoryEncoderDecoder():
         train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
         val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
 
-        # Epochs
+        # Training the main system
         for epoch in range(config.num_epochs):
             print('Epoch {}.'.format(epoch + 1))
             # Cycle over batches
             total_loss = 0
             num_batches_per_epoch = train_data.get_num_batches()
-            for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
                 # Format the data
                 batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
@@ -708,6 +784,29 @@ class TrajectoryEncoderDecoder():
                     # Save the best model so far
                     checkpoint.write(checkpoint_prefix+'-best')
                 print('[TRN] Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['ade']))
+
+        # Training the classifier
+        for epoch in range(10):
+            print('Epoch {}.'.format(epoch + 1))
+            # Cycle over batches
+            total_loss = 0
+            num_batches_per_epoch = train_data.get_num_batches()
+            for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config)
+                # Run the forward pass of the layer.
+                # Compute the loss value for this minibatch.
+                batch_loss = self.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            train_loss_results.append(total_loss)
+
+            # Display information about the current state of the training loop
+            print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+            print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+            train_metrics['obs_classif_sca'].reset_states()
+
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
 
     def quantitative_evaluation(self,test_data,config):
