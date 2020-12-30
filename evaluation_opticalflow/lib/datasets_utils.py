@@ -6,11 +6,13 @@ from process_file import process_file
 import numpy as np
 from batches_data import get_batch
 import cv2
+import tensorflow as tf
 
 def get_testing_batch(testing_data,testing_data_path):
     # A trajectory id
-    randomtrajId= np.random.randint(testing_data.get_data_size(),size=1)
-    frame_id    = testing_data.data["frames_ids"][randomtrajId][0][0]
+    testing_data_arr = list(testing_data.as_numpy_iterator())
+    randomtrajId     = np.random.randint(len(testing_data_arr),size=1)[0]
+    frame_id         = testing_data_arr[randomtrajId]["frames_ids"][0]
     # Get the video corresponding to the testing
     cap   = cv2.VideoCapture(testing_data_path+'/video.avi')
     frame = 0
@@ -20,14 +22,16 @@ def get_testing_batch(testing_data,testing_data_path):
             break
         frame = frame + 1
     # Form the batch
-    batch = testing_data.get_by_frame_id(frame_id)
-    return batch, test_bckgd
+    filtered_data  = testing_data.filter(lambda x: x["frames_ids"][0]==frame_id)
+    filtered_data  = filtered_data.batch(20)
+    for element in filtered_data.as_numpy_iterator():
+        return element, test_bckgd
 
 def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
     testing_data_paths        = [experiment_paths[leave_id]]
     training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
-    print('[INF] Testing dataset:',testing_data_paths)
+    print('[INF] Testing/validation dataset:',testing_data_paths)
     print('[INF] Training datasets:',training_data_paths)
     if not use_pickled_data:
         # Process data specified by the path to get the trajectories with
@@ -39,6 +43,7 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
         n_test_data  = len(test_data[list(test_data.keys())[2]])
         n_train_data = len(train_data[list(train_data.keys())[2]])
         idx          = np.random.permutation(n_train_data)
+        # TODO: validation should be done from a similar distribution as test set!
         validation_pc= validation_proportion
         validation   = int(n_train_data*validation_pc)
         training     = int(n_train_data-validation)

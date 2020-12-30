@@ -62,10 +62,14 @@ if tf.test.is_gpu_available()==False:
     model_parameters.output_var_dirs= 1
 
 # Get the necessary data
-# TODO: replace these structures by the tf ones
-train_data       = batches_data.Dataset(training_data,model_parameters)
-val_data         = batches_data.Dataset(validation_data,model_parameters)
-test_data        = batches_data.Dataset(test_data, model_parameters)
+train_data = tf.data.Dataset.from_tensor_slices(training_data)
+val_data   = tf.data.Dataset.from_tensor_slices(validation_data)
+test_data  = tf.data.Dataset.from_tensor_slices(test_data)
+
+# Form batches
+batched_train_data = train_data.batch(model_parameters.batch_size)
+batched_val_data   = val_data.batch(model_parameters.batch_size)
+batched_test_data  = test_data.batch(model_parameters.batch_size)
 
 # Model
 tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
@@ -81,14 +85,11 @@ checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         obs_classif=tj_enc_dec.obs_classif)
 
 # Training
-perform_training = True
+perform_training = False
 plot_training    = True
 if perform_training==True:
     print("[INF] Training the model")
-    # TODO: Use tf.data.Dataset!
-    train_dataset = tf.data.Dataset.from_tensor_slices((train_data.data["obs_traj_rel"],train_data.data["pred_traj_rel"]))
-    train_dataset = train_dataset.shuffle(buffer_size=1024).batch(512)
-    train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(train_data,val_data,model_parameters,checkpoint,checkpoint_prefix)
+    train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
     if plot_training==True:
         plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
@@ -99,7 +100,7 @@ status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
 # Quantitative testing: ADE/FDE
 print("[INF] Quantitative testing")
-results = tj_enc_dec.quantitative_evaluation(test_data,model_parameters)
+results = tj_enc_dec.quantitative_evaluation(batched_test_data,model_parameters)
 print(results)
 
 # Qualitative testing
