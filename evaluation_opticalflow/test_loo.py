@@ -26,7 +26,8 @@ from tensorflow.keras import models
 from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data,plot_training_results
 
-if tf.test.gpu_device_name():
+physical_devices = tf.config.list_physical_devices('GPU')
+if len(physical_devices)>0:
     print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
 else:
     print("[INF] Using CPU")
@@ -57,9 +58,11 @@ model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
 model_parameters.initial_lr     = 0.03
 
-if tf.test.is_gpu_available()==False:
+# Running on CPU
+if len(physical_devices)==0:
     model_parameters.batch_size     = 128
     model_parameters.output_var_dirs= 1
+    model_parameters.stack_rnn_size = 1
 
 # Get the necessary data
 # TODO: replace these structures by the tf ones
