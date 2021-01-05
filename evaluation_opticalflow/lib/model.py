@@ -513,9 +513,8 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables to be trained
-        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights +self.obs_classif.trainable_weights
-        # Open a GradientTape to record the operations run
-        # during the forward pass, which enables auto-differentiation.
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights
+        # Open a GradientTape to record the operations run during the forward pass, which enables auto-differentiation.
         # The total loss will be accumulated on this variable
         loss_value = 0
         with tf.GradientTape() as g:
@@ -530,8 +529,6 @@ class TrajectoryEncoderDecoder():
                 # Returns a set of self.output_samples possible initializing states for the decoder
                 # Each value in the set is a pair (h,c) for the low level LSTM in the stack
                 traj_cur_states_set = self.enctodec([traj_last_states[0]])
-            # Apply the classifiers
-            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
 
             #########################################################################################
             # Decoding is done here
@@ -566,14 +563,10 @@ class TrajectoryEncoderDecoder():
             # Stack into a tensor batch_size x self.output_samples
             losses          = tf.stack(losses, axis=1)
             closest_samples = tf.math.argmin(losses, axis=1)
-            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
             #########################################################################################
 
             #########################################################################################
             # Losses are accumulated here
-            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
-            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
-
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
             # Sum over the samples, divided by the batch size
@@ -584,12 +577,15 @@ class TrajectoryEncoderDecoder():
                         if 'bias' not in v.name ]) * 0.0008
             #########################################################################################
 
-
+        #########################################################################################
+        # Gradients and parameters update
         if training==True:
             # Get the gradients
             grads = g.gradient(loss_value, variables)
             # Run one step of gradient descent
             self.optimizer.apply_gradients(zip(grads, variables))
+        #########################################################################################
+
         # Average loss over the predicted times
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
@@ -725,7 +721,6 @@ class TrajectoryEncoderDecoder():
 
     # Training loop
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
-        num_batches_per_epoch= train_data.get_num_batches()
         train_loss_results   = []
         val_loss_results     = []
         val_metrics_results  = {'ade': [], 'fde': [], 'obs_classif_accuracy': []}
@@ -733,14 +728,17 @@ class TrajectoryEncoderDecoder():
         best                 = {'ade':999999, 'fde':0, 'batchId':-1}
         train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
         val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+        # TODO: Shuffle
 
         # Training the main system
         for epoch in range(config.num_epochs):
             print('Epoch {}.'.format(epoch + 1))
             # Cycle over batches
             total_loss = 0
-            num_batches_per_epoch = train_data.get_num_batches()
-            for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            #num_batches_per_epoch = train_data.get_num_batches()
+            #for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            num_batches_per_epoch= train_data.cardinality().numpy()
+            for batch in tqdm(train_data,ascii = True):
                 # Format the data
                 batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
@@ -757,14 +755,16 @@ class TrajectoryEncoderDecoder():
 
             # Display information about the current state of the training loop
             print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
-            print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+            # print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
             train_metrics['obs_classif_sca'].reset_states()
 
             if config.use_validation:
                 # Compute validation loss
                 total_loss = 0
-                num_batches_per_epoch = val_data.get_num_batches()
-                for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
+                # num_batches_per_epoch = val_data.get_num_batches()
+                # for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
+                num_batches_per_epoch= val_data.cardinality().numpy()
+                for idx,batch in tqdm(enumerate(val_data),ascii = True):
                     # Format the data
                     batch_inputs, batch_targets = get_batch(batch, config)
                     batch_loss                  = self.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
@@ -789,9 +789,10 @@ class TrajectoryEncoderDecoder():
         for epoch in range(10):
             print('Epoch {}.'.format(epoch + 1))
             # Cycle over batches
-            total_loss = 0
-            num_batches_per_epoch = train_data.get_num_batches()
-            for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            # num_batches_per_epoch = train_data.get_num_batches()
+            # for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            num_batches_per_epoch= train_data.cardinality().numpy()
+            for batch in tqdm(train_data,ascii = True):
                 # Format the data
                 batch_inputs, batch_targets = get_batch(batch, config)
                 # Run the forward pass of the layer.
@@ -811,18 +812,20 @@ class TrajectoryEncoderDecoder():
 
     def quantitative_evaluation(self,test_data,config):
         l2dis = []
-        num_batches_per_epoch = test_data.get_num_batches()
-        for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+        # num_batches_per_epoch = test_data.get_num_batches()
+        # for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+        num_batches_per_epoch= test_data.cardinality().numpy()
+        for batch in tqdm(test_data,ascii = True):
             # Format the data
             batch_inputs, batch_targets = get_batch(batch, config)
             pred_out,__                 = self.batch_predict(batch_inputs,batch_targets.shape[1],1)
             pred_out                    = pred_out[0][0]
-            this_actual_batch_size      = batch["original_batch_size"]
+            # this_actual_batch_size      = batch["original_batch_size"]
             d = []
             # For all the trajectories in the batch
             for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-                if i >= this_actual_batch_size:
-                    break
+                #if i >= this_actual_batch_size:
+                #    break
                 # TODO: replace
                 normin = 1000.0
                 diffmin= None
