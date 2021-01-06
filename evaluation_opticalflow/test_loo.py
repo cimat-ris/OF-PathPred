@@ -88,7 +88,7 @@ checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         obs_classif=tj_enc_dec.obs_classif)
 
 # Training
-perform_training = False
+perform_training = True
 plot_training    = True
 if perform_training==True:
     print("[INF] Training the model")
