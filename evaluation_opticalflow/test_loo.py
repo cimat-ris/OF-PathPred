@@ -40,7 +40,7 @@ dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=True)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=False)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -60,7 +60,7 @@ model_parameters.initial_lr     = 0.03
 
 # Running on CPU
 if len(physical_devices)==0:
-    model_parameters.batch_size     = 128
+    model_parameters.batch_size     = 64
     model_parameters.output_var_dirs= 1
     model_parameters.stack_rnn_size = 1
 
