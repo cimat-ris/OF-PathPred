@@ -377,14 +377,15 @@ class TrajectoryDecoder(tf.keras.Model):
         ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
         # Context input
         self.input_layer_ctxt = layers.Input(ctxt_shape,name="context")
-        self.out = self.call(self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2),self.input_layer_ctxt)
+        self.out = self.call((self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2),self.input_layer_ctxt))
         # Call init again. This is a workaround for being able to use summary
         super(TrajectoryDecoder, self).__init__(
                     inputs= [self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt],
                     outputs=self.out)
 
     # Call to the decoder
-    def call(self, dec_input, last_states, context, training=None):
+    def call(self, inputs, training=None):
+        dec_input, last_states, context = inputs
         # Embedding from positions
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
         # context: [N,1,h_dim]
@@ -564,7 +565,7 @@ class TrajectoryEncoderDecoder():
                 for t in range(0, batch_targets.shape[1]):
                     # ------------------------ xy decoder--------------------------------------
                     # passing enc_output to the decoder
-                    t_pred, dec_states, __ = self.dec(dec_input,traj_cur_states,context,training=training)
+                    t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=training)
                     t_target               = tf.expand_dims(batch_targets[:, t], 1)
                     # Loss
                     loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
@@ -649,7 +650,7 @@ class TrajectoryEncoderDecoder():
                 for t in range(0, batch_targets.shape[1]):
                     # ------------------------ xy decoder--------------------------------------
                     # passing enc_output to the decoder
-                    t_pred, dec_states, __ = self.dec(dec_input,traj_cur_states,context,training=training)
+                    t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=training)
                     t_target               = tf.expand_dims(batch_targets[:, t], 1)
                     # Loss
                     loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
@@ -722,7 +723,7 @@ class TrajectoryEncoderDecoder():
                 for t in range(0, n_steps):
                     # ------------------------ xy decoder--------------------------------------
                     # Passing enc_output to the decoder
-                    t_pred, dec_states, wft = self.dec(dec_input,traj_cur_states,context,training=False)
+                    t_pred, dec_states, wft = self.dec([dec_input,traj_cur_states,context],training=False)
                     # Next input is the last predicted position
                     dec_input = t_pred
                     # Add it to the list of predictions
