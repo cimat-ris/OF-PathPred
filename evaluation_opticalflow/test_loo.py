@@ -25,7 +25,7 @@ from tensorflow.keras import layers
 from tensorflow.keras import models
 from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data,plot_training_results
-from testing_utils import evaluation_minadefde
+from testing_utils import evaluation_minadefde,plot_comparisons_minadefde
 
 physical_devices = tf.config.list_physical_devices('GPU')
 if len(physical_devices)>0:
@@ -105,6 +105,7 @@ status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 # Quantitative testing: ADE/FDE
 print("[INF] Quantitative testing")
 results = evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
+plot_comparisons_minadefde(results)
 print(results)
 
 # Qualitative testing

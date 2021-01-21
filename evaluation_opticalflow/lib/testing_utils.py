@@ -1,9 +1,9 @@
 from tqdm import tqdm
-from plot_utils import plot_gt_preds
 from traj_utils import relative_to_abs, vw_to_abs
 from batches_data import get_batch
 import numpy as np
 import tensorflow as tf
+from matplotlib import pyplot as plt
 
 mADEFDE = {
   "ETH" : {
@@ -107,3 +107,42 @@ def evaluation_minadefde(model,test_data,config):
     ade = [t for o in l2dis for t in o] # average displacement
     fde = [o[-1] for o in l2dis] # final displacement
     return { "mADE": np.mean(ade), "mFDE": np.mean(fde)}
+
+
+def plot_comparisons_minadefde(madefde_results):
+    labels = list(mADEFDE["ZARA1"].keys())
+    labels.append("This run")
+    values = list(mADEFDE["ZARA1"].values())
+    values.append((madefde_results["mADE"],madefde_results["mFDE"]))
+    values = np.array(values)
+    print(values)
+
+    x = np.arange(len(labels))  # the label locations
+    width = 0.35  # the width of the bars
+
+    fig, ax = plt.subplots()
+    rects1 = ax.bar(x - width/2, values[:,0], width, label='mADE')
+    rects2 = ax.bar(x + width/2, values[:,1], width, label='mFDE')
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    ax.set_ylabel('mADE/mFDE (m)')
+    ax.set_title('mADE/mFDE')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    ax.legend()
+
+    def autolabel(rects):
+        """Attach a text label above each bar in *rects*, displaying its height."""
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate('{:.2f}'.format(height),
+                    xy=(rect.get_x() + rect.get_width() / 2, height),
+                    xytext=(0, 3),  # 3 points vertical offset
+                    textcoords="offset points",
+                    ha='center', va='bottom')
+
+
+    autolabel(rects1)
+    autolabel(rects2)
+    fig.tight_layout()
+    plt.show()
