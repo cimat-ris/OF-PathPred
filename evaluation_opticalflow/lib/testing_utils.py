@@ -115,8 +115,6 @@ def plot_comparisons_minadefde(madefde_results):
     values = list(mADEFDE["ZARA1"].values())
     values.append((madefde_results["mADE"],madefde_results["mFDE"]))
     values = np.array(values)
-    print(values)
-
     x = np.arange(len(labels))  # the label locations
     width = 0.35  # the width of the bars
 
