@@ -27,17 +27,17 @@ def get_testing_batch(testing_data,testing_data_path):
     for element in filtered_data.as_numpy_iterator():
         return element, test_bckgd
 
-def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
+def setup_loo_experiment(experiment_name,datasets_path,datasets_names,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
-    testing_data_paths        = [experiment_paths[leave_id]]
-    training_data_paths       = experiment_paths[:leave_id]+experiment_paths[leave_id+1:]
-    print('[INF] Testing/validation dataset:',testing_data_paths)
-    print('[INF] Training datasets:',training_data_paths)
+    testing_datasets_names  = [datasets_names[leave_id]]
+    training_datasets_names = datasets_names[:leave_id]+datasets_names[leave_id+1:]
+    print('[INF] Testing/validation dataset:',testing_datasets_names)
+    print('[INF] Training datasets:',training_datasets_names)
     if not use_pickled_data:
         # Process data specified by the path to get the trajectories with
         print('[INF] Extracting data from the datasets')
-        test_data  = process_file(testing_data_paths, experiment_parameters)
-        train_data = process_file(training_data_paths, experiment_parameters)
+        test_data  = process_file(datasets_path, testing_datasets_names, experiment_parameters)
+        train_data = process_file(datasets_path, training_datasets_names, experiment_parameters)
 
         # Count how many data we have (sub-sequences of length 8, in pred_traj)
         n_test_data  = len(test_data[list(test_data.keys())[2]])
@@ -115,6 +115,6 @@ def setup_loo_experiment(experiment_name,experiment_paths,leave_id,experiment_pa
     print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
     # Load the homography corresponding to this dataset
-    homography_file = os.path.join(testing_data_paths[0]+'/H.txt')
+    homography_file = os.path.join(datasets_path+testing_datasets_names[0]+'/H.txt')
     test_homography = np.genfromtxt(homography_file)
     return training_data,validation_data,test_data,test_homography

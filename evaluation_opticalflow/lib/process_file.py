@@ -5,13 +5,13 @@ import numpy as np
 from interaction_optical_flow import OpticalFlowSimulator
 from obstacles import load_world_obstacle_polygons
 
-def process_file(data_paths, parameters):
+def process_file(datasets_path, datasets_names, parameters):
 
-    datasets = range(len(data_paths))
+    datasets = range(len(datasets_names))
     datasets = list(datasets)
 
     # Paths for the datasets used to form the training set
-    used_data_dirs = [data_paths[x] for x in datasets]
+    used_data_dirs = [datasets_names[x] for x in datasets]
 
     # Sequence lengths
     obs_len  = parameters.obs_len
@@ -34,7 +34,7 @@ def process_file(data_paths, parameters):
         seq_neighbors_dataset= []
         seq_ids_dataset      = []
         seq_pos_dataset      = []
-        traj_data_path       = os.path.join(directory, 'mundo/mun_pos.csv')
+        traj_data_path       = os.path.join(datasets_path+directory, 'mundo/mun_pos.csv')
         print("[INF] Reading "+traj_data_path)
         # Read obstacles files
         if parameters.obstacles:

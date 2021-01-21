@@ -6,7 +6,7 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 
 mADEFDE = {
-  "ETH" : {
+  "eth-univ" : {
     "S-GAN": (0.87,1.62),
     "SoPhie": (0.70,1.43),
     "Soc-BIGAT": (0.69,1.29),
@@ -18,7 +18,7 @@ mADEFDE = {
     "20SVAE": (0.53,0.95),
     "SDVAE": (0.40,0.60),
   },
-  "HOTEL" : {
+  "eth-hotel" : {
     "S-GAN": (0.67,1.37),
     "SoPhie": (0.76,1.67),
     "Soc-BIGAT": (0.49,1.01),
@@ -30,7 +30,7 @@ mADEFDE = {
     "20SVAE": (0.19,0.37),
     "SDVAE": (0.18,0.35),
   },
-  "UNIV" : {
+  "ucy-univ" : {
     "S-GAN": (0.76,1.52),
     "SoPhie": (0.54,1.24),
     "Soc-BIGAT": (0.55,1.32),
@@ -42,7 +42,7 @@ mADEFDE = {
     "20SVAE": (0.27,0.47),
     "SDVAE": (0.26,0.43),
   },
-  "ZARA1": {
+  "ucy-zara01": {
     "S-GAN": (0.35,0.68),
     "SoPhie": (0.30,0.63),
     "Soc-BIGAT": (0.30,0.62),
@@ -54,7 +54,7 @@ mADEFDE = {
     "20SVAE": (0.22,0.38),
     "SDVAE": (0.23,0.41)
   },
-  "ZARA2": {
+  "ucy-zara02": {
     "S-GAN": (0.42,0.84),
     "SoPhie": (0.38,0.78),
     "Soc-BIGAT": (0.36,0.75),
@@ -109,10 +109,10 @@ def evaluation_minadefde(model,test_data,config):
     return { "mADE": np.mean(ade), "mFDE": np.mean(fde)}
 
 
-def plot_comparisons_minadefde(madefde_results):
-    labels = list(mADEFDE["ZARA1"].keys())
+def plot_comparisons_minadefde(madefde_results,dataset_name):
+    labels = list(mADEFDE[dataset_name].keys())
     labels.append("This run")
-    values = list(mADEFDE["ZARA1"].values())
+    values = list(mADEFDE[dataset_name].values())
     values.append((madefde_results["mADE"],madefde_results["mFDE"]))
     values = np.array(values)
     x = np.arange(len(labels))  # the label locations
@@ -124,7 +124,7 @@ def plot_comparisons_minadefde(madefde_results):
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     ax.set_ylabel('mADE/mFDE (m)')
-    ax.set_title('mADE/mFDE')
+    ax.set_title('mADE/mFDE on '+dataset_name)
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.legend()

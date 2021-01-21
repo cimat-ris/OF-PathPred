@@ -36,12 +36,12 @@ else:
 # Load the default parameters
 experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 
-dataset_dir       = "../datasets/"
-dataset_paths     = [dataset_dir+'eth-hotel',dataset_dir+'eth-univ',dataset_dir+'ucy-zara01',dataset_dir+'ucy-zara02',dataset_dir+'ucy-univ']
+dataset_dir   = "../datasets/"
+dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 
 # Load the dataset and perform the split
 idTest = 2
-training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_paths,idTest,experiment_parameters,use_pickled_data=False)
+training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=False)
 
 # Plot ramdomly a subset of the training data (spatial data only)
 show_training_samples = False
@@ -105,7 +105,7 @@ status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 # Quantitative testing: ADE/FDE
 print("[INF] Quantitative testing")
 results = evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
-plot_comparisons_minadefde(results)
+plot_comparisons_minadefde(results,dataset_names[idTest])
 print(results)
 
 # Qualitative testing
@@ -113,5 +113,5 @@ qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
     for i in range(10):
-        batch, test_bckgd = get_testing_batch(test_data,dataset_paths[idTest])
+        batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
         tj_enc_dec.qualitative_evaluation(batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
