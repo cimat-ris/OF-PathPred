@@ -11,6 +11,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense
 from tensorflow.keras import models
+from testing_utils import evaluation_minadefde
 
 class Model_Parameters(object):
     """Model parameters.
@@ -743,9 +744,9 @@ class TrajectoryEncoderDecoder():
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
         train_loss_results   = []
         val_loss_results     = []
-        val_metrics_results  = {'ade': [], 'fde': [], 'obs_classif_accuracy': []}
+        val_metrics_results  = {'min ade': [], 'min fde': [], 'obs_classif_accuracy': []}
         train_metrics_results= {'obs_classif_accuracy': []}
-        best                 = {'ade':999999, 'fde':0, 'batchId':-1}
+        best                 = {'min ade':999999, 'min fde':0, 'batchId':-1}
         train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
         val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
         # TODO: Shuffle
@@ -794,16 +795,16 @@ class TrajectoryEncoderDecoder():
                 print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
                 val_loss_results.append(total_loss)
                 # Evaluate ADE, FDE metrics on validation data
-                val_quantitative_metrics = self.quantitative_evaluation(val_data,config)
-                val_metrics_results['ade'].append(val_quantitative_metrics['ade'])
-                val_metrics_results['fde'].append(val_quantitative_metrics['fde'])
-                if val_quantitative_metrics["ade"]< best['ade']:
-                    best['ade'] = val_quantitative_metrics["ade"]
-                    best['fde'] = val_quantitative_metrics["fde"]
+                val_quantitative_metrics = evaluation_minadefde(self,val_data,config)
+                val_metrics_results['min ade'].append(val_quantitative_metrics['min ade'])
+                val_metrics_results['min fde'].append(val_quantitative_metrics['min fde'])
+                if val_quantitative_metrics["min ade"]< best['min ade']:
+                    best['min ade'] = val_quantitative_metrics["min ade"]
+                    best['min fde'] = val_quantitative_metrics["min fde"]
                     best["patchId"]= idx
                     # Save the best model so far
                     checkpoint.write(checkpoint_prefix+'-best')
-                print('[TRN] Epoch {}. Validation ADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['ade']))
+                print('[TRN] Epoch {}. Validation minADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['min ade']))
 
         # Training the classifier
         for epoch in range(10):
@@ -829,49 +830,6 @@ class TrajectoryEncoderDecoder():
             train_metrics['obs_classif_sca'].reset_states()
 
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
-
-    def quantitative_evaluation(self,test_data,config):
-        l2dis = []
-        # num_batches_per_epoch = test_data.get_num_batches()
-        # for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
-        num_batches_per_epoch= test_data.cardinality().numpy()
-        for batch in tqdm(test_data,ascii = True):
-            # Format the data
-            batch_inputs, batch_targets = get_batch(batch, config)
-            pred_out,__                 = self.batch_predict(batch_inputs,batch_targets.shape[1],1)
-            pred_out                    = pred_out[0][0]
-            # this_actual_batch_size      = batch["original_batch_size"]
-            d = []
-            # For all the trajectories in the batch
-            for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-                #if i >= this_actual_batch_size:
-                #    break
-                # TODO: replace
-                normin = 1000.0
-                diffmin= None
-                for k in range(self.output_samples):
-                    # Conserve the x,y coordinates of the kth trajectory
-                    this_pred_out     = pred_out[k][i][:, :2] #[pred,2]
-                    # Convert it to absolute (starting from the last observed position)
-                    if config.output_representation=='dxdy':
-                        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                    else:
-                        this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                    # Check shape is OK
-                    assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
-                    # Error for ade/fde
-                    diff = pred_traj_gt - this_pred_out_abs
-                    diff = diff**2
-                    diff = np.sqrt(np.sum(diff, axis=1))
-                    # To keep the min
-                    if tf.norm(diff)<normin:
-                        normin  = tf.norm(diff)
-                        diffmin = diff
-                d.append(diffmin)
-            l2dis += d
-        ade = [t for o in l2dis for t in o] # average displacement
-        fde = [o[-1] for o in l2dis] # final displacement
-        return { "ade": np.mean(ade), "fde": np.mean(fde)}
 
     # Perform a qualitative evaluation over a batch of n_trajectories
     def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
