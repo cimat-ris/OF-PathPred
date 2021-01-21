@@ -744,9 +744,9 @@ class TrajectoryEncoderDecoder():
     def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
         train_loss_results   = []
         val_loss_results     = []
-        val_metrics_results  = {'min ade': [], 'min fde': [], 'obs_classif_accuracy': []}
+        val_metrics_results  = {'mADE': [], 'mFDE': [], 'obs_classif_accuracy': []}
         train_metrics_results= {'obs_classif_accuracy': []}
-        best                 = {'min ade':999999, 'min fde':0, 'batchId':-1}
+        best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
         train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
         val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
         # TODO: Shuffle
@@ -796,15 +796,15 @@ class TrajectoryEncoderDecoder():
                 val_loss_results.append(total_loss)
                 # Evaluate ADE, FDE metrics on validation data
                 val_quantitative_metrics = evaluation_minadefde(self,val_data,config)
-                val_metrics_results['min ade'].append(val_quantitative_metrics['min ade'])
-                val_metrics_results['min fde'].append(val_quantitative_metrics['min fde'])
-                if val_quantitative_metrics["min ade"]< best['min ade']:
-                    best['min ade'] = val_quantitative_metrics["min ade"]
-                    best['min fde'] = val_quantitative_metrics["min fde"]
+                val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
+                val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
+                if val_quantitative_metrics["mADE"]< best['mADE']:
+                    best['mADE'] = val_quantitative_metrics["mADE"]
+                    best['mFDE'] = val_quantitative_metrics["mFDE"]
                     best["patchId"]= idx
                     # Save the best model so far
                     checkpoint.write(checkpoint_prefix+'-best')
-                print('[TRN] Epoch {}. Validation minADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['min ade']))
+                print('[TRN] Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
 
         # Training the classifier
         for epoch in range(10):

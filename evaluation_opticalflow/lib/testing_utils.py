@@ -5,26 +5,68 @@ from batches_data import get_batch
 import numpy as np
 import tensorflow as tf
 
-""" \multicolumn{1}{c|}{} & S-GAN \cite{socialGAN} & SoPhie \cite{sophie} & Soc-BIGAT \cite{bigat} & \multicolumn{1}{c}{\acrshort{vvae}}          \\ \hline
-ETH                   & 0.87/1.62                               & \cellcolor[HTML]{FFCE93}0.70/1.43     & \cellcolor[HTML]{FFFC9E}0.69/1.29       & \cellcolor[HTML]{FFFC9E}0.68/1.30 \\
-HOTEL                 & \cellcolor[HTML]{FFCE93}0.67/1.37       & 0.76/1.67                             & \cellcolor[HTML]{EFEFEF}0.49/1.01       & \cellcolor[HTML]{FFFC9E}0.32/0.67 \\
-UNIV                  & 0.76/1.52                               & \cellcolor[HTML]{EFEFEF}0.54/1.24     & \cellcolor[HTML]{FFCE93}0.55/1.32       & \cellcolor[HTML]{FFFC9E}0.43/0.92 \\
-ZARA1                 & 0.35/0.68                               & \cellcolor[HTML]{EFEFEF}0.30/0.63     & \cellcolor[HTML]{FFFC9E}0.30/0.62       & \cellcolor[HTML]{FFCE93}0.33/0.68 \\
-ZARA2                 & 0.42/0.84                               & \cellcolor[HTML]{FFCE93}0.38/0.78     & \cellcolor[HTML]{EFEFEF}0.36/0.75       & \cellcolor[HTML]{FFFC9E}0.28/0.55 \\ \hline
-Avg                   & 0.61/1.21                               & \cellcolor[HTML]{FFCE93}0.54/1.15     & \cellcolor[HTML]{EFEFEF}0.48/1.00       & \cellcolor[HTML]{FFFC9E}0.41/0.83 \\ \hline"""
-
-"""& \multicolumn{1}{c|}{NextP \cite{peeking}} & \multicolumn{1}{c}{$TF_q$ \cite{transformer}}          & \multicolumn{1}{c}{$20S$VAE}      & SDVAE                             \\ \hline
-ETH   & 0.73/1.65                  & \cellcolor[HTML]{FFCE93}0.61/1.12   & \cellcolor[HTML]{EFEFEF}0.53/0.95 & \cellcolor[HTML]{FFFC9E}0.40/0.60 \\
-HOTEL & 0.30/0.59                  & \cellcolor[HTML]{FFFC9E}0.18/0.30   & \cellcolor[HTML]{FFCE93}0.19/0.37 & \cellcolor[HTML]{EFEFEF}0.18/0.35 \\
-UNIV  & 0.60/1.27                  & \cellcolor[HTML]{FFCE93}0.35/0.65   & \cellcolor[HTML]{EFEFEF}0.27/0.47 & \cellcolor[HTML]{FFFC9E}0.26/0.43 \\
-ZARA1 & 0.38/0.81                  & \cellcolor[HTML]{FFFC9E}0.22/0.38   & \cellcolor[HTML]{FFFC9E}0.22/0.38 & \cellcolor[HTML]{EFEFEF}0.23/0.41 \\
-ZARA2 & 0.31/0.68                  & \cellcolor[HTML]{EFEFEF}0.17/0.32   & \cellcolor[HTML]{FFCE93}0.21/0.38 & \cellcolor[HTML]{FFFC9E}0.17/0.29 \\ \hline
-Avg   & 0.46/1.00                  & \cellcolor[HTML]{FFCE93}0.31 / 0.55 & \cellcolor[HTML]{EFEFEF}0.28/0.51 & \cellcolor[HTML]{FFFC9E}0.25/0.41 \\ \hline
-\end{tabular}
-\end{center}
-\caption[Comparison of $20$ \acrshort{vae} and \acrshort{sdvae} with Transformers~\cite{transformer} and NextP~\cite{peeking}]{Comparison of our best \acrshort{vae} and \acrshort{sdvae} with Transformers~\cite{transformer} and NextP~\cite{peeking} (best of $20$: \acrshort{made}/\acrshort{mfde} in meters). The three methods on the right are ranked with gold, plate and bronze.}
-\label{soaeth1}
-\end{table}"""
+mADEFDE = {
+  "ETH" : {
+    "S-GAN": (0.87,1.62),
+    "SoPhie": (0.70,1.43),
+    "Soc-BIGAT": (0.69,1.29),
+    "NextP": (0.73,1.65),
+    "TFq": (0.61,1.12),
+    "Trajectron": (0.59,1.14),
+    "Trajectron++": (0.39,0.83),
+    "VVAE": (0.68,1.30),
+    "20SVAE": (0.53,0.95),
+    "SDVAE": (0.40,0.60),
+  },
+  "HOTEL" : {
+    "S-GAN": (0.67,1.37),
+    "SoPhie": (0.76,1.67),
+    "Soc-BIGAT": (0.49,1.01),
+    "NextP": (0.30,0.59),
+    "TFq": (0.18,0.30),
+    "Trajectron": (0.35,0.66),
+    "Trajectron++": (0.12,0.21),
+    "VVAE": (0.32,0.67),
+    "20SVAE": (0.19,0.37),
+    "SDVAE": (0.18,0.35),
+  },
+  "UNIV" : {
+    "S-GAN": (0.76,1.52),
+    "SoPhie": (0.54,1.24),
+    "Soc-BIGAT": (0.55,1.32),
+    "NextP": (0.60,1.27),
+    "TFq": (0.35,0.65),
+    "Trajectron": (0.54,1.13),
+    "Trajectron++": (0.20,0.44),
+    "VVAE": (0.43,0.92),
+    "20SVAE": (0.27,0.47),
+    "SDVAE": (0.26,0.43),
+  },
+  "ZARA1": {
+    "S-GAN": (0.35,0.68),
+    "SoPhie": (0.30,0.63),
+    "Soc-BIGAT": (0.30,0.62),
+    "NextP": (0.38,0.81),
+    "TFq": (0.22,0.38),
+    "Trajectron": (0.43,0.83),
+    "Trajectron++": (0.15,0.33),
+    "VVAE": (0.33,0.68),
+    "20SVAE": (0.22,0.38),
+    "SDVAE": (0.23,0.41)
+  },
+  "ZARA2": {
+    "S-GAN": (0.42,0.84),
+    "SoPhie": (0.38,0.78),
+    "Soc-BIGAT": (0.36,0.75),
+    "NextP": (0.31,0.68),
+    "TFq": (0.17,0.32),
+    "Trajectron": (0.43,0.85),
+    "Trajectron++": (0.11,0.25),
+    "VVAE": (0.28,0.55),
+    "20SVAE": (0.21,0.38),
+    "SDVAE": (0.17,0.29),
+  }
+}
 
 def evaluation_minadefde(model,test_data,config):
     l2dis = []
@@ -64,4 +106,4 @@ def evaluation_minadefde(model,test_data,config):
         l2dis += d
     ade = [t for o in l2dis for t in o] # average displacement
     fde = [o[-1] for o in l2dis] # final displacement
-    return { "min ade": np.mean(ade), "min fde": np.mean(fde)}
+    return { "mADE": np.mean(ade), "mFDE": np.mean(fde)}
