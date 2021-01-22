@@ -807,7 +807,7 @@ class TrajectoryEncoderDecoder():
                 print('[TRN] Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
 
         # Training the classifier
-        for epoch in range(10):
+        for epoch in range(0):
             print('Epoch {}.'.format(epoch + 1))
             # Cycle over batches
             # num_batches_per_epoch = train_data.get_num_batches()
