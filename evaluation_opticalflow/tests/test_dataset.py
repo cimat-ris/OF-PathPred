@@ -14,23 +14,23 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 # Important imports
-from process_file import process_file, predictor_parameters
-from process_file import process_file_modif_varios
+from process_file import process_file
 import batches_data
+from training_and_testing import Experiment_Parameters
 
+# Load the default parameters
+experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 # Dataset to be tested
-dataset_paths  = "../../data1/"
+dataset_paths  = "../../datasets/"
 #dataset_name = 'eth-hotel'
 #dataset_name = 'eth-univ'
 #dataset_name = 'ucy-zara01'
 dataset_name = 'ucy-zara02'
 # File of trajectories coordinates. Coordinates are in world frame
-data_path = dataset_paths+dataset_name
+data_path = [dataset_paths+dataset_name]
 
-# Load the default parameters
-parameters = predictor_parameters()
 # Process data specified by the path to get the trajectories with
-data = process_file(data_path, parameters, ',')
+data = process_file(data_path, experiment_parameters)
 
 # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
 training_pc  = 0.7
@@ -54,8 +54,7 @@ training_data = {
      "obs_traj":      data["obs_traj"][idx_train],
      "obs_traj_rel":  data["obs_traj_rel"][idx_train],
      "pred_traj":     data["pred_traj"][idx_train],
-     "pred_traj_rel": data["pred_traj_rel"][idx_train],
-     "key_idx":       data["key_idx"][[idx_train]],
+     "pred_traj_rel": data["pred_traj_rel"][idx_train]
 }
 
 # Test set
@@ -63,8 +62,7 @@ test_data = {
      "obs_traj":     data["obs_traj"][idx_test],
      "obs_traj_rel": data["obs_traj_rel"][idx_test],
      "pred_traj":    data["pred_traj"][idx_test],
-     "pred_traj_rel":data["pred_traj_rel"][idx_test],
-     "key_idx":      data["key_idx"][[idx_test]],
+     "pred_traj_rel":data["pred_traj_rel"][idx_test]
 }
 
 # Validation set
@@ -72,8 +70,7 @@ validation_data ={
      "obs_traj":     data["obs_traj"][idx_val],
      "obs_traj_rel": data["obs_traj_rel"][idx_val],
      "pred_traj":    data["pred_traj"][idx_val],
-     "pred_traj_rel":data["pred_traj_rel"][idx_val],
-     "key_idx":      data["key_idx"][[idx_val]],
+     "pred_traj_rel":data["pred_traj_rel"][idx_val]
 }
 
 

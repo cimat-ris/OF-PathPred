@@ -1,581 +1,876 @@
 import tensorflow as tf
 import functools
 import operator
+import os
+from tqdm import tqdm
+from plot_utils import plot_gt_preds
+from traj_utils import relative_to_abs, vw_to_abs
+from batches_data import get_batch
 import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.layers import Dense
+from tensorflow.keras import models
+from testing_utils import evaluation_minadefde
 
 class Model_Parameters(object):
     """Model parameters.
     """
-    def __init__(self, train_num_examples, add_kp = False, add_social = False):
+    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy'):
         # -----------------
         # Observation/prediction lengths
-        self.obs_len  = 8
-        self.pred_len = 12
-
-        self.add_kp             = add_kp
-        self.train_num_examples = train_num_examples
-        self.add_social         = add_social
+        self.obs_len        = 8
+        self.pred_len       = 12
+        self.seq_len        = self.obs_len + self.pred_len
+        self.add_kp         = add_kp
+        self.add_social     = add_social
+        self.add_attention  = add_attention
+        self.stack_rnn_size = 2
+        self.output_representation = output_representation
+        self.output_var_dirs= 0
         # Key points
-        self.kp_size = 18
-        # optical flow
-        self.flow_size = 64
+        self.kp_size        = 18
+        # Optical flow
+        self.flow_size      = 64
         # For training
-        self.num_epochs = 30
-        self.batch_size = 20 # batch size
-        self.validate   = 300
+        self.num_epochs     = 35
+        self.batch_size     = 256  # batch size 512
+        self.use_validation = True
         # Network architecture
-        self.P          = 2 # Dimension
-        self.enc_hidden_size = 64 # el nombre lo dice
-        self.dec_hidden_size = 64
-        self.emb_size        = 64
-        self.keep_prob       = 0.7 # dropout
+        self.P              =   2 # Dimensions of the position vectors
+        self.enc_hidden_size= 256                  # Default value in NextP
+        self.dec_hidden_size= self.enc_hidden_size # Default value in NextP
+        self.emb_size       = 128  # Default value in NextP
+        self.dropout_rate   = 0.3 # Default value in NextP
 
-        self.min_ped      = 1
-        self.seq_len      = self.obs_len + self.pred_len
+        self.activation_func= tf.nn.tanh
+        self.multi_decoder  = False
+        self.modelname      = 'gphuctl'
+        self.optimizer      = 'adam'
+        self.initial_lr     = 0.01
+        # MC dropout
+        self.is_mc_dropout         = False
+        self.mc_samples            = 20
 
-        self.activation_func  = tf.nn.tanh
-        self.activation_func1 = tf.nn.relu
-        self.multi_decoder = False
-        self.modelname = 'gphuctl'
-
-        self.init_lr = 0.002 # 0.01
-        self.learning_rate_decay = 0.85
-        self.num_epoch_per_decay = 2.0
-        self.optimizer = 'adam'
-        self.emb_lr = 1.0
-        # To save the best model
-        self.load_best = True
-
-
-class Model(object):
-    """Model graph definitions.
-    """
+################################################################################
+############# Encoding
+################################################################################
+""" Trajectory encoder through embedding+RNN.
+"""
+class TrajectoryEncoder(layers.Layer):
     def __init__(self, config):
-        self.scope       = config.modelname
-        self.config      = config
-        self.global_step = tf.Variable(initial_value=0,name='global_step', shape=[],dtype='int32',trainable=False)
+        self.stack_rnn_size  = config.stack_rnn_size
+        self.is_mc_dropout   = config.is_mc_dropout
+        # xy encoder: [N,T1,h_dim]
+        super(TrajectoryEncoder, self).__init__(name="trajectory_encoder")
+        # Linear embedding of the observed positions (for each x,y)
+        self.traj_xy_emb_enc = tf.keras.layers.Dense(config.emb_size,
+            activation=config.activation_func,
+            use_bias=True,
+            name='position_embedding')
+        # LSTM cell, including dropout, with a stacked configuration.
+        # Output is composed of:
+        # - the sequence of h's along time, from the highest level only: h1,h2,...
+        # - last pair of states (h,c) for the first layer
+        # - last pair of states (h,c) for the second layer
+        # - ... and so on
+        self.lstm_cells= [tf.keras.layers.LSTMCell(config.enc_hidden_size,
+                name   = 'trajectory_encoder_cell',
+                dropout= config.dropout_rate,
+                recurrent_dropout=config.dropout_rate) for _ in range(self.stack_rnn_size)]
+        self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
+        # Recurrent neural network using the previous cell
+        # Initial state is zero; We return the full sequence of h's and the pair of last states
+        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+                return_sequences= True,
+                return_state    = True)
 
-        # Get all the dimension here
-        # Tensor dimensions, so pylint: disable=g-bad-name
-        N  = self.N  = config.batch_size # Batch size
-        KP = self.KP = config.kp_size    # Keypoints
-        OF = self.OF = config.flow_size
-        P  = self.P  = 2                 # Spatial coordinates
-        T1 = config.obs_len              # Length of the observations
+    def call(self,traj_inputs,training=None):
+        # Linear embedding of the observed trajectories
+        x = self.traj_xy_emb_enc(traj_inputs)
+        # Applies the position sequence through the LSTM
+        # The training parameter is important for dropout
+        return self.lstm(x,training=(training or self.is_mc_dropout))
 
-        # The trajectory sequence: [N,T1,2] # T1 is the obs_len
-        # in training, it is the obs+pred combined,
-        # in testing, only obs is fed and the rest is zeros
-        # mask is used for variable length input extension
-        self.traj_obs_gt      = tf.compat.v1.placeholder('float', [N, None, P], name='traj_obs_gt')
-        self.traj_obs_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name='traj_obs_gt_mask')
+""" Social encoding through embedding+RNN.
+"""
+class SocialEncoder(layers.Layer):
+    def __init__(self, config):
+        super(SocialEncoder, self).__init__(name="social_encoder")
+        self.is_mc_dropout   = config.is_mc_dropout
+        # Linear embedding of the social part
+        self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
+            activation=config.activation_func,
+            name='social_feature_embedding')
+        # LSTM cell, including dropout
+        self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
+            name   = 'social_encoder_cell',
+            dropout= config.dropout_rate,
+            recurrent_dropout= config.dropout_rate)
+        # Recurrent neural network using the previous cell
+        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+            return_sequences= True,
+            return_state    = True)
 
-        #[N,T2,2]
-        self.traj_pred_gt      = tf.compat.v1.placeholder('float', [N, None, P], name = 'traj_pred_gt')
-        self.traj_pred_gt_mask = tf.compat.v1.placeholder('bool', [N, None], name = 'traj_pred_gt_mask')
+    def call(self,social_inputs,training=None):
+        # Linear embedding of the observed trajectories
+        x = self.traj_social_emb_enc(social_inputs)
+        # Applies the position sequence through the LSTM
+        return self.lstm(x,training=(training or self.is_mc_dropout))
 
-        # Info about keypoints
-        self.obs_kp    = tf.compat.v1.placeholder('float', [N, None, KP, 2], name = 'obs_kp')
-        # Info about optical flow
-        self.obs_flow  = tf.compat.v1.placeholder('float',[N, None, OF],name='obs_flow')
-        # Flag for training. Used for drop out switch
-        self.is_train  = tf.compat.v1.placeholder('bool', [], name = 'is_train')
-        # Loss function
-        self.loss = None
-        # Build foward model
-        self.build_forward()
-        # Build loss
-        self.build_loss()
+""" Focal attention layer.
+"""
+# TODO: test other attention models?
+# TODO: analysis of the attention results
+class FocalAttention(layers.Layer):
+    def __init__(self,config,M):
+        super(FocalAttention, self).__init__(name="focal_attention")
+        self.flatten  = tf.keras.layers.Flatten()
+        self.reshape  = tf.keras.layers.Reshape((M, config.obs_len))
 
-
-    def build_forward(self):
-        """Build the forward model graph."""
-        config = self.config
-        # Tensor dimensions, so pylint: disable=g-bad-name
-        N  = self.N  # Batches
-        KP = self.KP # Number of keypoints
-
-        # Add dropout
-        keep_prob = tf.cond(self.is_train,
-                        lambda: tf.constant(config.keep_prob),
-                        lambda: tf.constant(1.0))
-        # ------------------------- Encoder ------------------------
-        # Trajectory encoder: LSTM, with hidden size config.enc_hidden_size
-        enc_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(
-            config.enc_hidden_size, state_is_tuple=True, name='enc_traj')
-        enc_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_traj, keep_prob)
-
-        # Person pose (keypoints) encoder: LSTM, with hidden size config.enc_hidden_size
-        if config.add_kp:
-            enc_cell_kp = tf.compat.v1.nn.rnn_cell.LSTMCell(config.enc_hidden_size, state_is_tuple=True, name='enc_kp')
-            enc_cell_kp = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_kp, keep_prob)
-
-        # Social encoding part (optical flow): LSTM, with hidden size config.enc_hidden_size
-        if config.add_social:
-            enc_cell_soc = tf.compat.v1.nn.rnn_cell.LSTMCell(
-                config.enc_hidden_size,state_is_tuple = True,name='enc_social')
-            enc_cell_soc = tf.compat.v1.nn.rnn_cell.DropoutWrapper(enc_cell_soc,keep_prob)
-
-        # ------------------------ Decoder
-        if config.multi_decoder: # Multiple output mode
-            dec_cell_traj = [tf.compat.v1.nn.rnn_cell.LSTMCell(
-                config.dec_hidden_size, state_is_tuple=True, name='dec_traj_%s' % i)
-                             for i in range(len(config.traj_cats))]
-            dec_cell_traj = [tf.compat.v1.nn.rnn_cell.DropoutWrapper(one, keep_prob) for one in dec_cell_traj]
-        else: # Simple mode: LSTM, with hidden size config.dec_hidden_size
-            dec_cell_traj = tf.compat.v1.nn.rnn_cell.LSTMCell(config.dec_hidden_size, state_is_tuple=True, name='dec_traj')
-            dec_cell_traj = tf.compat.v1.nn.rnn_cell.DropoutWrapper(dec_cell_traj, keep_prob)
-
-        # ----------------------------------------------------------
-        # the obs part is the same for training and testing
-        # obs_out is only used in training
-        # encoder, decoder
-        # top_scope is used for variable inside
-        # encode and decode if want to share variable across
-        with tf.compat.v1.variable_scope('person_pred') as top_scope:
-            # xy encoder: [N,T1,h_dim]
-            obs_length = tf.reduce_sum(tf.cast(self.traj_obs_gt_mask, 'int32'), 1)
-            # Linear embedding of the observed trajectories
-            traj_xy_emb_enc = linear(self.traj_obs_gt,
-                               output_size=config.emb_size,
-                               activation=config.activation_func,
-                               add_bias=True,
-                               scope='enc_xy_emb')
-            # Applies the position sequence through the LSTM
-            traj_obs_enc_h, traj_obs_enc_last_state = tf.compat.v1.nn.dynamic_rnn(
-                enc_cell_traj, traj_xy_emb_enc, sequence_length = obs_length,
-                dtype='float', scope='encoder_traj')
-            # Get the hidden states and the last hidden state, separately, and add them to the lists
-            enc_h_list          = [traj_obs_enc_h]
-            enc_last_state_list = [traj_obs_enc_last_state]
-
-            # Person pose (keypoints)
-            if config.add_kp:
-                # Reshape
-                obs_kp = tf.reshape(self.obs_kp, [N, -1, KP*2])
-                # Linear embedding of the keypoints
-                obs_kp = linear(obs_kp, output_size=config.emb_size, add_bias=True,
-                                activation=config.activation_func, scope='kp_emb')
-                # Applies the person pose (keypoints) sequence through the LSTM
-                kp_obs_enc_h, kp_obs_enc_last_state = tf.nn.dynamic_rnn(
-                    enc_cell_kp, obs_kp, sequence_length=obs_length, dtype='float',
-                    scope='encoder_kp')
-                # Get the hidden states and the last hidden state, separately, and add them to the lists
-                enc_h_list.append(kp_obs_enc_h)
-                enc_last_state_list.append(kp_obs_enc_last_state)
-
-            # Interaccion social through optical flow
-            if config.add_social:
-                # Linear embedding of the optical flow
-                obs_soc = linear(self.obs_flow,output_size = config.emb_size,add_bias = True,
-                    activation=config.activation_func,scope='flow_emb')
-                # Applies the person pose (keypoints) sequence through the LSTM
-                soc_obs_enc_h, soc_obs_enc_last_state =tf.nn.dynamic_rnn(
-                    enc_cell_soc, obs_soc, sequence_length=obs_length, dtype='float',
-                    scope='encoder_soc')
-                # Get the hidden states and the last hidden state, separately, and add them to the lists
-                enc_h_list.append(soc_obs_enc_h)
-                enc_last_state_list.append(soc_obs_enc_last_state)
-
-            # Pack all observed hidden states (lists) from all M features into a tensor
-            # The final size should be [N,M,T1,h_dim]
-            obs_enc_h          = tf.stack(enc_h_list, axis=1)
-            # Concatenate last states (in the list) from all M features into a tensor
-            # The final size should be [N,M,h_dim]
-            obs_enc_last_state = concat_states(enc_last_state_list, axis=1)
-
-            # ----------------------------- xy decoder-----------------------------------------
-            # Last observed position from the trajectory
-            traj_obs_last = self.traj_obs_gt[:, -1]
-            # Prediction length
-            pred_length = tf.reduce_sum(
-                tf.cast(self.traj_pred_gt_mask, 'int32'), 1)  # N
-
-            # Multiple decoder
-            if config.multi_decoder:
-                # [N, num_traj_cat] # each is num_traj_cat classification
-                self.traj_class_logits = self.traj_class_head(
-                    obs_enc_h, obs_enc_last_state, scope='traj_class_predict')
-                # The class from the classifier [N]
-                traj_class = tf.argmax(self.traj_class_logits, axis=1)
-                traj_class_gated = tf.cond(
-                    self.is_train,
-                    lambda: self.traj_class_gt,
-                    lambda: traj_class,
-                )
-                # Multiple outputs
-                traj_pred_outs = [
-                    self.decoder(
-                        traj_obs_last,
-                        traj_obs_enc_last_state,
-                        obs_enc_h,
-                        pred_length,
-                        dec_cell_traj[traj_cat],
-                        top_scope=top_scope,
-                        scope='decoder_%s' % traj_cat)
-                    for _, traj_cat in config.traj_cats
-                ]
-                # [N, num_decoder, T, 2]
-                self.traj_pred_outs = tf.stack(traj_pred_outs, axis=1)
-                # [N, 2]
-                indices = tf.stack(
-                    [tf.range(N), tf.to_int32(traj_class_gated)], axis=1)
-                # [N, T, 2]
-                traj_pred_out = tf.gather_nd(self.traj_pred_outs, indices)
-
-            else:
-                # Single decoder called: takes the last observed position, the last encoding state,
-                # the tensor of all hidden states, the number of prediction steps, and the decoder cell.
-                traj_pred_out = self.decoder(traj_obs_last, traj_obs_enc_last_state,
-                                             obs_enc_h, pred_length, dec_cell_traj,
-                                             top_scope=top_scope, scope='decoder')
-        # For loss and forward
-        self.traj_pred_out = traj_pred_out
-
-    # Decoder
-    def decoder(self, first_input, enc_last_state, enc_h, pred_length, rnn_cell,top_scope, scope):
-        """Decoder definition."""
-        config = self.config
-        # Tensor dimensions, so pylint: disable=g-bad-name
-        N = self.N # Batches
-        P = self.P # Spatial dimension
-
-        with tf.compat.v1.variable_scope(scope):
-            # This is only used for training
-            with tf.compat.v1.name_scope('prepare_pred_gt_training'):
-                # These input only used during training
-                time_1st_traj_pred = tf.transpose(
-                    self.traj_pred_gt, perm=[1, 0, 2])  # [N,T2,2] -> [T2,N,2]
-                T2 = tf.shape(time_1st_traj_pred)[0]  # Value of T2 (prediction length)
-                traj_pred_gt = tf.TensorArray(size= T2, dtype='float')
-                traj_pred_gt = traj_pred_gt.unstack(
-                    time_1st_traj_pred)  # [T2] , [N,W]
-
-            # all None for first call
-            with tf.compat.v1.name_scope('decoder_rnn'):
-                def decoder_loop_fn(time, cell_output, cell_state, loop_state):
-                    """RNN loop function for the decoder."""
-                    emit_output = cell_output  # == None for time==0
-
-                    elements_finished = time >= pred_length
-                    finished          = tf.reduce_all(elements_finished)
-
-                    # h_{t-1}
-                    with tf.compat.v1.name_scope('prepare_next_cell_state'):
-                        # Initial state
-                        if cell_output is None:
-                            next_cell_state = enc_last_state
-                        # Next states
-                        else:
-                            next_cell_state = cell_state
-                    # x_t
-                    with tf.compat.v1.name_scope('prepare_next_input'):
-                        if cell_output is None:  # first time
-                            next_input_xy = first_input  # the last observed x,y as input
-                        else:
-                            # for testing, construct from this output to be next input
-                            next_input_xy = tf.cond(
-                                # first check the sequence finished or not. If finished then input is zero
-                                finished,
-                                lambda: tf.zeros([N, P], dtype='float'),
-                                # else, in training the input is from the groundtruth (teacher forcing)
-                                # and in testing, from the previous output (cell_ouput mapped by hidden2xy)
-                                lambda: tf.cond(
-                                    self.is_train,
-                                    # Teacher forcing: this will make training faster than testing
-                                    lambda: traj_pred_gt.read(time),
-                                    # hidden vector from last step to coordinates
-                                    lambda: self.hidden2xy(cell_output, scope=top_scope,
-                                                           additional_scope='hidden2xy'))
-                            )
-                        # spatial embedding
-                        # [N,emb]
-                        xy_emb = linear(next_input_xy, output_size=config.emb_size,
-                            activation=config.activation_func, add_bias=True,
-                            scope='xy_emb_dec')
-
-                        next_input = xy_emb
-                        # Attention
-                        with tf.compat.v1.name_scope('attend_enc'):
-                            # [N,h_dim]
-                            # query is next_cell_state.h
-                            # context is enc_h
-                            attended_encode_states = focal_attention(
-                                next_cell_state.h, enc_h, use_sigmoid=False,
-                                scope='decoder_attend_encoders')
-                            # Concatenate previous xy embedding, attended encoded states
-                            # [N,emb+h_dim]
-                            next_input = tf.concat(
-                                [xy_emb, attended_encode_states], axis=1)
-                    return elements_finished, next_input, next_cell_state,emit_output, None  # next_loop_state
-
-                # Application of the RNN here
-                decoder_out_ta, _, _ = tf.compat.v1.nn.raw_rnn(
-                    rnn_cell, decoder_loop_fn, scope='decoder_rnn')
-
-            with tf.compat.v1.name_scope('reconstruct_output'):
-                decoder_out_h = decoder_out_ta.stack()  # [T2,N,h_dim]
-                # [N,T2,h_dim]
-                decoder_out_h = tf.transpose(decoder_out_h, perm=[1, 0, 2])
-            # recompute the output;
-            # if use loop_state to save the output, will 10x slower
-            # use the same hidden2xy for different decoder
-            decoder_out = self.hidden2xy(
-                decoder_out_h, scope=top_scope, additional_scope='hidden2xy')
-        return decoder_out
-
-    def hidden2xy(self, lstm_h, return_scope=False, scope='hidden2xy',additional_scope=None):
-        """Hiddent states to xy coordinates."""
-        # Tensor dimensions, so pylint: disable=g-bad-name
-        P = self.P
-
-        with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE) as this_scope:
-            if additional_scope is not None:
-                return self.hidden2xy(lstm_h, return_scope=return_scope,
-                                      scope=additional_scope, additional_scope=None)
-            # Dense layer
-            out_xy = linear(lstm_h, output_size=P, activation=tf.identity,
-                            add_bias=False, scope='out_xy_mlp2')
-
-            if return_scope:
-                return out_xy, this_scope
-            return out_xy
-
-    def build_loss(self):
-        """Model loss."""
-        config = self.config
-        # N,T,W
-        # L2 loss
-        # [N,T2,W]
-        diff      = self.traj_pred_out - self.traj_pred_gt
-        xyloss    = tf.pow(diff, 2)  # [N,T2,2]
-        xyloss    = tf.reduce_mean(xyloss)
-        self.loss = xyloss
-
-    def get_feed_dict(self, data, is_train):
-        """Given a batch of data, construct the feed dict."""
-        # get the cap for each kind of step first
-        config = self.config
-        # Tensor dimensions, so pylint: disable=g-bad-name
-        N = self.N
-        P = self.P
-        KP = self.KP 
-        OF = self.OF
-        T_in = config.obs_len
-        T_pred = config.pred_len
-
-        feed_dict = {}
-
-        #initial all the placeholder
-        traj_obs_gt = np.zeros([N, T_in, P], dtype='float')
-        traj_obs_gt_mask = np.zeros([N, T_in], dtype='bool')
-
-        #link the feed_dict
-        feed_dict[self.traj_obs_gt] = traj_obs_gt
-        feed_dict[self.traj_obs_gt_mask] = traj_obs_gt_mask
-
-        #for getting pred length during test time
-        traj_pred_gt_mask = np.zeros([N, T_pred], dtype='bool')
-        feed_dict[self.traj_pred_gt_mask] = traj_pred_gt_mask
-
-        #this is needed since it is in tf.conf?
-        traj_pred_gt = np.zeros([N, T_pred, P], dtype='float')
-        feed_dict[self.traj_pred_gt] = traj_pred_gt  # all zero when testing,
-        feed_dict[self.is_train] = is_train
-        #encoder features
-        # ------------------------------------- xy input
-        assert len(data['obs_traj_rel']) == N
-        for i, (obs_data, pred_data) in enumerate(zip(data['obs_traj_rel'],
-                                                  data['pred_traj_rel'])):
-            for j, xy in enumerate(obs_data):
-                traj_obs_gt[i, j, :] = xy
-                traj_obs_gt_mask[i, j] = True
-            for j in range(config.pred_len):
-                # used in testing to get the prediction length
-                traj_pred_gt_mask[i, j] = True
-
-        # ------------------------------------------------------
-        # Social component (through optical flow)
-        if config.add_social:
-            obs_flow = np.zeros((N, T_in, OF),dtype ='float')
-            feed_dict[self.obs_flow] = obs_flow
-            # each batch
-            for i, flow_seq in enumerate(data['obs_flow']):
-                for j , flow_step in enumerate(flow_seq):
-                    obs_flow[i,j,:] = flow_step
-
-        # -----------------------------------------------------------
-        # person pose input
-        if config.add_kp:
-            obs_kp = np.zeros((N, T_in, KP, 2), dtype='float')
-            feed_dict[self.obs_kp] = obs_kp
-            # each bacth
-            for i, obs_kp_rel in enumerate(data['obs_kp_rel']):
-                for j, obs_kp_step in enumerate(obs_kp_rel):
-                    obs_kp[i, j, :, :] = obs_kp_step
-        # ----------------------------training
-        if is_train:
-            for i, (obs_data, pred_data) in enumerate(zip(data['obs_traj_rel'],
-                                                    data['pred_traj_rel'])):
-                for j, xy in enumerate(pred_data):
-                    traj_pred_gt[i, j, :]   = xy
-                    traj_pred_gt_mask[i, j] = True
-        return feed_dict
-
-def reconstruct(tensor, ref, keep):
-    """Reverse the flatten function.
-    Args:
-    tensor: the tensor to operate on
-    ref: reference tensor to get original shape
-    keep: index of dim to keep
-    Returns:
-    Reconstructed tensor
-    """
-    ref_shape = ref.get_shape().as_list()
-    tensor_shape = tensor.get_shape().as_list()
-    ref_stop = len(ref_shape) - keep
-    tensor_start = len(tensor_shape) - keep
-    pre_shape = [ref_shape[i] or tf.shape(ref)[i] for i in range(ref_stop)]
-    keep_shape = [tensor_shape[i] or tf.shape(tensor)[i]
-                  for i in range(tensor_start, len(tensor_shape))]
-    # keep_shape = tensor.get_shape().as_list()[-keep:]
-    target_shape = pre_shape + keep_shape
-    out = tf.reshape(tensor, target_shape)
-    return out
-
-def flatten(tensor, keep):
-    """Flatten a tensor.
-    keep how many dimension in the end, so final rank is keep + 1
-    [N,M,JI,JXP,dim] -> [N*M*JI,JXP,dim]
-    Args:
-    tensor: the tensor to operate on
-    keep: index of dim to keep
-    Returns:
-    Flattened tensor
-    """
-    # get the shape
-    fixed_shape = tensor.get_shape().as_list()  # [N, JQ, di] # [N, M, JX, di]
-    # len([N, JQ, di]) - 2 = 1 # len([N, M, JX, di] ) - 2 = 2
-    start = len(fixed_shape) - keep
-    # each num in the [] will a*b*c*d...
-    # so [0] -> just N here for left
-    # for [N, M, JX, di] , left is N*M
-    left = functools.reduce(operator.mul, [fixed_shape[i] or tf.shape(tensor)[i]
-                               for i in range(start)])
-    # [N, JQ,di]
-    # [N*M, JX, di]
-    out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i]
-                        for i in range(start, len(fixed_shape))]
-    # reshape
-    flat = tf.reshape(tensor, out_shape)
-    return flat
-
-def softmax(logits, scope=None):
-    """a flatten and reconstruct version of softmax."""
-    with tf.compat.v1.name_scope(scope or 'softmax'):
-        flat_logits = flatten(logits, 1)
-        flat_out = tf.nn.softmax(flat_logits)
-        out = reconstruct(flat_out, logits, 1)
-        return out
-
-def softsel(target, logits, use_sigmoid=False, scope=None):
-    """Apply attention weights."""
-
-    with tf.compat.v1.variable_scope(scope or 'softsel'):  # no new variable tho
-        if use_sigmoid:
-            a = tf.nn.sigmoid(logits)
-        else:
-            a = softmax(logits)  # shape is the same
-        target_rank = len(target.get_shape().as_list())
-        # [N,M,JX,JQ,2d] elem* [N,M,JX,JQ,1]
-        # second last dim
-        return tf.reduce_sum(tf.expand_dims(a, -1)*target, target_rank-2)
-
-
-def linear(x, output_size, scope, add_bias=False, wd=None, return_scope=False,
-           reuse=None, activation=tf.identity, keep=1, additional_scope=None):
-
-    """Fully-connected layer."""
-    with tf.compat.v1.variable_scope(scope or 'xy_emb', reuse=tf.compat.v1.AUTO_REUSE) as this_scope:
-        if additional_scope is not None:
-            return linear(x, output_size, scope=additional_scope, add_bias=add_bias,
-                          wd=wd, return_scope=return_scope, reuse=reuse,
-                          activation=activation, keep=keep, additional_scope=None)
-
-        # since the input here is not two rank,
-        # we flat the input while keeping the last dims
-        # keeping the last one dim # [N,M,JX,JQ,2d] => [N*M*JX*JQ,2d]
-        flat_x = flatten(x, keep)
-        # print flat_x.get_shape() # (?, 200) # wd+cwd
-        bias_start = 0.0
-        # need to be get_shape()[k].value
-        if not isinstance(output_size, int):
-            output_size = output_size.value
-
-        def init(shape, dtype, partition_info):
-            dtype = dtype
-            partition_info = partition_info
-            return tf.random.truncated_normal(shape, stddev=0.1)
-        # Common weight tensor name, so pylint: disable=g-bad-name
-        W = tf.compat.v1.get_variable('W', dtype='float', initializer=init,
-                                shape=[flat_x.get_shape()[-1].value, output_size])
-        #W = tf.Variable('W', dtype='float', initializer=init,shape=[flat_x.get_shape()[-1].value, output_size])
-        flat_out = tf.matmul(flat_x, W)
-        if add_bias:
-            # disable=unused-argument
-            def init_b(shape, dtype, partition_info):
-                dtype = dtype
-                partition_info = partition_info
-                return tf.constant(bias_start, shape=shape)
-
-            bias = tf.compat.v1.get_variable('b', dtype='float', initializer=init_b,
-                                   shape=[output_size])
-            flat_out += bias
-
-        flat_out = activation(flat_out)
-        out = reconstruct(flat_out, x, keep)
-        if return_scope:
-            return out, this_scope
-        else:
-            return out
-
-def focal_attention(query, context, use_sigmoid=False, scope=None):
-    """Focal attention layer.
-    Args:
-    query : [N, dim1]
-    context: [N, num_channel, T, dim2]
-    use_sigmoid: use sigmoid instead of softmax
-    scope: variable scope
-    Returns:
-    Tensor
-    """
-    #print("*** focal attention ***")
-    with tf.compat.v1.variable_scope(scope or 'attention', reuse=tf.compat.v1.AUTO_REUSE):
-        # Tensor dimensions, so pylint: disable=g-bad-name
-        _, d = query.get_shape().as_list()
-        _, K, _, d2 = context.get_shape().as_list()
-        assert d == d2
-
-        T = tf.shape(context)[2]
-
-        # [N,d] -> [N,K,T,d]
+    def call(self,query, context):
+        # query  : [N,D1]
+        # context: [N,M,T,D2]
+        # Get the tensor dimensions and check them
+        _, D1       = query.get_shape().as_list()
+        _, K, T, D2 = context.get_shape().as_list()
+        assert D1 == D2
+        # Expand [N,D1] -> [N,M,T,D1]
         query_aug = tf.tile(tf.expand_dims(tf.expand_dims(query, 1), 1), [1, K, T, 1])
-        # cosine simi
+        # Cosine similarity
         query_aug_norm = tf.nn.l2_normalize(query_aug, -1)
-        context_norm = tf.nn.l2_normalize(context, -1)
-        # [N, K, T]
+        context_norm   = tf.nn.l2_normalize(context,   -1)
+        # Weights for pairs feature, time: [N, M, T]
+        S         = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
+        Wft       = self.reshape(tf.nn.softmax(self.flatten(S)))
+        BQ        = tf.reduce_sum(tf.expand_dims(Wft, -1)*context,2)
+        # Weigthts for features, maxed over time: [N,M]
+        Sm        = tf.reduce_max(S, 2)
+        Wf        = tf.nn.softmax(Sm)
+        AQ        = tf.reduce_sum(tf.expand_dims(Wf, -1)*BQ,1)
+        return tf.expand_dims(AQ,1), Wft
 
-        a_logits = tf.reduce_sum(tf.multiply(query_aug_norm, context_norm), 3)
-        a_logits_maxed = tf.reduce_max(a_logits, 2)  # [N,K]
+""" Custom model class for the encoding part (trajectory and social context)
+"""
+class TrajectoryAndContextEncoder(tf.keras.Model):
+    def __init__(self,config):
+        super(TrajectoryAndContextEncoder, self).__init__(name="trajectory_context_encoder")
+        # Flag for using social features
+        self.add_social     = config.add_social
+        # Flag for using attention mechanism
+        self.add_attention  = config.add_attention
+        # The RNN stack size
+        self.stack_rnn_size = config.stack_rnn_size
+        # Input layers
+        obs_shape  = (config.obs_len,config.P)
+        soc_shape  = (config.obs_len,config.flow_size)
+        self.input_layer_traj = layers.Input(obs_shape,name="observed_trajectory")
+        # Encoding: Positions
+        self.traj_enc     = TrajectoryEncoder(config)
+        # We use the social features only when the two flags (add_social and add_attention are on)
+        if (self.add_attention and self.add_social):
+            # In the case of handling social interactions, add a third input
+            self.input_layer_social = layers.Input(soc_shape,name="social_features")
+            # Encoding: Social interactions
+            self.soc_enc            = SocialEncoder(config)
+            # Get output layer now with `call` method
+            self.out = self.call([self.input_layer_traj,self.input_layer_social])
+        else:
+            # Get output layer now with `call` method
+            self.out = self.call([self.input_layer_traj])
+        # Call init again. This is a workaround for being able to use summary()
+        super(TrajectoryAndContextEncoder, self).__init__(
+            inputs=tf.cond(self.add_attention and self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
+            outputs=self.out)
 
-        attended_context = softsel(softsel(context, a_logits,
-                                           use_sigmoid=use_sigmoid), a_logits_maxed,
-                                   use_sigmoid=use_sigmoid)
-        return attended_context
+    def call(self,inputs,training=None):
+        # inputs[0] is the observed trajectory part
+        traj_obs_inputs  = inputs[0]
+        if self.add_attention and self.add_social:
+            # inputs[1] are the social interaction features
+            soc_inputs     = inputs[1]
+        # ----------------------------------------------------------
+        # Encoding
+        # ----------------------------------------------------------
+        # Applies the position sequence through the LSTM: [N,T1,H]
+        # In the case of stacked cells, output is:
+        # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
+        outputs          = self.traj_enc(traj_obs_inputs,training=training)
+        # Sequence of outputs at the highst level
+        traj_h_seq       = outputs[0]
+        # The last pairs of states, for each level of the stackd RNN
+        traj_last_states = outputs[1:1+self.stack_rnn_size]
+        # Get the sequence of output hidden states into enc_h_list
+        enc_h_list          = [traj_h_seq]
+        # ----------------------------------------------------------
+        # Social interaccion (through optical flow)
+        # ----------------------------------------------------------
+        if self.add_social and self.add_attention:
+            # Applies the optical flow descriptor through the LSTM
+            outputs = self.soc_enc(soc_inputs,training=training)
+            # Last states from social encoding
+            soc_last_states = [outputs[1],outputs[2]]
+            # Sequences of outputs from the social encoding
+            soc_h_seq       = outputs[0]
+            # Get soc_h_seq into to the list enc_h_list
+            enc_h_list.append(soc_h_seq)
+        # Pack all observed hidden states (lists) from all M features into a tensor
+        # The final size should be [N,M,T_obs,h_dim]
+        obs_enc_h          = tf.stack(enc_h_list, axis=1)
+        if self.add_social:
+            return traj_last_states,soc_last_states, obs_enc_h
+        else:
+            return traj_last_states, obs_enc_h
 
-def concat_states(state_tuples, axis):
-    """Concat LSTM states."""
-    return tf.compat.v1.nn.rnn_cell.LSTMStateTuple(c=tf.concat([s.c for s in state_tuples],
-                                                   axis=axis),
-                                       h=tf.concat([s.h for s in state_tuples],
-                                                   axis=axis))
+################################################################################
+############# Decoding
+################################################################################
+""" Custom LSTM cell class for our decoder
+    Not used for the moment
+"""
+class DecoderLSTMCell(tf.keras.layers.LSTMCell):
+    def __init__(self, units, **kwargs):
+        super(DecoderLSTMCell, self).__init__(units,**kwargs)
+        # Forget bias (should be unit)
+        self._forget_bias= 1.0
+
+    # Overload the call function
+    def call(self, inputs, states, training=None):
+        # Get memory and carry state
+        h_tm1 = states[0]
+        c_tm1 = states[1]
+        z  = tf.matmul(inputs, self.kernel)
+        z += tf.matmul(h_tm1, self.recurrent_kernel)
+        z  = tf.nn.bias_add(z, self.bias)
+
+        # Split the z vector
+        z0 = z[:, :self.units]
+        z1 = z[:, self.units: 2 * self.units]
+        z2 = z[:, 2 * self.units: 3 * self.units]
+        z3 = z[:, 3 * self.units:]
+
+        i = tf.sigmoid(z0)
+        f = tf.sigmoid(z1)
+        # New carry
+        c = f * c_tm1 + i * self.activation(z2)
+        o = tf.sigmoid(z3)
+        # New state
+        h = o * self.activation(c)
+        return h, [h, c]
+
+""" Trajectory decoder initializer.
+    Allows to generate multiple ouputs. By learning to fit variations on the initial states of the decoder.
+"""
+class TrajectoryDecoderInitializer(tf.keras.Model):
+    def __init__(self, config):
+        super(TrajectoryDecoderInitializer, self).__init__(name="trajectory_decoder_initializer")
+        self.add_social     = config.add_social
+        self.output_var_dirs= config.output_var_dirs
+        # Dropout layer
+        self.dropout        = tf.keras.layers.Dropout(config.dropout_rate)
+        # Linear embeddings from trajectory to hidden state
+        self.traj_enc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.relu,
+            name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
+        self.traj_enc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.relu,
+            name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        if self.add_social:
+            # Linear embeddings from social state to hidden state
+            self.traj_soc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+                activation=tf.keras.activations.relu,
+                name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
+            self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+                activation=tf.keras.activations.relu,
+                name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        # Input layers
+        # TODO: maybe we could just use h? are both h,c necessary?
+        input_shape      = (config.enc_hidden_size)
+        self.input_h     = layers.Input(input_shape,name="trajectory_encoding_h")
+        self.input_c     = layers.Input(input_shape,name="trajectory_encoding_c")
+        if self.add_social:
+            self.input_sh    = layers.Input(input_shape,name="social_encoding_h")
+            self.input_sc    = layers.Input(input_shape,name="social_encoding_c")
+            self.out         = self.call([[self.input_h,self.input_c],[self.input_sh,self.input_sc]])
+            # Call init again. This is a workaround for being able to use summary
+            super(TrajectoryDecoderInitializer, self).__init__(
+            inputs = [[self.input_h,self.input_c],[self.input_sh,self.input_sc]],
+            outputs=self.out)
+        else:
+            self.out         = self.call([[self.input_h,self.input_c]])
+            # Call init again. This is a workaround for being able to use summary
+            super(TrajectoryDecoderInitializer, self).__init__(
+                    inputs = [self.input_h,self.input_c],
+                    outputs=self.out)
+
+    # Call to the decoder initializer
+    def call(self, encoders_states, training=None):
+        # The list of decoder states in decoder_init_states
+        decoder_init_states = []
+        traj_encoder_states  = encoders_states[0]
+        # Append this pair of hidden states to the list of hypothesis (mean value)
+        decoder_init_states.append(traj_encoder_states)
+        if self.add_social:
+            soc_encoder_states = encoders_states[1]
+        for i in range(self.output_var_dirs):
+            # Map the trajectory hidden states to variations of the initializer state
+            decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
+            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
+            if self.add_social:
+                # Map the social features hidden states to variations of the initializer state
+                decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
+                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+            # Define two opposite states based on these variations
+            decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
+            decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
+            decoder_init_states.append([decoder_init_h,decoder_init_c])
+            decoder_init_h   = traj_encoder_states[0]-decoder_init_dh
+            decoder_init_c   = traj_encoder_states[1]-decoder_init_dc
+            decoder_init_states.append([decoder_init_h,decoder_init_c])
+        return decoder_init_states
+
+""" Trajectory decoder.
+    Generates samples for the next position
+"""
+class TrajectoryDecoder(tf.keras.Model):
+    def __init__(self, config):
+        super(TrajectoryDecoder, self).__init__(name="trajectory_decoder")
+        self.add_social     = config.add_social
+        self.add_attention  = config.add_attention
+        self.stack_rnn_size = config.stack_rnn_size
+        self.is_mc_dropout  = config.is_mc_dropout
+        # Linear embedding of the encoding resulting observed trajectories
+        self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
+            activation=config.activation_func,
+            name='trajectory_position_embedding')
+        # RNN cell
+        # TODO: Would it make sense to use a Stacked Cell here? As in the encoder.
+        self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
+            recurrent_initializer='glorot_uniform',
+            name='trajectory_decoder_cell',
+            dropout= config.dropout_rate,
+            recurrent_dropout=config.dropout_rate
+            )
+        # RNN layer
+        self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
+        self.M = 1
+        if (self.add_attention and self.add_social):
+            self.M=self.M+1
+
+        # Attention layer
+        if (self.add_attention):
+            self.focal_attention = FocalAttention(config,self.M)
+        # Dropout layer
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decoder_h")
+        # Mapping from h to positions
+        self.h_to_xy = tf.keras.layers.Dense(config.P,
+            activation=tf.identity,
+            name='h_to_xy')
+        # Input layers
+        # Position input
+        dec_input_shape      = (1,config.P)
+        self.input_layer_pos = layers.Input(dec_input_shape,name="position")
+        enc_last_state_shape = (config.dec_hidden_size)
+        # Proposals for inital states
+        self.input_layer_hid1= layers.Input(enc_last_state_shape,name="initial_state_h")
+        self.input_layer_hid2= layers.Input(enc_last_state_shape,name="initial_state_c")
+        # Context shape: [N,M,T1,h_dim]
+        ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
+        # Context input
+        self.input_layer_ctxt = layers.Input(ctxt_shape,name="context")
+        self.out = self.call((self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2),self.input_layer_ctxt))
+        # Call init again. This is a workaround for being able to use summary
+        super(TrajectoryDecoder, self).__init__(
+                    inputs= [self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt],
+                    outputs=self.out)
+
+    # Call to the decoder
+    def call(self, inputs, training=None):
+        dec_input, last_states, context = inputs
+        # Embedding from positions
+        decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
+        # context: [N,1,h_dim]
+        # query is the last h so far: [N,h_dim]. Since last_states is a pair (h,c), we take last_states[0]
+        query              = last_states[0]
+        # Use attention to define the augmented input here
+        if self.add_attention:
+            attention, Wft  = self.focal_attention(query, context)
+            # Augmented input: [N,1,h_dim+emb]
+            augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
+        else:
+            Wft             = None
+            # Input is just the embedded inputs
+            augmented_inputs= decoder_inputs_emb
+        # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
+        outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=(training or self.is_mc_dropout))
+        # Last h,c states
+        cur_states = outputs[1:3]
+        # Apply dropout layer on the h  state before mapping to positions x,y
+        decoder_latent = self.dropout(cur_states[0],training=training)
+        decoder_latent = tf.expand_dims(decoder_latent,1)
+        # Mapping to positions x,y
+        # decoder_out_xy = self.h_to_xy(decoder_latent)
+        # Something new: we try to learn the residual to the constant velocity case
+        # Hence the output is equal to th input plus what we learn
+        decoder_out_xy = self.h_to_xy(decoder_latent) + dec_input
+        return decoder_out_xy, cur_states, Wft
+
+""" Trajectory classifier: during training, takes the observed trajectory and the prediction
+    and predict
+"""
+class FullTrajectoryClassifier(tf.keras.Model):
+    def __init__(self, config):
+        super(FullTrajectoryClassifier, self).__init__(name="full_trajectory_classification")
+        self.is_mc_dropout  = config.is_mc_dropout
+        self.output_var_dirs= config.output_var_dirs
+        self.output_samples = 2*config.output_var_dirs+1
+        input_observed_shape= (config.enc_hidden_size)
+        input_final_shape   = (config.P)
+        # Inputs: hidden vector corresponding to the observations
+        self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
+        # Inputs: overall displacement along the second part of the trajectory
+        self.input_final    = keras.Input(shape=input_final_shape, name="final_displacement")
+        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
+        self.dense_layer_final    = tf.keras.layers.Dense(64, activation="relu", name="final_dense")
+        self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
+        # Get output layer now with `call` method
+        self.out = self.call(self.input_observed,self.input_final)
+        # Call init again. This is a workaround for being able to use summary
+        super(FullTrajectoryClassifier, self).__init__(
+                    inputs= [self.input_observed,self.input_final],
+                    outputs=self.out)
+
+    # Call to the classifier p(z|x,y)
+    def call(self, observed_trajectory_h, final_position, training=None):
+        # Linear embedding of the observed trajectories
+        x = self.dense_layer_observed(observed_trajectory_h)
+        y = self.dense_layer_final(final_position)
+        interm = tf.concat([x,y], axis=1)
+        return self.classification_layer(interm)
+
+""" Observed trajectory classifier: during training, takes the observed trajectory and predict the class
+"""
+class ObservedTrajectoryClassifier(tf.keras.Model):
+    def __init__(self, config):
+        super(ObservedTrajectoryClassifier, self).__init__(name="observed_trajectory_classification")
+        self.is_mc_dropout  = config.is_mc_dropout
+        self.output_var_dirs= config.output_var_dirs
+        self.output_samples = 2*config.output_var_dirs+1
+        input_observed_shape= (config.enc_hidden_size)
+        self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
+        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
+        self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
+        # Get output layer now with `call` method
+        self.out = self.call(self.input_observed)
+        # Call init again. This is a workaround for being able to use summary
+        super(ObservedTrajectoryClassifier, self).__init__(
+                    inputs= self.input_observed,
+                    outputs=self.out)
+
+    # Call to the classifier p(z|x,y)
+    def call(self, observed_trajectory_h, training=None):
+        # Linear embedding of the observed trajectories
+        x = self.dense_layer_observed(observed_trajectory_h)
+        return self.classification_layer(x)
+
+
+# The main class
+class TrajectoryEncoderDecoder():
+    # Constructor
+    def __init__(self,config):
+        # Flags for considering social interations
+        self.add_social     = config.add_social
+        self.stack_rnn_size = config.stack_rnn_size
+        self.output_samples = 2*config.output_var_dirs+1
+        self.output_var_dirs= config.output_var_dirs
+
+        #########################################################################################
+        # The components of our model are instantiated here
+        # Encoder: Positions and context
+        self.enc = TrajectoryAndContextEncoder(config)
+        self.enc.summary()
+        # Classifier p(z|x)
+        self.obs_classif = ObservedTrajectoryClassifier(config)
+        self.obs_classif.summary()
+        # Encoder to decoder initialization
+        self.enctodec = TrajectoryDecoderInitializer(config)
+        self.enctodec.summary()
+        # Decoder
+        self.dec = TrajectoryDecoder(config)
+        self.dec.summary()
+        #########################################################################################
+
+        # Optimization scheduling
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                config.initial_lr,
+                decay_steps=100000,
+                decay_rate=0.96,
+                staircase=True)
+
+        # Instantiate an optimizer to train the models.
+        # self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
+        self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
+
+        # Instantiate the loss operator
+        #self.loss_fn = keras.losses.MeanSquaredError()
+        self.loss_fn       = keras.losses.LogCosh()
+        self.loss_fn_local = keras.losses.LogCosh(keras.losses.Reduction.NONE)
+
+    # Trick to reset the weights: We save them and reload them
+    def save_tmp(self):
+        self.enc.save_weights('tmp_enc.h5')
+        self.enctodec.save_weights('tmp_enctodec.h5')
+        self.dec.save_weights('tmp_dec.h5')
+        self.obs_classif.save_weights('tmp_obs_classif.h5')
+    def load_tmp(self):
+        self.enc.load_weights('tmp_enc.h5')
+        self.enctodec.load_weights('tmp_enctodec.h5')
+        self.dec.load_weights('tmp_dec.h5')
+        self.obs_classif.load_weights('tmp_obs_classif.h5')
+
+    # Single training/testing step, for one batch: batch_inputs are the observations, batch_targets are the targets
+    def batch_step(self, batch_inputs, batch_targets, metrics, training=True):
+        traj_obs_inputs = batch_inputs[0]
+        # Last observed position from the trajectory
+        traj_obs_last = traj_obs_inputs[:, -1]
+        # Variables to be trained
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights
+        # Open a GradientTape to record the operations run during the forward pass, which enables auto-differentiation.
+        # The total loss will be accumulated on this variable
+        loss_value = 0
+        with tf.GradientTape() as g:
+            #########################################################################################
+            # Encoding is done here
+            # Apply trajectory and context encoding
+            if self.add_social:
+                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=training)
+                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+            else:
+                traj_last_states, context = self.enc(batch_inputs, training=training)
+                # Returns a set of self.output_samples possible initializing states for the decoder
+                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+                traj_cur_states_set = self.enctodec([traj_last_states[0]])
+
+            #########################################################################################
+            # Decoding is done here
+            # Iterate over these possible initializing states
+            losses = []
+            for k in range(self.output_samples):
+                # Sample-wise loss values
+                loss_values         = 0
+                # Decoder state is initialized here
+                traj_cur_states     = traj_cur_states_set[k]
+                # The first input to the decoder is the last observed position [Nx1xK]
+                dec_input = tf.expand_dims(traj_obs_last, 1)
+                # Iterate over timesteps
+                for t in range(0, batch_targets.shape[1]):
+                    # ------------------------ xy decoder--------------------------------------
+                    # passing enc_output to the decoder
+                    t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=training)
+                    t_target               = tf.expand_dims(batch_targets[:, t], 1)
+                    # Loss
+                    loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
+                    if training==True:
+                        # Using teacher forcing [Nx1xK]
+                        # Teacher forcing - feeding the target as the next input
+                        dec_input = tf.expand_dims(batch_targets[:, t], 1)
+                    else:
+                        # Next input is the last predicted position
+                        dec_input = t_pred
+                    # Update the states
+                    traj_cur_states = dec_states
+                # Keep loss values for all self.output_samples cases
+                losses.append(tf.squeeze(loss_values,axis=1))
+            # Stack into a tensor batch_size x self.output_samples
+            losses          = tf.stack(losses, axis=1)
+            closest_samples = tf.math.argmin(losses, axis=1)
+            #########################################################################################
+
+            #########################################################################################
+            # Losses are accumulated here
+            # Get the vector of losses at the minimal value for each sample of the batch
+            losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
+            # Sum over the samples, divided by the batch size
+            loss_value  += tf.reduce_sum(losses_at_min)/losses.shape[0]
+            # TODO: tune this value in a more principled way?
+            # L2 weight decay
+            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
+                        if 'bias' not in v.name ]) * 0.0008
+            #########################################################################################
+
+        #########################################################################################
+        # Gradients and parameters update
+        if training==True:
+            # Get the gradients
+            grads = g.gradient(loss_value, variables)
+            # Run one step of gradient descent
+            self.optimizer.apply_gradients(zip(grads, variables))
+        #########################################################################################
+
+        # Average loss over the predicted times
+        batch_loss = (loss_value / int(batch_targets.shape[1]))
+        return batch_loss
+
+    # Single training/testing step, for one batch: training the classifier
+    def batch_step_classifier(self, batch_inputs, batch_targets, metrics, training=True):
+        traj_obs_inputs = batch_inputs[0]
+        # Last observed position from the trajectory
+        traj_obs_last = traj_obs_inputs[:, -1]
+        # Variables to be trained
+        variables = self.obs_classif.trainable_weights
+        # Open a GradientTape to record the operations run
+        # during the forward pass, which enables auto-differentiation.
+        # The total loss will be accumulated on this variable
+        loss_value = 0
+        with tf.GradientTape() as g:
+            #########################################################################################
+            # Encoding is done here
+            # Apply trajectory and context encoding
+            if self.add_social:
+                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
+                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+            else:
+                traj_last_states, context = self.enc(batch_inputs, training=False)
+                # Returns a set of self.output_samples possible initializing states for the decoder
+                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+                traj_cur_states_set = self.enctodec([traj_last_states[0]])
+            # Apply the classifiers
+            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
+            #########################################################################################
+            # Decoding is done here
+            # Iterate over these possible initializing states
+            losses = []
+            for k in range(self.output_samples):
+                # Sample-wise loss values
+                loss_values         = 0
+                # Decoder state is initialized here
+                traj_cur_states     = traj_cur_states_set[k]
+                # The first input to the decoder is the last observed position [Nx1xK]
+                dec_input = tf.expand_dims(traj_obs_last, 1)
+                # Iterate over timesteps
+                for t in range(0, batch_targets.shape[1]):
+                    # ------------------------ xy decoder--------------------------------------
+                    # passing enc_output to the decoder
+                    t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=training)
+                    t_target               = tf.expand_dims(batch_targets[:, t], 1)
+                    # Loss
+                    loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
+                    # Next input is the last predicted position
+                    dec_input = t_pred
+                    # Update the states
+                    traj_cur_states = dec_states
+                # Keep loss values for all self.output_samples cases
+                losses.append(tf.squeeze(loss_values,axis=1))
+            # Stack into a tensor batch_size x self.output_samples
+            losses          = tf.stack(losses, axis=1)
+            closest_samples = tf.math.argmin(losses, axis=1)
+            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
+            #########################################################################################
+
+            #########################################################################################
+            # Losses are accumulated here
+            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
+            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
+            # TODO: tune this value in a more principled way?
+            # L2 weight decay
+            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
+                        if 'bias' not in v.name ]) * 0.0008
+            #########################################################################################
+
+
+        if training==True:
+            # Get the gradients
+            grads = g.gradient(loss_value, variables)
+            # Run one step of gradient descent
+            self.optimizer.apply_gradients(zip(grads, variables))
+        # Average loss over the predicted times
+        batch_loss = (loss_value / int(batch_targets.shape[1]))
+        return batch_loss
+
+    # Prediction (testing) for one batch
+    def batch_predict(self, batch_inputs, n_steps, mc_samples=1):
+        traj_obs_inputs = batch_inputs[0]
+        # Last observed position from the trajectories
+        traj_obs_last     = traj_obs_inputs[:, -1]
+        all_samples       = []
+        all_probabilities = []
+        for i in range(mc_samples):
+            # Feed-forward start here
+            if self.add_social:
+                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
+                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+            else:
+                traj_last_states, context = self.enc(batch_inputs, training=False)
+                # Returns a set of self.output_samples possible initializing states for the decoder
+                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+                traj_cur_states_set = self.enctodec([traj_last_states[0]])
+            # Apply the classifier to the encoding of the observed part
+            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
+
+            # This will store the trajectories and the attention weights
+            traj_pred_set       = []
+            att_weights_pred_set= []
+
+            # Iterate over these possible initializing states
+            for k in range(self.output_samples):
+                # List for the predictions and attention weights
+                traj_pred       = []
+                att_weights_pred= []
+                # Decoder state is initialized here
+                traj_cur_states     = traj_cur_states_set[k]
+                # The first input to the decoder is the last observed position [Nx1xK]
+                dec_input = tf.expand_dims(traj_obs_last, 1)
+                # Iterate over timesteps
+                for t in range(0, n_steps):
+                    # ------------------------ xy decoder--------------------------------------
+                    # Passing enc_output to the decoder
+                    t_pred, dec_states, wft = self.dec([dec_input,traj_cur_states,context],training=False)
+                    # Next input is the last predicted position
+                    dec_input = t_pred
+                    # Add it to the list of predictions
+                    traj_pred.append(t_pred)
+                    att_weights_pred.append(wft)
+                    # Reuse the hidden states for the next step
+                    traj_cur_states = dec_states
+                traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
+                att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
+                traj_pred_set.append(traj_pred)
+                att_weights_pred_set.append(att_weights_pred)
+            all_samples.append([traj_pred_set,att_weights_pred_set])
+            all_probabilities.append(obs_classif_logits)
+        return all_samples, all_probabilities
+
+    # Training loop
+    def training_loop(self,train_data,val_data,config,checkpoint,checkpoint_prefix):
+        train_loss_results   = []
+        val_loss_results     = []
+        val_metrics_results  = {'mADE': [], 'mFDE': [], 'obs_classif_accuracy': []}
+        train_metrics_results= {'obs_classif_accuracy': []}
+        best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
+        train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+        val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+        # TODO: Shuffle
+
+        # Training the main system
+        for epoch in range(config.num_epochs):
+            print('Epoch {}.'.format(epoch + 1))
+            # Cycle over batches
+            total_loss = 0
+            #num_batches_per_epoch = train_data.get_num_batches()
+            #for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            num_batches_per_epoch= train_data.cardinality().numpy()
+            for batch in tqdm(train_data,ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config)
+                # Run the forward pass of the layer.
+                # Compute the loss value for this minibatch.
+                batch_loss = self.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            train_loss_results.append(total_loss)
+
+            # Saving (checkpoint) the model every 2 epochs
+            if (epoch + 1) % 2 == 0:
+                checkpoint.save(file_prefix = checkpoint_prefix)
+
+            # Display information about the current state of the training loop
+            print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+            # print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+            train_metrics['obs_classif_sca'].reset_states()
+
+            if config.use_validation:
+                # Compute validation loss
+                total_loss = 0
+                # num_batches_per_epoch = val_data.get_num_batches()
+                # for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
+                num_batches_per_epoch= val_data.cardinality().numpy()
+                for idx,batch in tqdm(enumerate(val_data),ascii = True):
+                    # Format the data
+                    batch_inputs, batch_targets = get_batch(batch, config)
+                    batch_loss                  = self.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
+                    total_loss+= batch_loss
+                # End epoch
+                total_loss = total_loss / num_batches_per_epoch
+                print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
+                val_loss_results.append(total_loss)
+                # Evaluate ADE, FDE metrics on validation data
+                val_quantitative_metrics = evaluation_minadefde(self,val_data,config)
+                val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
+                val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
+                if val_quantitative_metrics["mADE"]< best['mADE']:
+                    best['mADE'] = val_quantitative_metrics["mADE"]
+                    best['mFDE'] = val_quantitative_metrics["mFDE"]
+                    best["patchId"]= idx
+                    # Save the best model so far
+                    checkpoint.write(checkpoint_prefix+'-best')
+                print('[TRN] Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+
+        # Training the classifier
+        for epoch in range(0):
+            print('Epoch {}.'.format(epoch + 1))
+            # Cycle over batches
+            # num_batches_per_epoch = train_data.get_num_batches()
+            # for idx, batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+            num_batches_per_epoch= train_data.cardinality().numpy()
+            for batch in tqdm(train_data,ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config)
+                # Run the forward pass of the layer.
+                # Compute the loss value for this minibatch.
+                batch_loss = self.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            train_loss_results.append(total_loss)
+
+            # Display information about the current state of the training loop
+            print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+            print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+            train_metrics['obs_classif_sca'].reset_states()
+
+        return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
+
+    # Perform a qualitative evaluation over a batch of n_trajectories
+    def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
+        traj_obs      = []
+        traj_gt       = []
+        traj_pred     = []
+        neighbors     = []
+        distributions = []
+        batch_inputs, batch_targets = get_batch(batch, config)
+        # Perform prediction
+        if config.is_mc_dropout:
+             mc_samples, mc_probabilities = self.batch_predict(batch_inputs,batch_targets.shape[1],config.mc_samples)
+        else:
+             mc_samples, mc_probabilities = self.batch_predict(batch_inputs,batch_targets.shape[1])
+
+        # Cycle over the trajectories
+        for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
+            if i>=n_peds_max:
+                break
+            this_pred_out_abs_set = []
+            for l in range(len(mc_samples)):
+                pred_traj, pred_att_weights = mc_samples[l]
+                mc_pred_set = []
+                for k in range(self.output_samples):
+                    # Conserve the x,y coordinates
+                    if (pred_traj[k][i].shape[0]==config.pred_len):
+                        this_pred_out     = pred_traj[k][i][:, :2]
+                        # Convert it to absolute (starting from the last observed position)
+                        if config.output_representation=='dxdy':
+                            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                        else:
+                            this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+                        mc_pred_set.append(this_pred_out_abs)
+                mc_pred_set = tf.stack(mc_pred_set,axis=0)
+                this_pred_out_abs_set.append(mc_pred_set)
+            this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
+            # Keep all the trajectories
+            traj_obs.append(obs_traj_gt)
+            traj_gt.append(pred_traj_gt)
+            traj_pred.append(this_pred_out_abs_set)
+            neighbors.append(neighbors_gt)
+        # Plot ground truth and predictions
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,mc_probabilities,background,homography,flip=flip,display_mode=display_mode)

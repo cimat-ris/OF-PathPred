@@ -12,7 +12,7 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 # Dataset to be tested
-dataset_paths  = "../../data1/"
+dataset_paths  = "../../datasets/"
 #dataset_name = 'eth-hotel'
 #dataset_name = 'eth-univ'
 #dataset_name = 'ucy-zara01'
