@@ -25,7 +25,7 @@ from tensorflow.keras import layers
 from tensorflow.keras import models
 from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data,plot_training_results
-from testing_utils import evaluation_minadefde,plot_comparisons_minadefde
+from testing_utils import evaluation_minadefde,plot_comparisons_minadefde,evaluation_qualitative
 
 physical_devices = tf.config.list_physical_devices('GPU')
 if len(physical_devices)>0:
@@ -112,6 +112,6 @@ print(results)
 qualitative = True
 if qualitative==True:
     print("[INF] Qualitative testing")
-    for i in range(10):
+    for i in range(5):
         batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-        tj_enc_dec.qualitative_evaluation(batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
+        evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)

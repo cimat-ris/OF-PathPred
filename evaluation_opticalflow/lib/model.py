@@ -3,7 +3,6 @@ import functools
 import operator
 import os
 from tqdm import tqdm
-from plot_utils import plot_gt_preds
 from traj_utils import relative_to_abs, vw_to_abs
 from batches_data import get_batch
 import numpy as np
@@ -831,46 +830,3 @@ class TrajectoryEncoderDecoder():
             train_metrics['obs_classif_sca'].reset_states()
 
         return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
-
-    # Perform a qualitative evaluation over a batch of n_trajectories
-    def qualitative_evaluation(self,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
-        traj_obs      = []
-        traj_gt       = []
-        traj_pred     = []
-        neighbors     = []
-        distributions = []
-        batch_inputs, batch_targets = get_batch(batch, config)
-        # Perform prediction
-        if config.is_mc_dropout:
-             mc_samples, mc_probabilities = self.batch_predict(batch_inputs,batch_targets.shape[1],config.mc_samples)
-        else:
-             mc_samples, mc_probabilities = self.batch_predict(batch_inputs,batch_targets.shape[1])
-
-        # Cycle over the trajectories
-        for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
-            if i>=n_peds_max:
-                break
-            this_pred_out_abs_set = []
-            for l in range(len(mc_samples)):
-                pred_traj, pred_att_weights = mc_samples[l]
-                mc_pred_set = []
-                for k in range(self.output_samples):
-                    # Conserve the x,y coordinates
-                    if (pred_traj[k][i].shape[0]==config.pred_len):
-                        this_pred_out     = pred_traj[k][i][:, :2]
-                        # Convert it to absolute (starting from the last observed position)
-                        if config.output_representation=='dxdy':
-                            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                        else:
-                            this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                        mc_pred_set.append(this_pred_out_abs)
-                mc_pred_set = tf.stack(mc_pred_set,axis=0)
-                this_pred_out_abs_set.append(mc_pred_set)
-            this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
-            # Keep all the trajectories
-            traj_obs.append(obs_traj_gt)
-            traj_gt.append(pred_traj_gt)
-            traj_pred.append(this_pred_out_abs_set)
-            neighbors.append(neighbors_gt)
-        # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,mc_probabilities,background,homography,flip=flip,display_mode=display_mode)
