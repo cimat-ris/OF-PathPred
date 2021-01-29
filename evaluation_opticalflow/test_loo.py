@@ -55,7 +55,7 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
-model_parameters.num_epochs     = 1
+model_parameters.num_epochs     = 35
 model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
 model_parameters.initial_lr     = 0.03
@@ -90,7 +90,7 @@ checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         obs_classif=tj_enc_dec.obs_classif)
 
 # Training
-perform_training = True
+perform_training = False
 plot_training    = True
 if perform_training==True:
     print("[INF] Training the model")

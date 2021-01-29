@@ -686,54 +686,62 @@ class TrajectoryEncoderDecoder():
         return batch_loss
 
     # Prediction (testing) for one batch
-    def batch_predict(self, batch_inputs, n_steps, mc_samples=1):
+    def predict(self, batch_inputs, n_steps):
         traj_obs_inputs = batch_inputs[0]
         # Last observed position from the trajectories
         traj_obs_last     = traj_obs_inputs[:, -1]
+
+        # Feed-forward start here
+        if self.add_social:
+            traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
+            traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
+        else:
+            traj_last_states, context = self.enc(batch_inputs, training=False)
+            # Returns a set of self.output_samples possible initializing states for the decoder
+            # Each value in the set is a pair (h,c) for the low level LSTM in the stack
+            traj_cur_states_set = self.enctodec([traj_last_states[0]])
+        # Apply the classifier to the encoding of the observed part
+        obs_classif_logits = self.obs_classif(traj_last_states[0][0])
+
+        # This will store the trajectories and the attention weights
+        traj_pred_set       = []
+        att_weights_pred_set= []
+
+        # Iterate over these possible initializing states
+        for k in range(self.output_samples):
+            # List for the predictions and attention weights
+            traj_pred       = []
+            att_weights_pred= []
+            # Decoder state is initialized here
+            traj_cur_states     = traj_cur_states_set[k]
+            # The first input to the decoder is the last observed position [Nx1xK]
+            dec_input = tf.expand_dims(traj_obs_last, 1)
+            # Iterate over timesteps
+            for t in range(0, n_steps):
+                # ------------------------ xy decoder--------------------------------------
+                # Passing enc_output to the decoder
+                t_pred, dec_states, wft = self.dec([dec_input,traj_cur_states,context],training=False)
+                # Next input is the last predicted position
+                dec_input = t_pred
+                # Add it to the list of predictions
+                traj_pred.append(t_pred)
+                att_weights_pred.append(wft)
+                # Reuse the hidden states for the next step
+                traj_cur_states = dec_states
+            traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
+            att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
+            traj_pred_set.append(traj_pred)
+            att_weights_pred_set.append(att_weights_pred)
+        return traj_pred_set,att_weights_pred_set
+
+    # Prediction (testing) with mc dropout for one batch
+    def predict_mcdropout(self, batch_inputs, n_steps, mc_samples=1):
         all_samples       = []
         all_probabilities = []
+        all_att_weights   = []
         for i in range(mc_samples):
-            # Feed-forward start here
-            if self.add_social:
-                traj_last_states, soc_last_states, context = self.enc(batch_inputs, training=False)
-                traj_cur_states_set = self.enctodec([traj_last_states[0],soc_last_states])
-            else:
-                traj_last_states, context = self.enc(batch_inputs, training=False)
-                # Returns a set of self.output_samples possible initializing states for the decoder
-                # Each value in the set is a pair (h,c) for the low level LSTM in the stack
-                traj_cur_states_set = self.enctodec([traj_last_states[0]])
-            # Apply the classifier to the encoding of the observed part
-            obs_classif_logits = self.obs_classif(traj_last_states[0][0])
-
-            # This will store the trajectories and the attention weights
-            traj_pred_set       = []
-            att_weights_pred_set= []
-
-            # Iterate over these possible initializing states
-            for k in range(self.output_samples):
-                # List for the predictions and attention weights
-                traj_pred       = []
-                att_weights_pred= []
-                # Decoder state is initialized here
-                traj_cur_states     = traj_cur_states_set[k]
-                # The first input to the decoder is the last observed position [Nx1xK]
-                dec_input = tf.expand_dims(traj_obs_last, 1)
-                # Iterate over timesteps
-                for t in range(0, n_steps):
-                    # ------------------------ xy decoder--------------------------------------
-                    # Passing enc_output to the decoder
-                    t_pred, dec_states, wft = self.dec([dec_input,traj_cur_states,context],training=False)
-                    # Next input is the last predicted position
-                    dec_input = t_pred
-                    # Add it to the list of predictions
-                    traj_pred.append(t_pred)
-                    att_weights_pred.append(wft)
-                    # Reuse the hidden states for the next step
-                    traj_cur_states = dec_states
-                traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
-                att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
-                traj_pred_set.append(traj_pred)
-                att_weights_pred_set.append(att_weights_pred)
+            traj_pred_set,att_weights_pred_set = self.predict(batch_inputs, n_steps)
             all_samples.append([traj_pred_set,att_weights_pred_set])
             all_probabilities.append(obs_classif_logits)
+            all_att_weights.append(att_weights_pred_set)
         return all_samples, all_probabilities

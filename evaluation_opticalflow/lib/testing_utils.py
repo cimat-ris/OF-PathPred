@@ -78,31 +78,23 @@ def evaluation_qualitative(model,batch,config,background=None,homography=None,fl
         distributions = []
         batch_inputs, batch_targets = get_batch(batch, config)
         # Perform prediction
-        if config.is_mc_dropout:
-             mc_samples, mc_probabilities = model.batch_predict(batch_inputs,batch_targets.shape[1],config.mc_samples)
-        else:
-             mc_samples, mc_probabilities = model.batch_predict(batch_inputs,batch_targets.shape[1])
+        pred_traj,pred_att_weights = model.predict(batch_inputs,batch_targets.shape[1])
 
         # Cycle over the trajectories
         for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
             if i>=n_peds_max:
                 break
             this_pred_out_abs_set = []
-            for l in range(len(mc_samples)):
-                pred_traj, pred_att_weights = mc_samples[l]
-                mc_pred_set = []
-                for k in range(model.output_samples):
-                    # Conserve the x,y coordinates
-                    if (pred_traj[k][i].shape[0]==config.pred_len):
-                        this_pred_out     = pred_traj[k][i][:, :2]
-                        # Convert it to absolute (starting from the last observed position)
-                        if config.output_representation=='dxdy':
-                            this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                        else:
-                            this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                        mc_pred_set.append(this_pred_out_abs)
-                mc_pred_set = tf.stack(mc_pred_set,axis=0)
-                this_pred_out_abs_set.append(mc_pred_set)
+            for k in range(model.output_samples):
+                # Conserve the x,y coordinates
+                if (pred_traj[k][i].shape[0]==config.pred_len):
+                    this_pred_out     = pred_traj[k][i][:, :2]
+                    # Convert it to absolute (starting from the last observed position)
+                    if config.output_representation=='dxdy':
+                        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                    else:
+                        this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+                    this_pred_out_abs_set.append(this_pred_out_abs)
             this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
             # Keep all the trajectories
             traj_obs.append(obs_traj_gt)
@@ -110,7 +102,7 @@ def evaluation_qualitative(model,batch,config,background=None,homography=None,fl
             traj_pred.append(this_pred_out_abs_set)
             neighbors.append(neighbors_gt)
         # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,mc_probabilities,background,homography,flip=flip,display_mode=display_mode)
+        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,background,homography,flip=flip,display_mode=display_mode)
 
 def evaluation_minadefde(model,test_data,config):
     l2dis = []
@@ -120,8 +112,7 @@ def evaluation_minadefde(model,test_data,config):
     for batch in tqdm(test_data,ascii = True):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, config)
-        pred_out,__                 = model.batch_predict(batch_inputs,batch_targets.shape[1],1)
-        pred_out                    = pred_out[0][0]
+        pred_out,__                 = model.predict(batch_inputs,batch_targets.shape[1])
         # this_actual_batch_size      = batch["original_batch_size"]
         d = []
         # For all the trajectories in the batch

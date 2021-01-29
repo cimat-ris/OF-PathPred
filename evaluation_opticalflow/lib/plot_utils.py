@@ -57,7 +57,7 @@ def plot_training_results(train_loss_results,val_loss_results,val_metrics_result
 
 
 # Visualization of the predictions vs. the ground truth
-def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,background=None,homography=None,flip=False,display_mode=None):
+def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,background=None,homography=None,flip=False,display_mode=None):
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     ax.set_title('Trajectory samples')
@@ -65,8 +65,7 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,bac
     if background is not None:
         plt.imshow(background)
     # Get the number of samples per prediction
-    nMCSamples  = traj_pred[0].shape[0]
-    nModeSamples= traj_pred[0].shape[1]
+    nModeSamples= traj_pred[0].shape[0]
     # Plot some random testing data and the predicted ones
     plt.plot([0],[0],color='purple',label='Neighbors')
     plt.plot([0],[0],color='red',   label='Observations')
@@ -80,28 +79,27 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,distributions_pred,bac
     for i,(gt,obs,neighbors) in enumerate(zip(traj_gt,traj_obs,neighbors_gt)):
         neighbors = neighbors[0,:,1:3]
         neighbors = np.array([x for x in neighbors[:] if abs(x[0])>0.001])
-        mc_preds  = traj_pred[i]
+        preds     = traj_pred[i]
+        print(preds.shape)
         if homography is not None:
             gt       = image_to_world_xy(gt, homography,flip=flip)
             obs      = image_to_world_xy(obs, homography,flip=flip)
             if neighbors.shape[0]>0:
                 neighbors= image_to_world_xy(neighbors, homography,flip=flip)
-            tpred= image_to_world_xy(tf.reshape(mc_preds,[mc_preds.shape[0]*mc_preds.shape[1]*mc_preds.shape[2],mc_preds.shape[3]]), homography,flip=flip)
-            mc_preds = tf.reshape(tpred,[mc_preds.shape[0],mc_preds.shape[1],mc_preds.shape[2],mc_preds.shape[3]])
+            tpred = image_to_world_xy(tf.reshape(preds,[preds.shape[0]*preds.shape[1],preds.shape[2]]), homography,flip=flip)
+            preds = tf.reshape(tpred,[preds.shape[0],preds.shape[1],preds.shape[2]])
 
         # Observed trajectory
         plt.plot(obs[:,0],obs[:,1],color='red')
         if neighbors.shape[0]>0:
             plt.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
         # Predicted trajectories.
-        # Scanning the MC samples
-        for pred in mc_preds:
-            for k in range(nModeSamples):
-                if display_mode is not None and k!=display_mode:
-                    continue
-                plt.plot([obs[-1,0],pred[k][0,0]],[obs[-1,1],pred[k][0,1]],color='green')
-                plt.plot(pred[k][:,0],pred[k][:,1],color='green')
-                plt.text(pred[k][-1,0]+10*(pred[k][-1,0]-pred[k][-2,0])/tf.norm(pred[k][-1,0]-pred[k][-2,0]),pred[k][-1,1]+10*(pred[k][-1,1]-pred[k][-2,1])/tf.norm(pred[k][-1,1]-pred[k][-2,1]),"{}{}".format((k+1)//2,'+' if k%2==1 else '-'))
+        for k in range(nModeSamples):
+            if display_mode is not None and k!=display_mode:
+                continue
+            plt.plot([obs[-1,0],preds[k][0,0]],[obs[-1,1],preds[k][0,1]],color='green')
+            plt.plot(preds[k][:,0],preds[k][:,1],color='green')
+            plt.text(preds[k][-1,0]+10*(preds[k][-1,0]-preds[k][-2,0])/tf.norm(preds[k][-1,0]-preds[k][-2,0]),preds[k][-1,1]+10*(preds[k][-1,1]-preds[k][-2,1])/tf.norm(preds[k][-1,1]-preds[k][-2,1]),"{}{}".format((k+1)//2,'+' if k%2==1 else '-'))
         # Ground truth trajectory
         plt.plot([obs[-1,0],gt[0,0]],[obs[-1,1],gt[0,1]],color='blue',linewidth=2)
         plt.plot(gt[:,0],gt[:,1],color='blue',linewidth=2)
