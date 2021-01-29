@@ -25,7 +25,8 @@ from tensorflow.keras import layers
 from tensorflow.keras import models
 from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data,plot_training_results
-from testing_utils import evaluation_minadefde,plot_comparisons_minadefde,evaluation_qualitative
+from testing_utils import evaluation_minadefde,evaluation_qualitative,plot_comparisons_minadefde
+from training_utils import training_loop
 
 physical_devices = tf.config.list_physical_devices('GPU')
 if len(physical_devices)>0:
@@ -89,11 +90,11 @@ checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         obs_classif=tj_enc_dec.obs_classif)
 
 # Training
-perform_training = False
+perform_training = True
 plot_training    = True
 if perform_training==True:
     print("[INF] Training the model")
-    train_loss_results,val_loss_results,val_metrics_results,__ = tj_enc_dec.training_loop(batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
+    train_loss_results,val_loss_results,val_metrics_results,__ = training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
     if plot_training==True:
         plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
