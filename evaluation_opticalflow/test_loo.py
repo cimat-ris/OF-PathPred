@@ -16,7 +16,6 @@ print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 # Important imports
 import batches_data
-from training_and_testing import Experiment_Parameters
 import matplotlib.pyplot as plt
 from model import TrajectoryEncoderDecoder, Model_Parameters
 import tensorflow as tf
@@ -27,6 +26,7 @@ from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data,plot_training_results
 from testing_utils import evaluation_minadefde,evaluation_qualitative,plot_comparisons_minadefde
 from training_utils import training_loop
+from training_utils import Experiment_Parameters
 
 physical_devices = tf.config.list_physical_devices('GPU')
 if len(physical_devices)>0:
@@ -55,7 +55,7 @@ model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_paramet
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
-model_parameters.num_epochs     = 35
+model_parameters.num_epochs     = 1
 model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
 model_parameters.initial_lr     = 0.03
