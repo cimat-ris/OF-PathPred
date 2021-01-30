@@ -1,6 +1,6 @@
 from tqdm import tqdm
 from traj_utils import relative_to_abs, vw_to_abs
-from plot_utils import plot_gt_preds
+from plot_utils import plot_gt_preds,plot_background,plot_neighbors
 from batches_data import get_batch
 import numpy as np
 import tensorflow as tf
@@ -69,41 +69,56 @@ mADEFDE = {
   }
 }
 
+#
+def predict_from_batch(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
+    traj_obs      = []
+    traj_gt       = []
+    traj_pred     = []
+    neighbors     = []
+    attention     = []
+    batch_inputs, batch_targets = get_batch(batch, config)
+    # Perform prediction
+    pred_traj,attention_weights = model.predict(batch_inputs,batch_targets.shape[1])
+    # Cycle over the trajectories of the bach
+    for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
+        if i>=n_peds_max:
+            break
+        this_pred_out_abs_set = []
+        for k in range(model.output_samples):
+            # Conserve the x,y coordinates
+            if (pred_traj[k][i].shape[0]==config.pred_len):
+                this_pred_out     = pred_traj[k][i][:, :2]
+                # Convert it to absolute (starting from the last observed position)
+                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                this_pred_out_abs_set.append(this_pred_out_abs)
+        this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
+        # Keep all the trajectories
+        traj_obs.append(obs_traj_gt)
+        traj_gt.append(pred_traj_gt)
+        traj_pred.append(this_pred_out_abs_set)
+        neighbors.append(neighbors_gt)
+        attention.append(attention_weights)
+    return traj_obs,traj_gt,traj_pred,neighbors,attention
+
 # Perform a qualitative evaluation over a batch of n_trajectories
 def evaluation_qualitative(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
-        traj_obs      = []
-        traj_gt       = []
-        traj_pred     = []
-        neighbors     = []
-        distributions = []
-        batch_inputs, batch_targets = get_batch(batch, config)
-        # Perform prediction
-        pred_traj,pred_att_weights = model.predict(batch_inputs,batch_targets.shape[1])
+    traj_obs,traj_gt,traj_pred,neighbors,__ = predict_from_batch(model,batch,config,n_peds_max=n_peds_max)
+    # Plot ground truth and predictions
+    plt.subplots(1,1,figsize=(10,10))
+    ax = plt.subplot(1,1,1)
+    if background is not None:
+        plot_background(ax,background)
+    plot_neighbors(ax,neighbors,homography,flip=flip)
+    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,display_mode=display_mode)
+    plt.show()
 
-        # Cycle over the trajectories
-        for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
-            if i>=n_peds_max:
-                break
-            this_pred_out_abs_set = []
-            for k in range(model.output_samples):
-                # Conserve the x,y coordinates
-                if (pred_traj[k][i].shape[0]==config.pred_len):
-                    this_pred_out     = pred_traj[k][i][:, :2]
-                    # Convert it to absolute (starting from the last observed position)
-                    if config.output_representation=='dxdy':
-                        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                    else:
-                        this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
-                    this_pred_out_abs_set.append(this_pred_out_abs)
-            this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
-            # Keep all the trajectories
-            traj_obs.append(obs_traj_gt)
-            traj_gt.append(pred_traj_gt)
-            traj_pred.append(this_pred_out_abs_set)
-            neighbors.append(neighbors_gt)
-        # Plot ground truth and predictions
-        plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors,background,homography,flip=flip,display_mode=display_mode)
+# Visualization of the attention weigths
+def evaluation_attention(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
+    traj_obs,traj_gt,traj_pred,neighbors,__ = predict_from_batch(model,batch,config,n_peds_max=n_peds_max)
+    # Plot ground truth and predictions
+    plot_attention(traj_gt,traj_obs,traj_pred,neighbors,attention,background,homography,flip=flip,display_mode=display_mode)
 
+# Perform quantitative evaluation
 def evaluation_minadefde(model,test_data,config):
     l2dis = []
     # num_batches_per_epoch = test_data.get_num_batches()
