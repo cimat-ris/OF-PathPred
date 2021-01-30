@@ -80,7 +80,6 @@ def plot_gt_preds(traj_gt,traj_obs,traj_pred,neighbors_gt,background=None,homogr
         neighbors = neighbors[0,:,1:3]
         neighbors = np.array([x for x in neighbors[:] if abs(x[0])>0.001])
         preds     = traj_pred[i]
-        print(preds.shape)
         if homography is not None:
             gt       = image_to_world_xy(gt, homography,flip=flip)
             obs      = image_to_world_xy(obs, homography,flip=flip)
