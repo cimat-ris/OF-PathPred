@@ -73,7 +73,7 @@ def plot_neighbors(ax,neighbors_gt,homography=None,flip=False):
             ax.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
 
 # Visualization of the predictions vs. the ground truth
-def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,display_mode=None):
+def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,display_mode=None,n_peds_max=1000):
     ax.set_title('Trajectory samples')
     ax.axis('equal')
     # Get the number of samples per prediction
@@ -89,13 +89,16 @@ def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,displ
         ax.set_ylabel('Y (m)')
         ax.set_xlabel('X (m)')
     for i,(gt,obs) in enumerate(zip(traj_gt,traj_obs)):
+        if i>=n_peds_max:
+            break
         preds     = traj_pred[i]
+        if (preds.shape[0]==0):
+            continue
         if homography is not None:
-            gt       = image_to_world_xy(gt, homography,flip=flip)
-            obs      = image_to_world_xy(obs, homography,flip=flip)
+            gt    = image_to_world_xy(gt, homography,flip=flip)
+            obs   = image_to_world_xy(obs,homography,flip=flip)
             tpred = image_to_world_xy(tf.reshape(preds,[preds.shape[0]*preds.shape[1],preds.shape[2]]), homography,flip=flip)
             preds = tf.reshape(tpred,[preds.shape[0],preds.shape[1],preds.shape[2]])
-
         # Observed trajectory
         ax.plot(obs[:,0],obs[:,1],color='red')
         # Predicted trajectories.
@@ -111,5 +114,12 @@ def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,displ
     ax.legend()
 
 # Visualization of the attention coefficients
-def plot_attention(ax,attention,background=None,homography=None,flip=False,display_mode=None):
-    pass
+def plot_attention(ax,traj_obs,traj_pred,attention,homography=None,flip=False,n_peds_max=1000):
+    print(attention.shape)
+    for i,obs in enumerate(traj_obs):
+        if i>=n_peds_max:
+            break
+        preds     = traj_pred[i]
+        if (preds.shape[0]==0):
+            continue
+        print(obs.shape)

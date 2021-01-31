@@ -704,16 +704,16 @@ class TrajectoryEncoderDecoder():
         obs_classif_logits = self.obs_classif(traj_last_states[0][0])
 
         # This will store the trajectories and the attention weights
-        traj_pred_set       = []
-        att_weights_pred_set= []
+        traj_pred_set  = []
+        att_weights_set= []
 
         # Iterate over these possible initializing states
         for k in range(self.output_samples):
             # List for the predictions and attention weights
-            traj_pred       = []
-            att_weights_pred= []
+            traj_pred   = []
+            att_weights = []
             # Decoder state is initialized here
-            traj_cur_states     = traj_cur_states_set[k]
+            traj_cur_states  = traj_cur_states_set[k]
             # The first input to the decoder is the last observed position [Nx1xK]
             dec_input = tf.expand_dims(traj_obs_last, 1)
             # Iterate over timesteps
@@ -725,14 +725,17 @@ class TrajectoryEncoderDecoder():
                 dec_input = t_pred
                 # Add it to the list of predictions
                 traj_pred.append(t_pred)
-                att_weights_pred.append(wft)
+                att_weights.append(wft)
                 # Reuse the hidden states for the next step
                 traj_cur_states = dec_states
-            traj_pred        = tf.squeeze(tf.stack(traj_pred, axis=1))
-            att_weights_pred = tf.squeeze(tf.stack(att_weights_pred, axis=1))
+            traj_pred   = tf.squeeze(tf.stack(traj_pred, axis=1))
+            att_weights = tf.squeeze(tf.stack(att_weights, axis=1))
             traj_pred_set.append(traj_pred)
-            att_weights_pred_set.append(att_weights_pred)
-        return traj_pred_set,att_weights_pred_set
+            att_weights_set.append(att_weights)
+        # Results as tensors
+        traj_pred_set   = tf.stack(traj_pred_set,  axis=1)
+        att_weights_set = tf.stack(att_weights_set,axis=1)
+        return traj_pred_set,att_weights_set
 
     # Prediction (testing) with mc dropout for one batch
     def predict_mcdropout(self, batch_inputs, n_steps, mc_samples=1):
