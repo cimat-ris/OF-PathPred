@@ -24,7 +24,7 @@ from tensorflow.keras import layers
 from tensorflow.keras import models
 from datasets_utils import setup_loo_experiment, get_testing_batch
 from plot_utils import plot_training_data,plot_training_results
-from testing_utils import evaluation_minadefde,evaluation_qualitative,plot_comparisons_minadefde
+from testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde
 from training_utils import training_loop
 from training_utils import Experiment_Parameters
 
@@ -104,10 +104,12 @@ print("[INF] Restoring last model")
 status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
 # Quantitative testing: ADE/FDE
-print("[INF] Quantitative testing")
-results = evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
-plot_comparisons_minadefde(results,dataset_names[idTest])
-print(results)
+quantitative = False
+if quantitative==True:
+    print("[INF] Quantitative testing")
+    results = evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
+    plot_comparisons_minadefde(results,dataset_names[idTest])
+    print(results)
 
 # Qualitative testing
 qualitative = True
@@ -115,4 +117,5 @@ if qualitative==True:
     print("[INF] Qualitative testing")
     for i in range(5):
         batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-        evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
+        #evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
+        evaluation_attention(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,display_mode=None)
