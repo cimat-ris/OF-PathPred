@@ -111,15 +111,18 @@ def evaluation_qualitative(model,batch,config,background=None,homography=None,fl
     plt.show()
 
 # Visualization of the attention weigths
-def evaluation_attention(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
+def evaluation_attention(model,batch,config,background=None,homography=None,flip=False,display_mode=None):
     traj_obs,traj_gt,traj_pred,neighbors,attention = predict_from_batch(model,batch,config)
     # Plot ground truth and predictions
-    plt.subplots(2,2,figsize=(10,10))
+    plt.subplots(2,2,figsize=(10,14))
     ax = plt.subplot(2,1,2)
     if background is not None:
         plot_background(ax,background)
-    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,display_mode=display_mode,n_peds_max=n_peds_max)
-    plot_attention(ax,traj_obs,traj_pred,attention,homography,flip=flip,n_peds_max=n_peds_max)
+    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,display_mode=display_mode,n_peds_max=1)
+    ax1 = plt.subplot(2,2,1)
+    plot_attention(ax1,traj_obs,traj_pred,attention,homography,flip=flip,step=0)
+    ax2 = plt.subplot(2,2,2)
+    plot_attention(ax2,traj_obs,traj_pred,attention,homography,flip=flip,step=11)
     plt.show()
 
 # Perform quantitative evaluation

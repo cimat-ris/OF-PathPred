@@ -393,6 +393,7 @@ class TrajectoryDecoder(tf.keras.Model):
         # Use attention to define the augmented input here
         if self.add_attention:
             attention, Wft  = self.focal_attention(query, context)
+            # TODO: apply the embedding to the concatenation instead of just on the first part (positions)
             # Augmented input: [N,1,h_dim+emb]
             augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         else:

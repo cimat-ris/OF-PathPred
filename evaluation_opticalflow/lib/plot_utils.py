@@ -114,12 +114,18 @@ def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,displ
     ax.legend()
 
 # Visualization of the attention coefficients
-def plot_attention(ax,traj_obs,traj_pred,attention,homography=None,flip=False,n_peds_max=1000):
-    print(attention.shape)
+def plot_attention(ax,traj_obs,traj_pred,attention,homography=None,flip=False,step=0):
+    attention=attention[0]
+    ax.set_title('Attention at step {}'.format(step))    
+    ax.set_ylabel('Attention weight')
+    ax.set_xlabel('Timestep in the observed trajectory')
     for i,obs in enumerate(traj_obs):
-        if i>=n_peds_max:
+        if i>=1:
             break
         preds     = traj_pred[i]
         if (preds.shape[0]==0):
             continue
-        print(obs.shape)
+        for k in range(preds.shape[0]):
+            legend = "Mode {}".format(k)
+            ax.plot(attention[k][step],  label=legend)
+    ax.legend()
