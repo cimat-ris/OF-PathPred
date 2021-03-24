@@ -51,7 +51,7 @@ if show_training_samples:
 
 #############################################################
 # Model parameters
-model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
+model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,output_representation=experiment_parameters.output_representation)
 if experiment_parameters.output_representation == 'vw':
     model_parameters.num_epochs = 100
     model_parameters.initial_lr = 0.1
@@ -64,7 +64,6 @@ model_parameters.initial_lr     = 0.03
 if len(physical_devices)==0:
     model_parameters.batch_size     = 64
     model_parameters.output_var_dirs= 1
-    model_parameters.stack_rnn_size = 1
 
 # Get the necessary data
 train_data = tf.data.Dataset.from_tensor_slices(training_data)
@@ -90,7 +89,7 @@ checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         obs_classif=tj_enc_dec.obs_classif)
 
 # Training
-perform_training = False
+perform_training = True
 plot_training    = True
 if perform_training==True:
     print("[INF] Training the model")
