@@ -1,6 +1,13 @@
 # OF-PathPred
 
-To run, install a virtual environment
+This is an adaptation of the NextP algorithm [Liang2019] in tensorflow 2.
+
+We introduced the following modifications:
+* Stacked RNN cells for encoding.
+* More dropout layers.
+* A new feature for encoding the spatial interactions.
+
+First install a virtual environment
 ```Python
 python3 -m venv .venv
 ```
@@ -15,13 +22,13 @@ Install all the required dependencies.
 pip install -r requirements.txt
 ```
 
-If tensorflow 1.15.2 is not available through the command above, upgrade pip:
+To run, use the test_loo.py script. It runs training/testing loops in a Leave-One-Out fashion.
 ```Python
-python3 -m pip install --upgrade pip setuptools
-```
-Then, you can open notebook:
-```Python
-.venv/bin/jupyter-notebook
+python tests/test_loo.py
 ```
 
-and open the notebook located at ./evaluation_opticalflow/train_and_evaluate.ipynb
+A few important parameters:
+* idTest gives the id in the dataset_paths array for the one dataset that is used as a test dataset, while the remaining are used for training.
+* setup_loo_experiment is a function that prepares the data for training/testing. To go faster, you may set use_pickled_data=True as an argument for the preprocessing results to be stored in pickle files. The first time, obviously, you will need to set use_pickled_data=False.  
+* The model is a multiple-output model. The number of output hypothesis is 2*model_parameters.output_var_dirs+1.
+* model_parameters.is_mc_dropout=True allows to use MC dropout in testing.
