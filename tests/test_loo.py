@@ -52,7 +52,7 @@ if show_training_samples:
 #############################################################
 # Model parameters
 model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
-model_parameters.num_epochs     = 2
+model_parameters.num_epochs     = 35
 model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
 model_parameters.initial_lr     = 0.03
