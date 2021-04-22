@@ -5,7 +5,7 @@ import argparse
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('Tensorflow version: ',tf.__version__)
+print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
 import random
 from datetime import datetime

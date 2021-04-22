@@ -81,6 +81,7 @@ def process_file(datasets_path, datasets_names, parameters):
         seq_neighbors_dataset= []
         seq_ids_dataset      = []
         seq_pos_dataset      = []
+        #TODO: avoid having the csv name here
         traj_data_path       = os.path.join(datasets_path+directory, 'mundo/mun_pos.csv')
         print("[INF] Reading "+traj_data_path)
         # Read obstacles files
@@ -238,6 +239,7 @@ def process_file(datasets_path, datasets_names, parameters):
             "key_idx": np.array(seq_ids_dataset),
             "obs_traj":  obs_traj
         }
+        print("[INF] Total number of trajectories in this dataset: ",obs_traj.shape[0])
         # At the dataset level
         if parameters.add_social:
             print("[INF] Add social interaction data (optical flow)")
