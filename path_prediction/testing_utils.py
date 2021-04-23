@@ -1,6 +1,7 @@
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
+import cv2
 from matplotlib import pyplot as plt
 from path_prediction.traj_utils import relative_to_abs, vw_to_abs
 from path_prediction.plot_utils import plot_gt_preds,plot_background,plot_neighbors,plot_attention
