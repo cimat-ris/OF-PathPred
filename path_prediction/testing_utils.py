@@ -69,6 +69,26 @@ mADEFDE = {
   }
 }
 
+
+def get_testing_batch(testing_data,testing_data_path):
+    # A trajectory id
+    testing_data_arr = list(testing_data.as_numpy_iterator())
+    randomtrajId     = np.random.randint(len(testing_data_arr),size=1)[0]
+    frame_id         = testing_data_arr[randomtrajId]["frames_ids"][0]
+    # Get the video corresponding to the testing
+    cap   = cv2.VideoCapture(testing_data_path+'/video.avi')
+    frame = 0
+    while(cap.isOpened()):
+        ret, test_bckgd = cap.read()
+        if frame == frame_id:
+            break
+        frame = frame + 1
+    # Form the batch
+    filtered_data  = testing_data.filter(lambda x: x["frames_ids"][0]==frame_id)
+    filtered_data  = filtered_data.batch(20)
+    for element in filtered_data.as_numpy_iterator():
+        return element, test_bckgd
+
 #
 def predict_from_batch(model,batch,config,background=None,homography=None,flip=False,display_mode=None):
     traj_obs      = []

@@ -5,61 +5,12 @@ import numpy as np
 from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.obstacles import load_world_obstacle_polygons
 
-def prepare_data(path, subset='/train/', sample=1.0, goals=True):
-    """ Prepares the train/val scenes and corresponding goals
-
-    Parameters
-    ----------
-    subset: String ['/train/', '/val/']
-        Determines the subset of data to be processed
-    sample: Float (0.0, 1.0]
-        Determines the ratio of data to be sampled
-    goals: Bool
-        If true, the goals of each track are extracted
-        The corresponding goal file must be present in the 'goal_files' folder
-        The name of the goal file must be the same as the name of the training file
-
-    Returns
-    -------
-    all_scenes: List
-        List of all processed scenes
-    all_goals: Dictionary
-        Dictionary of goals corresponding to each dataset file.
-        None if 'goals' argument is False.
-    """
-
-    ## read goal files
-    all_goals = {}
-    all_scenes = []
-
-    ## List file names
-    files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
-    ## Iterate over file names
-    for file in files:
-        print("Reading file ",file," for ",subset)
-        reader = trajnetplusplustools.Reader(path + subset + file + '.ndjson', scene_type='paths')
-        ## Necessary modification of train scene to add filename
-        scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
-        print("")
-        print(scene[0])
-        if goals:
-            goal_dict = pickle.load(open('goal_files/' + subset + file +'.pkl', "rb"))
-            ## Get goals corresponding to train scene
-            all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene}
-        all_scenes += scene
-
-    if goals:
-        return all_scenes, all_goals
-    return all_scenes, None
-
-
-def process_file(datasets_path, datasets_names, parameters):
+def prepare_data(datasets_path, datasets_names, parameters):
     datasets = range(len(datasets_names))
     datasets = list(datasets)
 
     # Paths for the datasets used to form the training set
     used_data_dirs = [datasets_names[x] for x in datasets]
-
     # Sequence lengths
     obs_len  = parameters.obs_len
     pred_len = parameters.pred_len
@@ -77,20 +28,17 @@ def process_file(datasets_path, datasets_names, parameters):
     all_vis_neigh                = []
     all_vis_obst                 = []
     # Scan all the datasets
-    for idx,directory in enumerate(used_data_dirs):
+    for idx,dataset_name in enumerate(datasets_names):
         seq_neighbors_dataset= []
         seq_ids_dataset      = []
         seq_pos_dataset      = []
         #TODO: avoid having the csv name here
-        traj_data_path       = os.path.join(datasets_path+directory, 'mundo/mun_pos.csv')
+        traj_data_path       = os.path.join(datasets_path+dataset_name, 'mundo/mun_pos.csv')
         print("[INF] Reading "+traj_data_path)
         # Read obstacles files
         if parameters.obstacles:
             print("[INF] Reading obstacle files")
-            t = directory.split('/')
-            data_paths = t[0]+'/'+t[1]+'/'
-            dataset_name = t[2]
-            obstacles_world = load_world_obstacle_polygons(data_paths,dataset_name)
+            obstacles_world = load_world_obstacle_polygons(datasets_path,dataset_name)
         else:
             obstacles_world = None
 
