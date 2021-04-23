@@ -139,8 +139,8 @@ def setup_loo_experiment_synthec(experiment_name,ds_path,ds_names,leave_id,exper
     if not use_pickled_data:
         # Process data specified by the path to get the trajectories with
         print('[INF] Extracting data from the datasets')
-        test_data  = process_file(ds_path, testing_datasets_names, experiment_parameters)
-        train_data = process_file(ds_path, training_datasets_names, experiment_parameters)
+        test_data  = process_file(ds_path, testing_datasets_names, experiment_parameters, csv_file='')
+        train_data = process_file(ds_path, training_datasets_names, experiment_parameters, csv_file='')
 
         # Count how many data we have (sub-sequences of length 8, in pred_traj)
         n_test_data  = len(test_data[list(test_data.keys())[2]])
