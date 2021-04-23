@@ -5,6 +5,7 @@ import math
 from tqdm import tqdm
 from path_prediction.batches_data import get_batch
 from path_prediction.testing_utils import evaluation_minadefde
+import pickle
 
 # Parameters
 # The only datasets that can use add_social are those of ETH/UCY
@@ -133,5 +134,115 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
         print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
         print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
         train_metrics['obs_classif_sca'].reset_states()
+
+    return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
+
+def adjust_learning_rate(model, epoch, batch_idx):
+    rcounter = epoch*model.num_batch+batch_idx
+    cos_inner = np.pi * (rcounter % (model.T // model.M))
+    cos_inner /= model.T // model.M
+    cos_out = np.cos(cos_inner) + 1
+    lr = 0.5*cos_out*model.lr_0
+
+    model.optimizer.lr = lr
+    return lr
+    
+def noise_loss(model,lr,alpha):
+    noise_loss = 0.0
+    noise_std = (2/lr*alpha)**0.5
+    
+    variables = model.enc.trainable_weights + model.enctodec.trainable_weights + model.dec.trainable_weights
+    for var in variables:
+        means = tf.zeros(var.shape)
+        noise_loss += tf.reduce_sum(var * tf.random.normal(means.shape,mean=means, stddev = noise_std))
+    return noise_loss
+
+# Bayesian Training loop
+def BDL_training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix):
+    train_loss_results   = []
+    val_loss_results     = []
+    val_metrics_results  = {'mADE': [], 'mFDE': [], 'obs_classif_accuracy': []}
+    train_metrics_results= {'obs_classif_accuracy': []}
+    best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
+    train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+    val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+    # TODO: Shuffle
+
+    # Training the main system
+    for epoch in range(config.num_epochs):
+        print('Epoch {}.'.format(epoch + 1))
+        # Cycle over batches
+        total_loss = 0
+        #num_batches_per_epoch = train_data.get_num_batches()
+        #for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+        num_batches_per_epoch= train_data.cardinality().numpy()
+        
+        batch_idx = 0
+        for batch in tqdm(train_data,ascii = True):
+            # ----------------------------------------------------------------------------
+            # Update the learning rate
+            lr = adjust_learning_rate(model, epoch, batch_idx)
+            if ((batch_idx+epoch*model.num_batch) % (model.T//model.M)) >= ((model.T//model.M)*config.beta):
+                loss_noise = noise_loss(model,lr,config.alpha)*(config.temperature/config.datasize)**.5
+            else:
+                loss_noise = 0
+            # ----------------------------------------------------------------------------
+            
+            # Format the data
+            batch_inputs, batch_targets = get_batch(batch, config)
+            # Run the forward pass of the layer.
+            # Compute the loss value for this minibatch.
+            batch_loss = model.batch_step(batch_inputs, batch_targets, train_metrics, training=True, loss_noise=loss_noise)
+            
+            if ((batch_idx+epoch*model.num_batch) % (model.T//model.M)) >= ((model.T//model.M)*config.beta):
+                if ((batch_idx+epoch*model.num_batch) % (model.T//model.M)) >= ((model.T//model.M)-config.num_sample): # guardamos los ultimos 5 del ciclo
+                    train_weights.append(( (batch_idx+epoch*model.num_batch)//(model.T//model.M) , [model.enc.get_weights(), model.enctodec.get_weights(), model.dec.get_weights()]))
+                    
+            total_loss+= batch_loss
+            batch_idx += 1
+            
+        # End epoch
+        total_loss = total_loss / num_batches_per_epoch
+        train_loss_results.append(total_loss)
+
+        # Saving (checkpoint) the model every 2 epochs
+        if (epoch + 1) % 2 == 0:
+            checkpoint.save(file_prefix = checkpoint_prefix)
+
+        # Display information about the current state of the training loop
+        print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+        # print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+        train_metrics['obs_classif_sca'].reset_states()
+
+        if config.use_validation:
+            # Compute validation loss
+            total_loss = 0
+            # num_batches_per_epoch = val_data.get_num_batches()
+            # for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
+            num_batches_per_epoch= val_data.cardinality().numpy()
+            for idx,batch in tqdm(enumerate(val_data),ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config)
+                batch_loss                  = model.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
+            val_loss_results.append(total_loss)
+            # Evaluate ADE, FDE metrics on validation data
+            val_quantitative_metrics = evaluation_minadefde(model,val_data,config)
+            val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
+            val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
+            if val_quantitative_metrics["mADE"]< best['mADE']:
+                best['mADE'] = val_quantitative_metrics["mADE"]
+                best['mFDE'] = val_quantitative_metrics["mFDE"]
+                best["patchId"]= idx
+                # Save the best model so far
+                checkpoint.write(checkpoint_prefix+'-best')
+            print('[TRN] Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+
+    pickle_out = open(config.out_training_weights,"wb")
+    pickle.dump(train_weights, pickle_out, protocol=2)
+    pickle_out.close()
 
     return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
