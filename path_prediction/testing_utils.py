@@ -139,7 +139,8 @@ def evaluation_minadefde(model,test_data,config):
         d = []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            normin = 1000.0
+            #normin = 1000.0
+            normin = 999999999999.0
             diffmin= None
             for k in range(model.output_samples):
                 # Conserve the x,y coordinates of the kth trajectory
