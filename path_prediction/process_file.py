@@ -82,7 +82,10 @@ def process_file(datasets_path, datasets_names, parameters, csv_file='mundo/mun_
         seq_ids_dataset      = []
         seq_pos_dataset      = []
         #TODO: avoid having the csv name here
-        traj_data_path       = os.path.join(datasets_path+directory, csv_file)
+        if len(csv_file)>1:
+            traj_data_path       = os.path.join(datasets_path+directory, csv_file)
+        else:
+            traj_data_path       = datasets_path+directory
         print("[INF] Reading "+traj_data_path)
         # Read obstacles files
         if parameters.obstacles:
