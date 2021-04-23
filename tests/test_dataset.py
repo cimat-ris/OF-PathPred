@@ -15,7 +15,7 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 
 # Important imports
-from path_prediction.process_file import process_file
+from path_prediction.process_file import prepare_data
 import path_prediction.batches_data
 from path_prediction.training_utils import Experiment_Parameters
 
@@ -35,7 +35,7 @@ def main():
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 
     # Process data specified by the path to get the trajectories with
-    data = process_file(dataset_dir, dataset_names, experiment_parameters)
+    data = prepare_data(dataset_dir, dataset_names, experiment_parameters)
 
     # Muestreamos aleatoriamente para separar datos de entrenamiento, validacion y prueba
     training_pc  = 0.7

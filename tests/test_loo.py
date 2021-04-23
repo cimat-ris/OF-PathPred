@@ -20,11 +20,11 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
-from path_prediction.datasets_utils import setup_loo_experiment, get_testing_batch
+from path_prediction.datasets_utils import setup_loo_experiment
 from path_prediction.model import TrajectoryEncoderDecoder, Model_Parameters
 from path_prediction.plot_utils import plot_training_data,plot_training_results
 import path_prediction.batches_data
-from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde
+from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
 from path_prediction.training_utils import training_loop
 from path_prediction.training_utils import Experiment_Parameters
 
@@ -52,7 +52,7 @@ if show_training_samples:
 #############################################################
 # Model parameters
 model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
-model_parameters.num_epochs     = 35
+model_parameters.num_epochs     = 2
 model_parameters.output_var_dirs= 4
 model_parameters.is_mc_dropout  = False
 model_parameters.initial_lr     = 0.03
