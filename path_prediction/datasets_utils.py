@@ -154,7 +154,6 @@ def setup_loo_experiment_synthec(experiment_name,ds_path,ds_names,leave_id,exper
 
         # Indices for training
         idx_train = idx[0:training]
-        print("********** ", idx_train, " **********")
         #  Indices for validation
         idx_val   = idx[training:]
         # Training set
