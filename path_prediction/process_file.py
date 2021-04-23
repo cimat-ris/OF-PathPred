@@ -53,7 +53,7 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
     return all_scenes, None
 
 
-def process_file(datasets_path, datasets_names, parameters):
+def process_file(datasets_path, datasets_names, parameters, csv_file='mundo/mun_pos.csv'):
     datasets = range(len(datasets_names))
     datasets = list(datasets)
 
@@ -82,7 +82,7 @@ def process_file(datasets_path, datasets_names, parameters):
         seq_ids_dataset      = []
         seq_pos_dataset      = []
         #TODO: avoid having the csv name here
-        traj_data_path       = os.path.join(datasets_path+directory, 'mundo/mun_pos.csv')
+        traj_data_path       = os.path.join(datasets_path+directory, csv_file)
         print("[INF] Reading "+traj_data_path)
         # Read obstacles files
         if parameters.obstacles:
