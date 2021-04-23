@@ -38,7 +38,7 @@ def get_testing_batch_synthec(testing_data,testing_data_path):
     for element in filtered_data.as_numpy_iterator():
         return element
 
-def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
+def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='../pickle/',validation_proportion=0.1):
     # Dataset to be tested
     testing_datasets_names  = [ds_names[leave_id]]
     training_datasets_names = ds_names[:leave_id]+ds_names[leave_id+1:]
