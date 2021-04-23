@@ -166,6 +166,7 @@ def BDL_training_loop(model,train_data,val_data,config,checkpoint,checkpoint_pre
     best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
     train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
     val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+    train_weights = []
     # TODO: Shuffle
 
     # Training the main system
