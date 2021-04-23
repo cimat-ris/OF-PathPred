@@ -27,7 +27,7 @@ class Experiment_Parameters:
         # Obstacles flag
         self.obstacles    = obstacles
         self.intersection = False
-        self.delim        = ','
+        self.delim        = ' '
         self.output_representation = 'dxdy' #
 
 
