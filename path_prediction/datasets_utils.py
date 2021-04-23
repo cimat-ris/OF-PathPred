@@ -27,7 +27,7 @@ def get_testing_batch(testing_data,testing_data_path):
     for element in filtered_data.as_numpy_iterator():
         return element, test_bckgd
     
-def get_testing_batch_syntec(testing_data,testing_data_path):
+def get_testing_batch_synthec(testing_data,testing_data_path):
     # A trajectory id
     testing_data_arr = list(testing_data.as_numpy_iterator())
     randomtrajId     = np.random.randint(len(testing_data_arr),size=1)[0]
@@ -130,7 +130,7 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
     test_homography = np.genfromtxt(homography_file)
     return training_data,validation_data,test_data,test_homography
 
-def setup_loo_experiment_syntec(experiment_name,ds_path,ds_names,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1,seed=None):
+def setup_loo_experiment_synthec(experiment_name,ds_path,ds_names,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1,seed=None):
     # Dataset to be tested
     testing_datasets_names  = [ds_names[leave_id]]
     training_datasets_names = ds_names[:leave_id]+ds_names[leave_id+1:]
