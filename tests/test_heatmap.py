@@ -14,7 +14,8 @@ from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
 import numpy as np
 import seaborn as sns
-from path_prediction.datasets_utils import setup_loo_experiment, get_testing_batch
+from path_prediction.testing_utils  import get_testing_batch
+from path_prediction.datasets_utils import setup_loo_experiment
 from path_prediction.training_utils import Experiment_Parameters
 from path_prediction.model import TrajectoryEncoderDecoder, Model_Parameters
 from path_prediction.obstacles import image_to_world_xy

@@ -67,26 +67,17 @@ class OpticalFlowSimulator(object):
         """ Funcion para graficar y visualizar los vectores y puntos"""
         plt.subplots(4,3,figsize=(15,15))
         for seq_pos in range(1,7):
+            # Definition of the subplot
             plt.subplot(4,3,seq_pos+3*((seq_pos-1)//3))
             current_position  = trajectory[seq_pos]
             current_direction = (trajectory[seq_pos]-trajectory[seq_pos-1])/np.linalg.norm(0.00001+trajectory[seq_pos]-trajectory[seq_pos-1])
-            # Whole trajectory
-            plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='black')
-            # Direction and normal
-            vec_norm = vector_normal(current_direction)
-            plt.arrow(current_position[0],current_position[1],current_direction[0],current_direction[1],color='blue',linewidth=2)
-            plt.arrow(current_position[0],current_position[1],-vec_norm[0],-vec_norm[1],color='red',linewidth=2)
-            plt.arrow(current_position[0],current_position[1],+vec_norm[0],+vec_norm[1],color='red',linewidth=2)
             # Plot the neighbors
             for neighbor in neighbors_trajectory[seq_pos]:
                 if neighbor[0]>0:
-                    plt.plot(neighbor[1],neighbor[2],color='green',marker='o',markersize=14)
+                    plt.plot(neighbor[1],neighbor[2],color='green',marker='o',markersize=10)
                     for neighbor_prev in neighbors_trajectory[seq_pos-1]:
                         if neighbor_prev[0]==neighbor[0]:
                             plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
-            # Plot the observer agent
-            plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=14)
-        
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
@@ -98,16 +89,29 @@ class OpticalFlowSimulator(object):
                 plt.plot([width_low,width_high],[height_low,height_low], "#ff7700")
                 plt.plot([width_low,width_low],[height_low ,height_high], "#ff7700")
                 plt.plot([width_high,width_high],[height_low,height_high], "#ff7700")
-                plt.plot([width_low,width_high],[height_high,height_high], "#ff7700")    
+                plt.plot([width_low,width_high],[height_high,height_high], "#ff7700")
+
             if visible_obstacles is not None:
                 # Plot the visible obstacles
                 for vobs in visible_obstacles[seq_pos]:
-                    plt.plot(vobs[0],vobs[1],color='magenta',marker='o',markersize=8)
+                    plt.plot(vobs[0],vobs[1],color='magenta',marker='o',markersize=5)
             if obstacles is not None:
                 # Draw obstacles
                 for obst in obstacles:
                     plt.plot(obst[:,0],obst[:,1],"g-")
-            plt.axis('equal')
+            # Plot the agent of interest
+            plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=10)
+            # Direction and normal
+            vec_cur  = current_direction/np.linalg.norm(current_direction)
+            vec_norm = vector_normal(current_direction)
+            vec_l    = 2.0
+            plt.arrow(current_position[0],current_position[1],vec_l*vec_cur[0],vec_l*vec_cur[1],color='black',linewidth=1)
+            plt.arrow(current_position[0],current_position[1],-vec_l*vec_norm[0],-vec_l*vec_norm[1],color='red',linewidth=1)
+            plt.arrow(current_position[0],current_position[1],+vec_l*vec_norm[0],+vec_l*vec_norm[1],color='red',linewidth=1)
+            # Whole trajectory of the agent of interest
+            plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='blue')
+            plt.xlim((current_position[0]-10.0,current_position[0]+10.0))
+            plt.ylim((current_position[1]-6.0,current_position[1]+6.0))
             # Plot the optical flow
             plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
             thetas = np.linspace(self.theta0,self.thetaf,65)[:-1]
