@@ -49,6 +49,7 @@ class Model_Parameters(object):
         # MC dropout
         self.is_mc_dropout         = False
         self.mc_samples            = 20
+        self.type_rnn              = 'GRU'  # cell type for TrajectoryDecoder
 
 ################################################################################
 ############# Encoding
@@ -343,12 +344,25 @@ class TrajectoryDecoder(tf.keras.Model):
             name='trajectory_position_embedding')
         # RNN cell
         # TODO: Would it make sense to use a Stacked Cell here? As in the encoder.
-        self.dec_cell_traj  = tf.keras.layers.LSTMCell(config.dec_hidden_size,
-            recurrent_initializer='glorot_uniform',
-            name='trajectory_decoder_cell',
-            dropout= config.dropout_rate,
-            recurrent_dropout=config.dropout_rate
-            )
+        #config.type_rnn = 'LSTMCell', 'GRU'
+        # Condition for cell type
+        if config.type_rnn == 'GRU':
+            # GRU cell
+            self.dec_cell_traj = tf.keras.layers.GRUCell(config.dec_hidden_size,
+                                                         recurrent_initializer='glorot_uniform',
+                                                         dropout=config.dropout_rate,
+                                                         recurrent_dropout=config.dropout_rate,
+                                                         name='trajectory_decoder_cell_with_GRU'
+                                                         )
+        else:
+            # RNN cell
+            # TODO: Would it make sense to use a Stacked Cell here? As in the encoder.
+            self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
+                                                          recurrent_initializer='glorot_uniform',
+                                                          name='trajectory_decoder_cell',
+                                                          dropout=config.dropout_rate,
+                                                          recurrent_dropout=config.dropout_rate
+                                                          )
         # RNN layer
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         self.M = 1
