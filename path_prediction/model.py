@@ -49,7 +49,7 @@ class Model_Parameters(object):
         # MC dropout
         self.is_mc_dropout         = False
         self.mc_samples            = 20
-        self.type_rnn              = 'GRU'  # cell type for TrajectoryDecoder
+        self.type_rnn              = 'LSTM'  # cell type for TrajectoryDecoder
 
 ################################################################################
 ############# Encoding
