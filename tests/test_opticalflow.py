@@ -32,7 +32,6 @@ def main():
     parser.set_defaults(obstacles=True)
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
-
     args = parser.parse_args()
 
     # Load the default parameters
