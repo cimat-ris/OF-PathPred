@@ -14,7 +14,7 @@ from path_prediction.traj_utils import relative_to_abs, vw_to_abs
 class Model_Parameters(object):
     """Model parameters.
     """
-    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy'):
+    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy', rnn_type='lstm'):
         # -----------------
         # Observation/prediction lengths
         self.obs_len        = 8
@@ -49,7 +49,7 @@ class Model_Parameters(object):
         # MC dropout
         self.is_mc_dropout         = False
         self.mc_samples            = 20
-        self.type_rnn              = 'LSTM'  # cell type for TrajectoryDecoder
+        self.rnn_type              = rnn_type
 
 ################################################################################
 ############# Encoding
@@ -346,7 +346,7 @@ class TrajectoryDecoder(tf.keras.Model):
         # TODO: Would it make sense to use a Stacked Cell here? As in the encoder.
         #config.type_rnn = 'LSTMCell', 'GRU'
         # Condition for cell type
-        if config.type_rnn == 'GRU':
+        if config.rnn_type == 'gru':
             # GRU cell
             self.dec_cell_traj = tf.keras.layers.GRUCell(config.dec_hidden_size,
                                                          recurrent_initializer='glorot_uniform',

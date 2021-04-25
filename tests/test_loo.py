@@ -42,6 +42,9 @@ def main():
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--epochs', '--e',
                     type=int, default=35,help='Number of epochs (default: 35)')
+    parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
+                    help='recurrent networks to be used (default: "lstm")')
+
     args = parser.parse_args()
 
     physical_devices = tf.config.list_physical_devices('GPU')
@@ -67,7 +70,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation)
+    model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     model_parameters.output_var_dirs= 4
     model_parameters.is_mc_dropout  = False
