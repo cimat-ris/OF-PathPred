@@ -338,31 +338,27 @@ class TrajectoryDecoder(tf.keras.Model):
         self.add_attention  = config.add_attention
         self.stack_rnn_size = config.stack_rnn_size
         self.is_mc_dropout  = config.is_mc_dropout
+        self.rnn_type       = config.rnn_type
         # Linear embedding of the encoding resulting observed trajectories
         self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='trajectory_position_embedding')
         # RNN cell
-        # TODO: Would it make sense to use a Stacked Cell here? As in the encoder.
-        #config.type_rnn = 'LSTMCell', 'GRU'
         # Condition for cell type
-        if config.rnn_type == 'gru':
+        if self.rnn_type == 'gru':
             # GRU cell
             self.dec_cell_traj = tf.keras.layers.GRUCell(config.dec_hidden_size,
                                                          recurrent_initializer='glorot_uniform',
                                                          dropout=config.dropout_rate,
                                                          recurrent_dropout=config.dropout_rate,
-                                                         name='trajectory_decoder_cell_with_GRU'
-                                                         )
+                                                         name='trajectory_decoder_cell_with_GRU')
         else:
-            # RNN cell
-            # TODO: Would it make sense to use a Stacked Cell here? As in the encoder.
+            # LSTM cell
             self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
                                                           recurrent_initializer='glorot_uniform',
                                                           name='trajectory_decoder_cell',
                                                           dropout=config.dropout_rate,
-                                                          recurrent_dropout=config.dropout_rate
-                                                          )
+                                                          recurrent_dropout=config.dropout_rate)
         # RNN layer
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         self.M = 1
@@ -378,6 +374,7 @@ class TrajectoryDecoder(tf.keras.Model):
         self.h_to_xy = tf.keras.layers.Dense(config.P,
             activation=tf.identity,
             name='h_to_xy')
+
         # Input layers
         # Position input
         dec_input_shape      = (1,config.P)
@@ -415,14 +412,18 @@ class TrajectoryDecoder(tf.keras.Model):
             # Input is just the embedded inputs
             augmented_inputs= decoder_inputs_emb
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
-        outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=(training or self.is_mc_dropout))
-        # Last h,c states
-        cur_states = outputs[1:3]
+        if (self.rnn_type=='gru'):
+            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states[0],training=(training or self.is_mc_dropout))
+            # Last h state repeated to have always 2 tensors in cur_states
+            cur_states = outputs[1:2]
+            cur_states.append(outputs[1:2])
+        else:
+            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=(training or self.is_mc_dropout))
+            # Last h,c states
+            cur_states = outputs[1:3]
         # Apply dropout layer on the h  state before mapping to positions x,y
         decoder_latent = self.dropout(cur_states[0],training=training)
         decoder_latent = tf.expand_dims(decoder_latent,1)
-        # Mapping to positions x,y
-        # decoder_out_xy = self.h_to_xy(decoder_latent)
         # Something new: we try to learn the residual to the constant velocity case
         # Hence the output is equal to th input plus what we learn
         decoder_out_xy = self.h_to_xy(decoder_latent) + dec_input
