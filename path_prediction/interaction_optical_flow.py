@@ -240,13 +240,12 @@ class OpticalFlowSimulator(object):
 
     """
         Receives:
-            Id: Id of the main agent
-            obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
-            neighbors: tensor of shape [obs_len, mnp, 3] (sequence of positions of all the neighbor
+            obs_traj: [t, obs_len, 2] tensor (trajectories of interest)
+            neighbors: [obs_len, mnp, 3] tensor (sequence of positions of all the neighbors
         Returns:
             The tensor of optical flow values [t, obs_len, 64]
     """
-    def compute_opticalflow_seq(self,Id,obs_traj,neighbors,obstacles):
+    def compute_opticalflow_seq(self,obs_traj,neighbors,obstacles):
 
         direcciones = vectores_direccion(obs_traj)
 
@@ -272,8 +271,6 @@ class OpticalFlowSimulator(object):
         for i in range(sequence_length):
             # Current neighbors frame is [mnp,3]
             frame = neighbors[i,:,:]
-            # Extract the trajectory of interest (Id)
-            person_sec = frame[frame[:,0]== Id,:][0]
             # Current position in the trajectory of interest
             x_current, y_current = obs_traj[i][0], obs_traj[i][1]
 
@@ -295,14 +292,13 @@ class OpticalFlowSimulator(object):
             vel_p_veci = []
             # Scan the other pedestrians
             for other_ped_index in range(mnp):
-
-                # If the neighbor is id==Id or is a no-neighnor (id==0)
-                if((frame[other_ped_index, 0] == person_sec[0]) or frame[other_ped_index, 0]==0 ):
-                    continue
-
                 # Position of the possible neighbor
                 other_x = frame[other_ped_index, 1]
                 other_y = frame[other_ped_index, 2]
+
+                # If the neighbor is id==Id or is a no-neighnor (id==0)
+                if((other_x== x_current and other_y== y_current) or np.isnan(frame[other_ped_index, 1])):
+                    continue
 
                 # This is to verify that the pedestrian is not in the neighborhood
                 if self.use_bounds and ((other_x >= width_high) or (other_x< width_low) or (other_y >= height_high) or (other_y < height_low)):
@@ -345,11 +341,10 @@ class OpticalFlowSimulator(object):
         return optical_flow, visible_neighbors, visible_obstacles
 
     # Main function for optical flow computation
-    def compute_opticalflow_batch(self,neighbors_batch, idx, obs_traj, obs_len, obstacles):
+    def compute_opticalflow_batch(self,neighbors_batch, obs_traj, obs_len, obstacles):
         """
         Receives:
                 neighbors_batch: tensor of shape [t, obs_len, mnp, 3] (batch of positions of all the neighbors)
-                idx vector of length t (batches of ids of each trajectory) [t]
                 obs_traj is a tensor of shape [t, obs_len, 2] (trajectories)
         Returns:
                 The tensor of optical flow values [t, obs_len, 64]
@@ -364,11 +359,9 @@ class OpticalFlowSimulator(object):
         else:
             vis_obst  = np.zeros((t,obs_len,self.num_rays,2))
         for batch_idx, neighbors_descriptor in enumerate(neighbors_batch):
-            # Person id
-            person_id = idx[batch_idx]
             # Compute the optical flow along this trajectory, given the positions of the neighbors
             if obstacles is None:
-                vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],__ =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
+                vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],__ =  self.compute_opticalflow_seq(obs_traj[batch_idx],neighbors_descriptor,obstacles)
             else:
-                vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(person_id, obs_traj[batch_idx],neighbors_descriptor,obstacles)
+                vec_flow[batch_idx,:,:],vis_neigh[batch_idx,:,:,:],vis_obst[batch_idx,:,:,:] =  self.compute_opticalflow_seq(obs_traj[batch_idx],neighbors_descriptor,obstacles)
         return vec_flow,vis_neigh,vis_obst

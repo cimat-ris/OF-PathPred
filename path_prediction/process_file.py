@@ -93,6 +93,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
             person_max = parameters.person_max
             # Absolute pixel-based data: id_person, x, y
             neighbors_data = np.zeros((num_peds_in_seq, seq_len, person_max, 3),dtype="float32")
+            neighbors_data[:] = np.NaN
 
             ped_count = 0
             # For all the persons appearing in this sequence
@@ -182,21 +183,16 @@ def prepare_data(datasets_path, datasets_names, parameters):
         obs_neighbors         = seq_neighbors_dataset[:,:obs_len,:,:]
         seq_pos_dataset = np.concatenate(seq_pos_dataset,axis=0)
         obs_traj        = seq_pos_dataset[:, :obs_len, :]
-        vec = {
-            "obs_neighbors": obs_neighbors,
-            "key_idx": np.array(seq_ids_dataset),
-            "obs_traj":  obs_traj
-        }
         print("[INF] Total number of trajectories in this dataset: ",obs_traj.shape[0])
         # At the dataset level
         if parameters.add_social:
             print("[INF] Add social interaction data (optical flow)")
             if parameters.obstacles:
                 of_sim = OpticalFlowSimulator()
-                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],parameters.obs_len,obstacles_world)
+                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,obstacles_world)
             else:
                 of_sim = OpticalFlowSimulator()
-                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(vec['obs_neighbors'], vec['key_idx'], vec['obs_traj'],parameters.obs_len,None)
+                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,None)
             all_flow.append(flow)
             all_vis_neigh.append(vis_neigh)
             all_vis_obst.append(vis_obst)
