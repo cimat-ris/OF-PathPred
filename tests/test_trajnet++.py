@@ -287,15 +287,15 @@ def prepare_data(path, subset='/train/', sample=1.0):
     """
 
     ## read goal files
-    all_scenes   = []
-    seq_pos_all  = []
-    seq_rel_all  = []
-    seq_theta_all= []
-
+    all_scenes       = []
+    seq_pos_all      = []
+    seq_rel_all      = []
+    seq_theta_all    = []
+    seq_neighbors_all= []
     ## List file names
     files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
 
-
+    neighbors_n_max = 0
     ## Iterate over file names
     for file in files:
         reader = trajnetplusplustools.Reader(path + subset + file + '.ndjson', scene_type='paths')
@@ -303,7 +303,6 @@ def prepare_data(path, subset='/train/', sample=1.0):
         scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
         print("[INF] File ",file," for ",subset)
         all_scenes += scene
-
         for scene_i, (filename, scene_id, paths) in enumerate(scene):
             # Get the trajectories
             raw_traj_data = trajnetplusplustools.Reader.paths_to_xy(paths)
@@ -315,13 +314,20 @@ def prepare_data(path, subset='/train/', sample=1.0):
             # Orientations
             theta_seq_data = np.expand_dims(np.arctan2(raw_traj_data[1:,0,1] - raw_traj_data[:-1,0,1],raw_traj_data[1:,0,0] - raw_traj_data[:-1,0,0]),axis=1)
             seq_theta_all.append(theta_seq_data)
-            # We suppose that the frame ids are in ascending order
-            # frame_ids = np.unique(raw_traj_data[:, 0]).tolist()
-            # print("[INF] Total number of frames: ",len(frame_ids))
+            # Neighbors
+            neighbor_paths = raw_traj_data[1:,1:,:]
+            neighbor_paths = np.concatenate([neighbor_paths,np.ones([neighbor_paths.shape[0],neighbor_paths.shape[1],1])],axis=2)
+            neighbors_n    = neighbor_paths.shape[1]
+            if neighbors_n>neighbors_n_max:
+                neighbors_n_max = neighbors_n
+            seq_neighbors_all.append(neighbor_paths)
 
-    seq_pos_all   = np.array(seq_pos_all)
-    seq_rel_all   = np.array(seq_rel_all)
-    seq_theta_all = np.array(seq_theta_all)
+    seq_pos_all      = np.array(seq_pos_all)
+    seq_rel_all      = np.array(seq_rel_all)
+    seq_theta_all    = np.array(seq_theta_all)
+    for i in range(len(seq_neighbors_all)):
+        seq_neighbors_all[i]=np.resize(seq_neighbors_all[i],[seq_neighbors_all[i].shape[0],neighbors_n_max,3])
+    seq_neighbors_all=  np.array(seq_neighbors_all)
     print("[INF] Total trajectories: ",seq_pos_all.shape[0])
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
@@ -332,7 +338,7 @@ def prepare_data(path, subset='/train/', sample=1.0):
     #frame_obs     = seq_frames_all[:, :obs_len]
     obs_traj_rel  = seq_rel_all[:, :8, :]
     pred_traj_rel = seq_rel_all[:, 8:, :]
-    #nedighbors_obs= seq_neighbors_all[:, :obs_len, :]
+    neighbors_obs= seq_neighbors_all[:, 1:9, :]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
@@ -341,8 +347,9 @@ def prepare_data(path, subset='/train/', sample=1.0):
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
         #"frames_ids": frame_obs,
-        #"obs_neighbors": neighbors_obs
+        "obs_neighbors": neighbors_obs
     }
+    print(data["obs_neighbors"].shape)
     #return data
     return all_scenes
 
