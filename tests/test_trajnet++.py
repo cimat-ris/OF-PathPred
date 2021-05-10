@@ -287,8 +287,10 @@ def prepare_data(path, subset='/train/', sample=1.0):
     """
 
     ## read goal files
-    all_scenes = []
-    seq_pos_all= []
+    all_scenes   = []
+    seq_pos_all  = []
+    seq_rel_all  = []
+    seq_theta_all= []
 
     ## List file names
     files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
@@ -303,36 +305,44 @@ def prepare_data(path, subset='/train/', sample=1.0):
         all_scenes += scene
 
         for scene_i, (filename, scene_id, paths) in enumerate(scene):
-            # First
+            # Get the trajectories
             raw_traj_data = trajnetplusplustools.Reader.paths_to_xy(paths)
+            # Index 0 is the pedestrian of interest
             seq_pos_all.append(raw_traj_data[:,0,:])
+            # Displacements
+            ped_seq_rel = raw_traj_data[1:,0,:] - raw_traj_data[:-1,0,:]
+            seq_rel_all.append(ped_seq_rel)
+            # Orientations
+            theta_seq_data = np.expand_dims(np.arctan2(raw_traj_data[1:,0,1] - raw_traj_data[:-1,0,1],raw_traj_data[1:,0,0] - raw_traj_data[:-1,0,0]),axis=1)
+            seq_theta_all.append(theta_seq_data)
             # We suppose that the frame ids are in ascending order
             # frame_ids = np.unique(raw_traj_data[:, 0]).tolist()
             # print("[INF] Total number of frames: ",len(frame_ids))
 
     seq_pos_all   = np.array(seq_pos_all)
+    seq_rel_all   = np.array(seq_rel_all)
+    seq_theta_all = np.array(seq_theta_all)
     print("[INF] Total trajectories: ",seq_pos_all.shape[0])
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
     obs_traj      = seq_pos_all[:, 1:9, :]
-    #obs_traj_theta= seq_theta_all[:, :obs_len, :]
+    obs_traj_theta= seq_theta_all[:, 1:9, :]
     pred_traj     = seq_pos_all[:, 9:, :]
     #frame_obs     = seq_frames_all[:, :obs_len]
-    #obs_traj_rel  = seq_rel_all[:, :obs_len, :]
-    #pred_traj_rel = seq_rel_all[:, obs_len:, :]
-    #neighbors_obs= seq_neighbors_all[:, :obs_len, :]
+    obs_traj_rel  = seq_rel_all[:, :8, :]
+    pred_traj_rel = seq_rel_all[:, 8:, :]
+    #nedighbors_obs= seq_neighbors_all[:, :obs_len, :]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
-        #"obs_traj_rel": obs_traj_rel,
-        #"obs_traj_theta":obs_traj_theta,
+        "obs_traj_rel": obs_traj_rel,
+        "obs_traj_theta":obs_traj_theta,
         "pred_traj": pred_traj,
-        #"pred_traj_rel": pred_traj_rel,
+        "pred_traj_rel": pred_traj_rel,
         #"frames_ids": frame_obs,
         #"obs_neighbors": neighbors_obs
     }
-
     #return data
     return all_scenes
 
@@ -356,12 +366,6 @@ def main():
     parser.add_argument('--normalize_scene', action='store_true',help='rotate scene so primary pedestrian moves northwards at end of observation')
     parser.add_argument('--augment_noise', action='store_true',help='flag to add noise to observations for robustness')
 
-    ## Loading pre-trained models
-    pretrain = parser.add_argument_group('pretraining')
-    pretrain.add_argument('--load-state', default=None,help='load a pickled model state dictionary before training')
-    pretrain.add_argument('--load-full-state', default=None, help='load a pickled full state dictionary before training')
-    pretrain.add_argument('--nonstrict-load-state', default=None, help='load a pickled state dictionary before training')
-
     ## Sequence Encoder Hyperparameters
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,help='LSTM hidden dimension')
@@ -383,10 +387,7 @@ def main():
 
     # configure logging
     from pythonjsonlogger import jsonlogger
-    if args.load_full_state:
-        file_handler = logging.FileHandler(args.output + '.log', mode='a')
-    else:
-        file_handler = logging.FileHandler(args.output + '.log', mode='w')
+    file_handler = logging.FileHandler(args.output + '.log', mode='w')
     # TODO
     #file_handler.setFormatter(jsonlogger.JsonFormatter('(message) (levelname) (name) (asctime)'))
     stdout_handler = logging.StreamHandler(sys.stdout)
@@ -397,15 +398,6 @@ def main():
             'args': vars(args),
             'hostname': socket.gethostname(),
     })
-
-    # refactor args for --load-state
-    # loading a previously saved model
-    args.load_state_strict = True
-    if args.nonstrict_load_state:
-        args.load_state = args.nonstrict_load_state
-        args.load_state_strict = False
-    if args.load_full_state:
-        args.load_state = args.load_full_state
 
     ## Prepare data
     train_scenes = prepare_data(args.path, subset='/train/', sample=args.sample)
