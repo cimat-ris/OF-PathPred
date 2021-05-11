@@ -24,33 +24,28 @@ import logging
 import socket
 
 
-def prepare_data_trajnetplusplus(path, subset='/train/'):
+def prepare_data_trajnetplusplus(parameters,path, subset='/train/'):
     """ Prepares the train/val scenes and corresponding goals
-
     Parameters
     ----------
+    parameters: Experiment_Parameters
+        Defines the prediction experiment parameters.
+    path:
+        Path to the dataset (set of json files)
     subset: String ['/train/', '/val/']
-        Determines the subset of data to be processed
-    sample: Float (0.0, 1.0]
-        Determines the ratio of data to be sampled
+        Determines the subset of data to be processed.
 
     Returns
     -------
-    all_scenes: List
-        List of all processed scenes
-    all_goals: Dictionary
-        Dictionary of goals corresponding to each dataset file.
-        None if 'goals' argument is False.
+    data : Dictionary
+        Contains the different processed data as numpy nd arrays
     """
-
-    ## read goal files
-    all_scenes       = []
-    seq_pos_all      = []
-    seq_rel_all      = []
-    seq_theta_all    = []
-    seq_neighbors_all= []
-    all_flow         = []
-    all_vis_neigh    = []
+    all_ped_traj_abs      = []
+    all_ped_traj_rel      = []
+    all_ped_traj_theta    = []
+    all_neigbors_traj_abs = []
+    all_flow          = []
+    all_vis_neigh     = []
     ## List file names
     files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
 
@@ -61,52 +56,52 @@ def prepare_data_trajnetplusplus(path, subset='/train/'):
         ## Necessary modification of train scene to add filename
         scene = [(file, s_id, s) for s_id, s in reader.scenes()]
         print("[INF] File ",file," for ",subset)
-        all_scenes += scene
         for scene_i, (filename, scene_id, paths) in enumerate(scene):
             # Get the trajectories
-            raw_traj_data = trajnetplusplustools.Reader.paths_to_xy(paths)
-            # Index 0 is the pedestrian of interest
-            seq_pos_all.append(raw_traj_data[:,0,:])
-            # Displacements
-            ped_seq_rel = raw_traj_data[1:,0,:] - raw_traj_data[:-1,0,:]
-            seq_rel_all.append(ped_seq_rel)
+            raw_traj_abs = trajnetplusplustools.Reader.paths_to_xy(paths)
+            ped_traj_abs = raw_traj_abs[:,0,:]
+            # Keep the full trajectory of the pedestrian of interest (start at 0)
+            all_ped_traj_abs.append(ped_traj_abs)
+            # Displacements along the trajectories (start at 1)
+            ped_traj_rel = ped_traj_abs[1:,:] - ped_traj_abs[:-1,:]
+            all_ped_traj_rel.append(ped_traj_rel)
             # Orientations
-            theta_seq_data = np.expand_dims(np.arctan2(raw_traj_data[1:,0,1] - raw_traj_data[:-1,0,1],raw_traj_data[1:,0,0] - raw_traj_data[:-1,0,0]),axis=1)
-            seq_theta_all.append(theta_seq_data)
+            ped_traj_theta = np.expand_dims(np.arctan2(ped_traj_abs[1:,1]-ped_traj_abs[:-1,1],ped_traj_abs[1:,0]-ped_traj_abs[:-1,0]),axis=1)
+            all_ped_traj_theta.append(ped_traj_theta)
             # Neighbors
-            neighbor_paths = raw_traj_data[1:9,1:,:]
-            neighbor_paths = np.concatenate([np.ones([neighbor_paths.shape[0],neighbor_paths.shape[1],1]),neighbor_paths],axis=2)
-            neighbors_n    = neighbor_paths.shape[1]
+            neigbors_traj_abs = raw_traj_abs[1:1+parameters.obs_len,1:,:]
+            neigbors_traj_abs = np.concatenate([np.ones([neigbors_traj_abs.shape[0],neigbors_traj_abs.shape[1],1]),neigbors_traj_abs],axis=2)
+            neighbors_n    = neigbors_traj_abs.shape[1]
             if neighbors_n>neighbors_n_max:
                 neighbors_n_max = neighbors_n
-            seq_neighbors_all.append(neighbor_paths)
+            all_neigbors_traj_abs.append(neigbors_traj_abs)
             # Social interactions
             of_sim = OpticalFlowSimulator()
-            flow,vis_neigh,__ = of_sim.compute_opticalflow_seq(raw_traj_data[1:9,0,:],neighbor_paths[0:8,1:,:], None)
+            flow,vis_neigh,__ = of_sim.compute_opticalflow_seq(ped_traj_abs[1:1+parameters.obs_len,:],neigbors_traj_abs[0:parameters.obs_len,:,:], None)
             all_flow.append(flow)
             all_vis_neigh.append(vis_neigh)
 
-    seq_pos_all      = np.array(seq_pos_all)
-    seq_rel_all      = np.array(seq_rel_all)
-    seq_theta_all    = np.array(seq_theta_all)
-    all_flow         = np.array(all_flow)
-    all_vis_neigh    = np.array(all_vis_neigh)
-    for i in range(len(seq_neighbors_all)):
-        # TODO: avoid using 3 dimensions
-        tmp  =np.NaN*np.ones([seq_neighbors_all[i].shape[0],neighbors_n_max,3])
-        tmp[:,:seq_neighbors_all[i].shape[1],:]=seq_neighbors_all[i]
-        seq_neighbors_all[i]=tmp
-    seq_neighbors_all=  np.array(seq_neighbors_all)
-    print("[INF] Total trajectories: ",seq_pos_all.shape[0])
+    all_ped_traj_abs  = np.array(all_ped_traj_abs)
+    all_ped_traj_rel  = np.array(all_ped_traj_rel)
+    all_ped_traj_theta= np.array(all_ped_traj_theta)
+    all_flow          = np.array(all_flow)
+    all_vis_neigh     = np.array(all_vis_neigh)
+    for i in range(len(all_neigbors_traj_abs)):
+        # TODO: avoid using 3 dimensions?
+        tmp  =np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
+        tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
+        all_neigbors_traj_abs[i]=tmp
+    all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs)
+    print("[INF] Total trajectories: ",all_ped_traj_abs.shape[0])
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
-    obs_traj      = seq_pos_all[:, 1:9, :]
-    obs_traj_theta= seq_theta_all[:, 1:9, :]
-    pred_traj     = seq_pos_all[:, 9:, :]
-    obs_traj_rel  = seq_rel_all[:, :8, :]
-    pred_traj_rel = seq_rel_all[:, 8:, :]
-    neighbors_obs = seq_neighbors_all[:, :8, :]
+    obs_traj      = all_ped_traj_abs[:, 1:1+parameters.obs_len, :]
+    obs_traj_theta= all_ped_traj_theta[:, 1:1+parameters.obs_len, :]
+    pred_traj     = all_ped_traj_abs[:, 1+parameters.obs_len:, :]
+    obs_traj_rel  = all_ped_traj_rel[:, :parameters.obs_len, :]
+    pred_traj_rel = all_ped_traj_rel[:, parameters.obs_len:, :]
+    neighbors_obs = all_neigbors_traj_abs[:, :parameters.obs_len, :]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
@@ -122,20 +117,18 @@ def prepare_data_trajnetplusplus(path, subset='/train/'):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', default=25, type=int, help='number of epochs')
-    parser.add_argument('--save_every', default=5, type=int,help='frequency of saving model (in terms of epochs)')
-    parser.add_argument('--obs_length', default=9, type=int,help='observation length')
+    parser.add_argument('--obs_length', default=8, type=int,help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,help='prediction length')
-    parser.add_argument('--start_length', default=0, type=int,help='starting time step of encoding observation')
-    parser.add_argument('--batch_size', default=8, type=int)
-    parser.add_argument('--lr', default=1e-3, type=float,help='initial learning rate')
     parser.add_argument('--path', default='trajdata',help='glob expression for data files')
     args = parser.parse_args()
 
-
+    # Load the default parameters
+    experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False)
+    experiment_parameters.obs_len  = args.obs_length
+    experiment_parameters.pred_len = args.pred_length
     ## Prepare data
-    train_data = prepare_data_trajnetplusplus(args.path, subset='/train/')
-    val_data   = prepare_data_trajnetplusplus(args.path, subset='/val/')
+    train_data = prepare_data_trajnetplusplus(experiment_parameters,args.path, subset='/train/')
+    val_data   = prepare_data_trajnetplusplus(experiment_parameters,args.path, subset='/val/')
     print("[INF] Total number of training trajectories:",train_data["obs_traj"].shape[0])
     print("[INF] Total number of validation trajectories:",val_data["obs_traj"].shape[0])
 
