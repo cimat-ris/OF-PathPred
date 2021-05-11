@@ -30,7 +30,6 @@ def prepare_data(datasets_path, datasets_names, parameters):
     # Scan all the datasets
     for idx,dataset_name in enumerate(datasets_names):
         seq_neighbors_dataset= []
-        seq_ids_dataset      = []
         seq_pos_dataset      = []
         #TODO: avoid having the csv name here
         traj_data_path       = os.path.join(datasets_path+dataset_name, 'mundo/mun_pos.csv')
@@ -156,8 +155,6 @@ def prepare_data(datasets_path, datasets_names, parameters):
                 # For each tracked person
                 # we keep the list of all the frames in which it is present
                 frame_ids_seq_data[ped_count, :] = frame_ids[idx:idx+seq_len]
-                # List of persons TODO?
-                seq_ids_dataset.append(ped_id)
                 # Increment ped_count (persons )
                 ped_count += 1
 
