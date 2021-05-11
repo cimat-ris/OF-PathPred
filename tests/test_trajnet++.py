@@ -74,15 +74,15 @@ def prepare_data_trajnetplusplus(path, subset='/train/'):
             theta_seq_data = np.expand_dims(np.arctan2(raw_traj_data[1:,0,1] - raw_traj_data[:-1,0,1],raw_traj_data[1:,0,0] - raw_traj_data[:-1,0,0]),axis=1)
             seq_theta_all.append(theta_seq_data)
             # Neighbors
-            neighbor_paths = raw_traj_data[1:,1:,:]
-            neighbor_paths = np.concatenate([neighbor_paths,np.ones([neighbor_paths.shape[0],neighbor_paths.shape[1],1])],axis=2)
+            neighbor_paths = raw_traj_data[1:9,1:,:]
+            neighbor_paths = np.concatenate([np.ones([neighbor_paths.shape[0],neighbor_paths.shape[1],1]),neighbor_paths],axis=2)
             neighbors_n    = neighbor_paths.shape[1]
             if neighbors_n>neighbors_n_max:
                 neighbors_n_max = neighbors_n
             seq_neighbors_all.append(neighbor_paths)
             # Social interactions
             of_sim = OpticalFlowSimulator()
-            flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_seq(raw_traj_data[1:9,0,:],neighbor_paths[0:8], None)
+            flow,vis_neigh,__ = of_sim.compute_opticalflow_seq(raw_traj_data[1:9,0,:],neighbor_paths[0:8,1:,:], None)
             all_flow.append(flow)
             all_vis_neigh.append(vis_neigh)
 
@@ -106,7 +106,7 @@ def prepare_data_trajnetplusplus(path, subset='/train/'):
     pred_traj     = seq_pos_all[:, 9:, :]
     obs_traj_rel  = seq_rel_all[:, :8, :]
     pred_traj_rel = seq_rel_all[:, 8:, :]
-    neighbors_obs = seq_neighbors_all[:, 1:9, :]
+    neighbors_obs = seq_neighbors_all[:, :8, :]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,

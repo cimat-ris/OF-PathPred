@@ -75,9 +75,10 @@ class OpticalFlowSimulator(object):
             for neighbor in neighbors_trajectory[seq_pos]:
                 if neighbor[0]>0:
                     plt.plot(neighbor[1],neighbor[2],color='green',marker='o',markersize=10)
-                    for neighbor_prev in neighbors_trajectory[seq_pos-1]:
-                        if neighbor_prev[0]==neighbor[0]:
-                            plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
+                    # TODO: broken
+                    #for neighbor_prev in neighbors_trajectory[seq_pos-1]:
+                    #    if (not np.isnan(neighbor_prev[1])) and (not np.isnan(neighbor[1])):
+                    #        plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
@@ -240,7 +241,7 @@ class OpticalFlowSimulator(object):
 
     """
         Receives:
-            obs_traj: [t, obs_len, 2] tensor (trajectories of interest)
+            obs_traj: [obs_len, 2] tensor (trajectories of interest)
             neighbors: [obs_len, mnp, 3] tensor (sequence of positions of all the neighbors
         Returns:
             The tensor of optical flow values [t, obs_len, 64]
