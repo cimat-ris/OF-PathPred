@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../trajnet++/trajnetplusplustools')))
 import trajnetplusplustools
 
-def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_neighbors=False):
+def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_neighbors=True):
     """ Prepares the train/val scenes and corresponding goals
     Parameters
     ----------
@@ -52,10 +52,12 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             # Neighbors
             neigbors_traj_abs = raw_traj_abs[1:1+parameters.obs_len,1:,:]
             neigbors_traj_abs = np.concatenate([np.ones([neigbors_traj_abs.shape[0],neigbors_traj_abs.shape[1],1]),neigbors_traj_abs],axis=2)
-            neighbors_n    = neigbors_traj_abs.shape[1]
-            if neighbors_n>neighbors_n_max:
-                 neighbors_n_max = neighbors_n
-            all_neigbors_traj_abs.append(neigbors_traj_abs)
+            if keep_neighbors:
+                neighbors_n    = neigbors_traj_abs.shape[1]
+                if neighbors_n>neighbors_n_max:
+                    neighbors_n_max = neighbors_n
+                all_neigbors_traj_abs.append(neigbors_traj_abs)
+            # Optical flow
             flow,vis_neigh,__ = of_sim.compute_opticalflow_seq(ped_traj_abs[1:1+parameters.obs_len,:],neigbors_traj_abs[0:parameters.obs_len,:,:], None)
             all_flows.append(flow)
             all_visible_neighbors.append(vis_neigh)
@@ -65,12 +67,13 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
     all_ped_traj_theta   = np.array(all_ped_traj_theta,dtype='float16')
     all_flows            = np.array(all_flows,dtype='float16')
     all_visible_neighbors= np.array(all_visible_neighbors,dtype='float16')
-    for i in range(len(all_neigbors_traj_abs)):
-        # TODO: avoid using 3 dimensions?
-        tmp=np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
-        tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
-        all_neigbors_traj_abs[i]=tmp
-    all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs,dtype='float16')
+    if keep_neighbors:
+        for i in range(len(all_neigbors_traj_abs)):
+            # TODO: avoid using 3 dimensions?
+            tmp=np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
+            tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
+            all_neigbors_traj_abs[i]=tmp
+        all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs,dtype='float16')
     print("[INF] Total trajectories: ",all_ped_traj_abs.shape[0])
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
@@ -80,18 +83,20 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
     pred_traj     = all_ped_traj_abs[:,1+parameters.obs_len:,:]
     obs_traj_rel  = all_ped_traj_rel[:,:parameters.obs_len,:]
     pred_traj_rel = all_ped_traj_rel[:,parameters.obs_len:,:]
-    neighbors_obs = all_neigbors_traj_abs[:,:parameters.obs_len,:]
+    if keep_neighbors:
+        neighbors_obs = all_neigbors_traj_abs[:,:parameters.obs_len,:]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
         "obs_traj_rel": obs_traj_rel,
         "obs_traj_theta":obs_traj_theta,
-        "pred_traj": pred_traj,
-        "pred_traj_rel": pred_traj_rel,
-        "obs_neighbors": neighbors_obs,
         "obs_optical_flow": all_flows,
-        "obs_visible_neighbors": all_visible_neighbors
+        "obs_visible_neighbors": all_visible_neighbors,
+        "pred_traj": pred_traj,
+        "pred_traj_rel": pred_traj_rel
     }
+    if keep_neighbors:
+        data["obs_neighbors"]        = neighbors_obs
     return data
 
 def prepare_data(datasets_path, datasets_names, parameters):
