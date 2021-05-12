@@ -24,7 +24,7 @@ import logging
 import socket
 
 
-def prepare_data_trajnetplusplus(parameters,path, subset='/train/'):
+def prepare_data_trajnetplusplus(parameters,path):
     """ Prepares the train/val scenes and corresponding goals
     Parameters
     ----------
@@ -32,8 +32,6 @@ def prepare_data_trajnetplusplus(parameters,path, subset='/train/'):
         Defines the prediction experiment parameters.
     path:
         Path to the dataset (set of json files)
-    subset: String ['/train/', '/val/']
-        Determines the subset of data to be processed.
 
     Returns
     -------
@@ -44,18 +42,18 @@ def prepare_data_trajnetplusplus(parameters,path, subset='/train/'):
     all_ped_traj_rel      = []
     all_ped_traj_theta    = []
     all_neigbors_traj_abs = []
-    all_flow          = []
-    all_vis_neigh     = []
+    all_flows             = []
+    all_visible_neighbors = []
     ## List file names
-    files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
+    files = [f.split('.')[-2] for f in os.listdir(path) if f.endswith('.ndjson')]
 
     neighbors_n_max = 0
     ## Iterate over file names
     for file in files:
-        reader = trajnetplusplustools.Reader(path + subset + file + '.ndjson', scene_type='paths')
+        reader = trajnetplusplustools.Reader(path + file + '.ndjson', scene_type='paths')
         ## Necessary modification of train scene to add filename
         scene = [(file, s_id, s) for s_id, s in reader.scenes()]
-        print("[INF] File ",file," for ",subset)
+        print("[INF] File ",file)
         for scene_i, (filename, scene_id, paths) in enumerate(scene):
             # Get the trajectories
             raw_traj_abs = trajnetplusplustools.Reader.paths_to_xy(paths)
@@ -75,20 +73,20 @@ def prepare_data_trajnetplusplus(parameters,path, subset='/train/'):
             if neighbors_n>neighbors_n_max:
                 neighbors_n_max = neighbors_n
             all_neigbors_traj_abs.append(neigbors_traj_abs)
-            # Social interactions
+            # Optical flow
             of_sim = OpticalFlowSimulator()
             flow,vis_neigh,__ = of_sim.compute_opticalflow_seq(ped_traj_abs[1:1+parameters.obs_len,:],neigbors_traj_abs[0:parameters.obs_len,:,:], None)
-            all_flow.append(flow)
-            all_vis_neigh.append(vis_neigh)
+            all_flows.append(flow)
+            all_visible_neighbors.append(vis_neigh)
 
-    all_ped_traj_abs  = np.array(all_ped_traj_abs)
-    all_ped_traj_rel  = np.array(all_ped_traj_rel)
-    all_ped_traj_theta= np.array(all_ped_traj_theta)
-    all_flow          = np.array(all_flow)
-    all_vis_neigh     = np.array(all_vis_neigh)
+    all_ped_traj_abs     = np.array(all_ped_traj_abs)
+    all_ped_traj_rel     = np.array(all_ped_traj_rel)
+    all_ped_traj_theta   = np.array(all_ped_traj_theta)
+    all_flows            = np.array(all_flows)
+    all_visible_neighbors= np.array(all_visible_neighbors)
     for i in range(len(all_neigbors_traj_abs)):
         # TODO: avoid using 3 dimensions?
-        tmp  =np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
+        tmp=np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
         tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
         all_neigbors_traj_abs[i]=tmp
     all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs)
@@ -110,8 +108,8 @@ def prepare_data_trajnetplusplus(parameters,path, subset='/train/'):
         "pred_traj": pred_traj,
         "pred_traj_rel": pred_traj_rel,
         "obs_neighbors": neighbors_obs,
-        "obs_optical_flow": all_flow,
-        "obs_visible_neighbors": all_vis_neigh
+        "obs_optical_flow": all_flows,
+        "obs_visible_neighbors": all_visible_neighbors
     }
     return data
 
@@ -127,10 +125,8 @@ def main():
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     ## Prepare data
-    train_data = prepare_data_trajnetplusplus(experiment_parameters,args.path, subset='/train/')
-    val_data   = prepare_data_trajnetplusplus(experiment_parameters,args.path, subset='/val/')
+    train_data = prepare_data_trajnetplusplus(experiment_parameters,args.path)
     print("[INF] Total number of training trajectories:",train_data["obs_traj"].shape[0])
-    print("[INF] Total number of validation trajectories:",val_data["obs_traj"].shape[0])
 
     # Select a random sequence within this dataset
     idSample = random.sample(range(1,train_data["obs_traj"].shape[0]), 1)
