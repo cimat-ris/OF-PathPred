@@ -22,9 +22,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 import trajnetplusplustools
 import logging
 import socket
+import pickle
 
-
-def prepare_data_trajnetplusplus(parameters,path):
+def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters):
     """ Prepares the train/val scenes and corresponding goals
     Parameters
     ----------
@@ -44,16 +44,15 @@ def prepare_data_trajnetplusplus(parameters,path):
     all_neigbors_traj_abs = []
     all_flows             = []
     all_visible_neighbors = []
-    ## List file names
-    files = [f.split('.')[-2] for f in os.listdir(path) if f.endswith('.ndjson')]
-
-    neighbors_n_max = 0
+    neighbors_n_max       = 0
+    # Optical flow
+    of_sim = OpticalFlowSimulator()
     ## Iterate over file names
-    for file in files:
-        reader = trajnetplusplustools.Reader(path + file + '.ndjson', scene_type='paths')
+    for dataset_name in datasets_names:
+        reader = trajnetplusplustools.Reader(datasets_path + dataset_name + '.ndjson', scene_type='paths')
         ## Necessary modification of train scene to add filename
-        scene = [(file, s_id, s) for s_id, s in reader.scenes()]
-        print("[INF] File ",file)
+        scene = [(dataset_name, s_id, s) for s_id, s in reader.scenes()]
+        print("[INF] File",dataset_name,"with",len(scene),"scenes.")
         for scene_i, (filename, scene_id, paths) in enumerate(scene):
             # Get the trajectories
             raw_traj_abs = trajnetplusplustools.Reader.paths_to_xy(paths)
@@ -71,10 +70,8 @@ def prepare_data_trajnetplusplus(parameters,path):
             neigbors_traj_abs = np.concatenate([np.ones([neigbors_traj_abs.shape[0],neigbors_traj_abs.shape[1],1]),neigbors_traj_abs],axis=2)
             neighbors_n    = neigbors_traj_abs.shape[1]
             if neighbors_n>neighbors_n_max:
-                neighbors_n_max = neighbors_n
+                 neighbors_n_max = neighbors_n
             all_neigbors_traj_abs.append(neigbors_traj_abs)
-            # Optical flow
-            of_sim = OpticalFlowSimulator()
             flow,vis_neigh,__ = of_sim.compute_opticalflow_seq(ped_traj_abs[1:1+parameters.obs_len,:],neigbors_traj_abs[0:parameters.obs_len,:,:], None)
             all_flows.append(flow)
             all_visible_neighbors.append(vis_neigh)
@@ -94,12 +91,12 @@ def prepare_data_trajnetplusplus(parameters,path):
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
-    obs_traj      = all_ped_traj_abs[:, 1:1+parameters.obs_len, :]
-    obs_traj_theta= all_ped_traj_theta[:, 1:1+parameters.obs_len, :]
-    pred_traj     = all_ped_traj_abs[:, 1+parameters.obs_len:, :]
-    obs_traj_rel  = all_ped_traj_rel[:, :parameters.obs_len, :]
-    pred_traj_rel = all_ped_traj_rel[:, parameters.obs_len:, :]
-    neighbors_obs = all_neigbors_traj_abs[:, :parameters.obs_len, :]
+    obs_traj      = all_ped_traj_abs[:,1:1+parameters.obs_len,:]
+    obs_traj_theta= all_ped_traj_theta[:,1:1+parameters.obs_len,:]
+    pred_traj     = all_ped_traj_abs[:,1+parameters.obs_len:,:]
+    obs_traj_rel  = all_ped_traj_rel[:,:parameters.obs_len,:]
+    pred_traj_rel = all_ped_traj_rel[:,parameters.obs_len:,:]
+    neighbors_obs = all_neigbors_traj_abs[:,:parameters.obs_len,:]
     # Save all these data as a dictionary
     data = {
         "obs_traj": obs_traj,
@@ -118,16 +115,19 @@ def main():
     parser.add_argument('--obs_length', default=8, type=int,help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,help='prediction length')
     parser.add_argument('--path', default='trajdata',help='glob expression for data files')
-    args = parser.parse_args()
-
+    args     = parser.parse_args()
+    datasets = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack"]
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False)
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     ## Prepare data
-    train_data = prepare_data_trajnetplusplus(experiment_parameters,args.path)
+    train_data = prepare_data_trajnetplusplus(args.path,datasets,experiment_parameters)
     print("[INF] Total number of training trajectories:",train_data["obs_traj"].shape[0])
-
+    # Training dataset
+    pickle_out = open('test.pickle',"wb")
+    pickle.dump(train_data, pickle_out, protocol=2)
+    pickle_out.close()
     # Select a random sequence within this dataset
     idSample = random.sample(range(1,train_data["obs_traj"].shape[0]), 1)
     # The random sequence selected
