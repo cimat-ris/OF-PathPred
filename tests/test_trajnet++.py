@@ -76,17 +76,17 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters):
             all_flows.append(flow)
             all_visible_neighbors.append(vis_neigh)
 
-    all_ped_traj_abs     = np.array(all_ped_traj_abs)
-    all_ped_traj_rel     = np.array(all_ped_traj_rel)
-    all_ped_traj_theta   = np.array(all_ped_traj_theta)
-    all_flows            = np.array(all_flows)
-    all_visible_neighbors= np.array(all_visible_neighbors)
+    all_ped_traj_abs     = np.array(all_ped_traj_abs,dtype='float16')
+    all_ped_traj_rel     = np.array(all_ped_traj_rel,dtype='float16')
+    all_ped_traj_theta   = np.array(all_ped_traj_theta,dtype='float16')
+    all_flows            = np.array(all_flows,dtype='float16')
+    all_visible_neighbors= np.array(all_visible_neighbors,dtype='float16')
     for i in range(len(all_neigbors_traj_abs)):
         # TODO: avoid using 3 dimensions?
         tmp=np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
         tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
         all_neigbors_traj_abs[i]=tmp
-    all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs)
+    all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs,dtype='float16')
     print("[INF] Total trajectories: ",all_ped_traj_abs.shape[0])
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
@@ -116,7 +116,7 @@ def main():
     parser.add_argument('--pred_length', default=12, type=int,help='prediction length')
     parser.add_argument('--path', default='trajdata',help='glob expression for data files')
     args     = parser.parse_args()
-    datasets = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack"]
+    datasets = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06"]
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False)
     experiment_parameters.obs_len  = args.obs_length
