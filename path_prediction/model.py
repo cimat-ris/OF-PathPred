@@ -605,7 +605,7 @@ class TrajectoryEncoderDecoder():
             # Losses are accumulated here
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
-            # Sum over the samples, divided by the batch size
+            # Sum over the batches, divided by the batch size
             loss_value  += tf.reduce_sum(losses_at_min)/losses.shape[0]
             # TODO: tune this value in a more principled way?
             # L2 weight decay

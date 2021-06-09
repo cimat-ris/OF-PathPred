@@ -29,8 +29,6 @@ class Experiment_Parameters:
         self.delim        = ','
         self.output_representation = 'dxdy' #
 
-
-
 def relative_to_abs(rel_traj, start_pos):
     """Relative x,y to absolute x,y coordinates.
     Args:
