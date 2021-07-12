@@ -8,7 +8,6 @@ warnings.filterwarnings('ignore')
 import tensorflow as tf
 print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
-tf.logging.set_verbosity(tf.logging.ERROR)
 # Important imports
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -53,7 +52,7 @@ def main():
 
     # Load the dataset and perform the split
     idTest = args.dataset_id
-    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=False)
+    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=True)
 
     # Plot ramdomly a subset of the training data (spatial data only)
     show_training_samples = False
@@ -93,7 +92,6 @@ def main():
     checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         encoder=tj_enc_dec.enc,
                                         decoder=tj_enc_dec.dec,
-                                        enctodec=tj_enc_dec.enctodec,
                                         obs_classif=tj_enc_dec.obs_classif)
 
     # Training
