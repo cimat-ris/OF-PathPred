@@ -134,25 +134,6 @@ class TrajectoryDecoderInitializer(tf.Module):
             self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
                 activation=tf.keras.activations.relu,
                 name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
-        # Input layers
-        # TODO: maybe we could just use h? are both h,c necessary?
-        #input_shape      = (config.enc_hidden_size)
-        #self.input_h     = layers.Input(input_shape,name="trajectory_encoding_h")
-        #self.input_c     = layers.Input(input_shape,name="trajectory_encoding_c")
-        #if self.add_social:
-            #self.input_sh    = layers.Input(input_shape,name="social_encoding_h")
-            #self.input_sc    = layers.Input(input_shape,name="social_encoding_c")
-            #self.out         = self.call([[self.input_h,self.input_c],[self.input_sh,self.input_sc]])
-            # Call init again. This is a workaround for being able to use summary
-            #super(TrajectoryDecoderInitializer, self).__init__(
-            #inputs = [[self.input_h,self.input_c],[self.input_sh,self.input_sc]],
-            #outputs=self.out)
-        #else:
-            #self.out         = self.call([[self.input_h,self.input_c]])
-            # Call init again. This is a workaround for being able to use summary
-            #super(TrajectoryDecoderInitializer, self).__init__(
-            #        inputs = [self.input_h,self.input_c],
-            #        outputs=self.out)
 
     # Call to the decoder initializer
     def __call__(self, encoders_states, training=None):
@@ -179,3 +160,23 @@ class TrajectoryDecoderInitializer(tf.Module):
             decoder_init_c   = traj_encoder_states[1]-decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
         return decoder_init_states
+
+"""
+Observed trajectory classifier: during training, takes the observed trajectory and predict the class
+"""
+class ObservedTrajectoryClassifier(tf.Module):
+    def __init__(self, config):
+        super(ObservedTrajectoryClassifier, self).__init__(name="observed_trajectory_classification")
+        self.is_mc_dropout  = config.is_mc_dropout
+        self.output_var_dirs= config.output_var_dirs
+        self.output_samples = 2*config.output_var_dirs+1
+        input_observed_shape= (config.enc_hidden_size)
+        self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
+        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
+        self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
+
+    # Call to the classifier p(z|x,y)
+    def __call__(self, observed_trajectory_h, training=None):
+        # Linear embedding of the observed trajectories
+        x = self.dense_layer_observed(observed_trajectory_h)
+        return self.classification_layer(x)

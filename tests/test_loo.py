@@ -63,6 +63,7 @@ def main():
     # Model parameters
     model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
+    # 9 samples generated
     model_parameters.output_var_dirs= 4
     model_parameters.is_mc_dropout  = False
     model_parameters.initial_lr     = 0.03
@@ -91,8 +92,7 @@ def main():
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         encoder=tj_enc_dec.enc,
-                                        decoder=tj_enc_dec.dec,
-                                        obs_classif=tj_enc_dec.obs_classif)
+                                        decoder=tj_enc_dec.dec)
 
     # Training
     perform_training = True

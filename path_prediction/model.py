@@ -10,7 +10,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense
 from tensorflow.keras import models
 from path_prediction.traj_utils import relative_to_abs, vw_to_abs
-from path_prediction.modules import TrajectoryEncoder, SocialEncoder, FocalAttention,TrajectoryDecoderInitializer
+from path_prediction.modules import TrajectoryEncoder, SocialEncoder, FocalAttention,TrajectoryDecoderInitializer, ObservedTrajectoryClassifier
 
 class Model_Parameters(object):
     """Model parameters.
@@ -71,9 +71,11 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         soc_shape  = (config.obs_len,config.flow_size)
         self.input_layer_traj = layers.Input(obs_shape,name="observed_trajectory")
         # Encoding: Positions
-        self.traj_enc     = TrajectoryEncoder(config)
+        self.traj_enc         = TrajectoryEncoder(config)
         # Encoder to decoder initialization
-        self.enctodec = TrajectoryDecoderInitializer(config)
+        self.enctodec         = TrajectoryDecoderInitializer(config)
+        # Classifier
+        self.obs_classif      = ObservedTrajectoryClassifier(config)
 
         # We use the social features only when the two flags (add_social and add_attention are on)
         if (self.add_attention and self.add_social):
@@ -86,7 +88,6 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         else:
             # Get output layer now with `call` method
             self.out = self.call([self.input_layer_traj])
-
 
         # Call init again. This is a workaround for being able to use summary()
         super(TrajectoryAndContextEncoder, self).__init__(
@@ -124,15 +125,17 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             soc_h_seq       = outputs[0]
             # Get soc_h_seq into to the list enc_h_list
             enc_h_list.append(soc_h_seq)
-        # Pack all observed hidden states (lists) from all M features into a tensor
+        # Pack all observed hidden states (lists) from all M features into a context tensor
         # The final size should be [N,M,T_obs,h_dim]
-        obs_enc_h          = tf.stack(enc_h_list, axis=1)
+        context          = tf.stack(enc_h_list, axis=1)
+        # Apply classifier to guess what is th most probable output
+        obs_classif_logits = self.obs_classif(traj_last_states[0][0])
         if self.add_social:
             #return traj_last_states,soc_last_states, obs_enc_h
-            return self.enctodec([traj_last_states[0],soc_last_states])
+            return self.enctodec([traj_last_states[0],soc_last_states]), context, obs_classif_logits
         else:
             #return traj_last_states, obs_enc_h
-            return self.enctodec([traj_last_states[0]]), obs_enc_h
+            return self.enctodec([traj_last_states[0]]), context, obs_classif_logits
 
 """ Trajectory decoder.
     Generates samples for the next position
@@ -235,65 +238,6 @@ class TrajectoryDecoder(tf.keras.Model):
         decoder_out_xy = self.h_to_xy(decoder_latent) + dec_input
         return decoder_out_xy, cur_states, Wft
 
-""" Trajectory classifier: during training, takes the observed trajectory and the prediction
-    and predict
-"""
-class FullTrajectoryClassifier(tf.keras.Model):
-    def __init__(self, config):
-        super(FullTrajectoryClassifier, self).__init__(name="full_trajectory_classification")
-        self.is_mc_dropout  = config.is_mc_dropout
-        self.output_var_dirs= config.output_var_dirs
-        self.output_samples = 2*config.output_var_dirs+1
-        input_observed_shape= (config.enc_hidden_size)
-        input_final_shape   = (config.P)
-        # Inputs: hidden vector corresponding to the observations
-        self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
-        # Inputs: overall displacement along the second part of the trajectory
-        self.input_final    = keras.Input(shape=input_final_shape, name="final_displacement")
-        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
-        self.dense_layer_final    = tf.keras.layers.Dense(64, activation="relu", name="final_dense")
-        self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
-        # Get output layer now with `call` method
-        self.out = self.call(self.input_observed,self.input_final)
-        # Call init again. This is a workaround for being able to use summary
-        super(FullTrajectoryClassifier, self).__init__(
-                    inputs= [self.input_observed,self.input_final],
-                    outputs=self.out)
-
-    # Call to the classifier p(z|x,y)
-    def call(self, observed_trajectory_h, final_position, training=None):
-        # Linear embedding of the observed trajectories
-        x = self.dense_layer_observed(observed_trajectory_h)
-        y = self.dense_layer_final(final_position)
-        interm = tf.concat([x,y], axis=1)
-        return self.classification_layer(interm)
-
-""" Observed trajectory classifier: during training, takes the observed trajectory and predict the class
-"""
-class ObservedTrajectoryClassifier(tf.keras.Model):
-    def __init__(self, config):
-        super(ObservedTrajectoryClassifier, self).__init__(name="observed_trajectory_classification")
-        self.is_mc_dropout  = config.is_mc_dropout
-        self.output_var_dirs= config.output_var_dirs
-        self.output_samples = 2*config.output_var_dirs+1
-        input_observed_shape= (config.enc_hidden_size)
-        self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
-        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
-        self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
-        # Get output layer now with `call` method
-        self.out = self.call(self.input_observed)
-        # Call init again. This is a workaround for being able to use summary
-        super(ObservedTrajectoryClassifier, self).__init__(
-                    inputs= self.input_observed,
-                    outputs=self.out)
-
-    # Call to the classifier p(z|x,y)
-    def call(self, observed_trajectory_h, training=None):
-        # Linear embedding of the observed trajectories
-        x = self.dense_layer_observed(observed_trajectory_h)
-        return self.classification_layer(x)
-
-
 # The main class
 class TrajectoryEncoderDecoder():
     # Constructor
@@ -311,8 +255,6 @@ class TrajectoryEncoderDecoder():
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
         # Classifier p(z|x)
-        self.obs_classif = ObservedTrajectoryClassifier(config)
-        self.obs_classif.summary()
         # Decoder
         self.dec = TrajectoryDecoder(config)
         self.dec.summary()
@@ -338,11 +280,9 @@ class TrajectoryEncoderDecoder():
     def save_tmp(self):
         self.enc.save_weights('tmp_enc.h5')
         self.dec.save_weights('tmp_dec.h5')
-        self.obs_classif.save_weights('tmp_obs_classif.h5')
     def load_tmp(self):
         self.enc.load_weights('tmp_enc.h5')
         self.dec.load_weights('tmp_dec.h5')
-        self.obs_classif.load_weights('tmp_obs_classif.h5')
 
     # Single training/testing step, for one batch: batch_inputs are the observations, batch_targets are the targets
     def batch_step(self, batch_inputs, batch_targets, metrics, training=True):
@@ -357,7 +297,7 @@ class TrajectoryEncoderDecoder():
         with tf.GradientTape() as g:
             #########################################################################################
             # Encoding is done here
-            traj_cur_states_set, context = self.enc(batch_inputs, training=training)
+            traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=training)
             #########################################################################################
             # Decoding is done here
             # Iterate over these possible initializing states
@@ -424,7 +364,7 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables to be trained
-        variables = self.obs_classif.trainable_weights
+        # variables = self.obs_classif.trainable_weights
         # Open a GradientTape to record the operations run
         # during the forward pass, which enables auto-differentiation.
         # The total loss will be accumulated on this variable
@@ -493,10 +433,10 @@ class TrajectoryEncoderDecoder():
         # Last observed position from the trajectories
         traj_obs_last     = traj_obs_inputs[:, -1]
         # Feed-forward start here
-        traj_cur_states_set, context = self.enc(batch_inputs, training=False)
+        traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=False)
         # Apply the classifier to the encoding of the observed part
         # TODO
-        # obs_classif_logits = self.obs_classif(traj_last_states[0][0])
+        #  obs_classif_logits = self.obs_classif(traj_last_states[0][0])
 
         # This will store the trajectories and the attention weights
         traj_pred_set  = []
