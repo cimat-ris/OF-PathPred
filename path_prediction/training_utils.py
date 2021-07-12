@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow import keras
 import numpy as np
 import math
+import os
 from tqdm import tqdm
 from path_prediction.batches_data import get_batch
 from path_prediction.testing_utils import evaluation_minadefde

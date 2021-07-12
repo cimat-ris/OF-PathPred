@@ -1,13 +1,6 @@
 # Imports
 import argparse
 import sys,os
-''' TF_CPP_MIN_LOG_LEVEL
-0 = all messages are logged (default behavior)
-1 = INFO messages are not printed
-2 = INFO and WARNING messages are not printed
-3 = INFO, WARNING, and ERROR messages are not printed
-'''
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
 import warnings
@@ -15,6 +8,7 @@ warnings.filterwarnings('ignore')
 import tensorflow as tf
 print('[INF] Tensorflow version: ',tf.__version__)
 tf.test.gpu_device_name()
+tf.logging.set_verbosity(tf.logging.ERROR)
 # Important imports
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -36,15 +30,13 @@ def main():
     parser.add_argument('--path', default='datasets/',
                         help='glob expression for data files')
     parser.add_argument('--obstacles', dest='obstacles', action='store_true',help='includes the obstacles in the optical flow')
-    parser.add_argument('--no-obstacles', dest='obstacles', action='store_false',help='does not include the obstacles in the optical flow')
-    parser.set_defaults(obstacles=True)
+    parser.set_defaults(obstacles=False)
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--epochs', '--e',
                     type=int, default=35,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
-
     args = parser.parse_args()
 
     physical_devices = tf.config.list_physical_devices('GPU')
