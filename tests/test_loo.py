@@ -15,7 +15,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
 from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.model import TrajectoryEncoderDecoder, Model_Parameters
+from path_prediction.model import TrajectoryEncoderDecoder, ModelParameters
 from path_prediction.plot_utils import plot_training_data,plot_training_results
 import path_prediction.batches_data
 from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
@@ -61,7 +61,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = Model_Parameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation,rnn_type=args.rnn)
+    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,output_representation=experiment_parameters.output_representation,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 4
