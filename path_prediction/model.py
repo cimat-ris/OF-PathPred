@@ -12,25 +12,18 @@ from tensorflow.keras import models
 from path_prediction.traj_utils import relative_to_abs, vw_to_abs
 from path_prediction.modules import TrajectoryEncoder, SocialEncoder, FocalAttention,TrajectoryDecoderInitializer, ObservedTrajectoryClassifier
 
-class Model_Parameters(object):
-    """Model parameters.
-    """
-    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy', rnn_type='lstm'):
+"""
+Basic Model parameters.
+"""
+class BasicRNNModelParameters(object):
+    def __init__(self, rnn_type='lstm'):
         # -----------------
         # Observation/prediction lengths
         self.obs_len        = 8
         self.pred_len       = 12
         self.seq_len        = self.obs_len + self.pred_len
-        self.add_kp         = add_kp
-        self.add_social     = add_social
-        self.add_attention  = add_attention
-        self.stack_rnn_size = 2
-        self.output_representation = output_representation
-        self.output_var_dirs= 0
-        # Key points
-        self.kp_size        = 18
-        # Optical flow
-        self.flow_size      = 64
+        # Rnn type
+        self.rnn_type       = rnn_type
         # For training
         self.num_epochs     = 35
         self.batch_size     = 256  # batch size 512
@@ -41,15 +34,124 @@ class Model_Parameters(object):
         self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
         self.emb_size       = 128  # Embedding size
         self.dropout_rate   = 0.3  # Dropout rate during training
-
         self.activation_func= tf.nn.tanh
-        self.multi_decoder  = False
         self.optimizer      = 'adam'
         self.initial_lr     = 0.01
+
+"""
+Model parameters.
+"""
+class ModelParameters(BasicRNNModelParameters):
+    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy', rnn_type='lstm'):
+        super(ModelParameters, self).__init__(rnn_type)
+        # -----------------
+        self.add_kp         = add_kp
+        self.add_social     = add_social
+        self.add_attention  = add_attention
+        self.stack_rnn_size = 2
+        self.output_representation = output_representation
+        self.output_var_dirs= 0
+        # Key points
+        self.kp_size        = 18
+        # Optical flow
+        self.flow_size      = 64
         # MC dropout
         self.is_mc_dropout         = False
         self.mc_samples            = 20
         self.rnn_type              = rnn_type
+
+
+class BasicRNNModel(keras.Model):
+    def __init__(self, in_size, embedding_dim, hidden_dim, output_size):
+        super(BasicRNNModel, self).__init__()
+        # Layers
+        self.embedding = tf.keras.layers.Dense(embedding_dim, activation=tf.nn.tanh)
+        self.lstm = tf.keras.layers.LSTM(hidden_dim, return_sequences=True, return_state=True)
+        # Activation = None (probar) , tf.keras.activations.relu
+        self.decoder = tf.keras.layers.Dense(output_size,  activation=None)
+        # loss = log(cosh()), log coseno hiperbolico
+        self.loss_fun = tf.keras.metrics.mean_squared_error
+
+    def call(self, X, y, training=False):
+
+        # Copy data
+        x = X
+
+        # Last position traj
+        x_last = tf.reshape(X[:,-1,:], (len(x), 1, -1))
+
+        # Layers
+        emb = self.embedding(X) # encoder for batch
+        lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
+
+        loss = 0
+        pred = []
+        for i, target in enumerate(tf.transpose(y, perm=[1, 0, 2])):
+            emb_last = self.embedding(x_last) # encoder for last position
+            lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
+
+            # Decoder and Prediction
+            dec = self.decoder(hn2)     # shape(256, 2)
+            #dec = tf.reshape(dec, (len(dec), 1, -1))
+            dec = tf.expand_dims(dec, 1)
+
+            #print("dec:", dec)
+            #print("dec shape: ", dec.shape)
+            t_pred = dec + x_last    #(256, 1, 2)
+            pred.append(t_pred)
+
+            # Calculate of loss
+            #print("target original shape: ", target.shape)
+            #print("final shapes ", t_pred.shape, " vs ", tf.reshape(target, (len(target), 1, -1)).shape)
+
+            loss += self.loss_fun(t_pred, tf.reshape(target, (len(target), 1, -1)))
+
+            #print("loss: ", loss)
+            #print("loss shape: ", loss.shape)
+
+            # Update the last position
+            if training:
+                x_last = tf.reshape(target, (len(target), 1, -1))
+            else:
+                x_last = t_pred
+            hn1 = hn2
+            cn1 = cn2
+
+        # Concatenate the predictions and return
+        return loss
+
+    def predict(self, X, dim_pred= 1):
+
+        # Copy data
+        x = X
+        # Last position traj
+        x_last = tf.reshape(X[:,-1,:], (len(x), 1, -1))
+
+        # Layers
+        emb = self.embedding(X) # encoder for batch
+        lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
+
+        loss = 0
+        pred = []
+        for i in range(dim_pred):
+            emb_last = self.embedding(x_last) # encoder for last position
+            lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
+
+            # Decoder and Prediction
+            dec = self.decoder(hn2)
+            dec = tf.expand_dims(dec, 1)
+
+            t_pred = dec + x_last
+            pred.append(t_pred)
+
+            # Update the last position
+            x_last = t_pred
+            hn1 = hn2
+            cn1 = cn2
+
+
+        # Concatenate the predictions and return
+        return tf.concat(pred, 1).numpy()
 
 ################################################################################
 ############# Encoding
@@ -332,7 +434,9 @@ class TrajectoryEncoderDecoder():
             losses          = tf.stack(losses, axis=1)
             closest_samples = tf.math.argmin(losses, axis=1)
             #########################################################################################
-
+            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
+            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
+            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
             #########################################################################################
             # Losses are accumulated here
             # Get the vector of losses at the minimal value for each sample of the batch
@@ -358,74 +462,6 @@ class TrajectoryEncoderDecoder():
         batch_loss = (loss_value / int(batch_targets.shape[1]))
         return batch_loss
 
-    # Single training/testing step, for one batch: training the classifier
-    def batch_step_classifier(self, batch_inputs, batch_targets, metrics, training=True):
-        traj_obs_inputs = batch_inputs[0]
-        # Last observed position from the trajectory
-        traj_obs_last = traj_obs_inputs[:, -1]
-        # Variables to be trained
-        # variables = self.obs_classif.trainable_weights
-        # Open a GradientTape to record the operations run
-        # during the forward pass, which enables auto-differentiation.
-        # The total loss will be accumulated on this variable
-        loss_value = 0
-        with tf.GradientTape() as g:
-            #########################################################################################
-            # Encoding is done here
-            # Apply trajectory and context encoding
-            traj_cur_states_set, context = self.enc(batch_inputs, training=False)
-            # Apply the classifiers
-            # obs_classif_logits = self.obs_classif(traj_last_states[0][0])
-            #########################################################################################
-            # Decoding is done here
-            # Iterate over these possible initializing states
-            losses = []
-            for k in range(self.output_samples):
-                # Sample-wise loss values
-                loss_values         = 0
-                # Decoder state is initialized here
-                traj_cur_states     = traj_cur_states_set[k]
-                # The first input to the decoder is the last observed position [Nx1xK]
-                dec_input = tf.expand_dims(traj_obs_last, 1)
-                # Iterate over timesteps
-                for t in range(0, batch_targets.shape[1]):
-                    # ------------------------ xy decoder--------------------------------------
-                    # passing enc_output to the decoder
-                    t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=training)
-                    t_target               = tf.expand_dims(batch_targets[:, t], 1)
-                    # Loss
-                    loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
-                    # Next input is the last predicted position
-                    dec_input = t_pred
-                    # Update the states
-                    traj_cur_states = dec_states
-                # Keep loss values for all self.output_samples cases
-                losses.append(tf.squeeze(loss_values,axis=1))
-            # Stack into a tensor batch_size x self.output_samples
-            losses          = tf.stack(losses, axis=1)
-            closest_samples = tf.math.argmin(losses, axis=1)
-            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
-            #########################################################################################
-
-            #########################################################################################
-            # Losses are accumulated here
-            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
-            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
-            # TODO: tune this value in a more principled way?
-            # L2 weight decay
-            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.0008
-            #########################################################################################
-
-
-        if training==True:
-            # Get the gradients
-            grads = g.gradient(loss_value, variables)
-            # Run one step of gradient descent
-            self.optimizer.apply_gradients(zip(grads, variables))
-        # Average loss over the predicted times
-        batch_loss = (loss_value / int(batch_targets.shape[1]))
-        return batch_loss
 
     # Prediction (testing) for one batch
     def predict(self, batch_inputs, n_steps):
@@ -434,10 +470,6 @@ class TrajectoryEncoderDecoder():
         traj_obs_last     = traj_obs_inputs[:, -1]
         # Feed-forward start here
         traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=False)
-        # Apply the classifier to the encoding of the observed part
-        # TODO
-        #  obs_classif_logits = self.obs_classif(traj_last_states[0][0])
-
         # This will store the trajectories and the attention weights
         traj_pred_set  = []
         att_weights_set= []
