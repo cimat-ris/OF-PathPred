@@ -1,0 +1,186 @@
+import tensorflow as tf
+from tensorflow import keras
+import numpy as np
+import math
+from tqdm import tqdm
+from batches_data import get_batch
+from testing_utils import evaluation_minadefde
+
+import pickle # xavi
+
+# Parameters
+# The only datasets that can use add_social are those of ETH/UCY
+# The only datasets that can use add_kp are PETS2009-S2L1, TOWN-CENTRE
+class Experiment_Parameters:
+    def __init__(self,add_social=False,add_kp=False,obstacles=False):
+        # Maximum number of persons in a frame
+        self.person_max =70
+        # Observation length (trajlet size)
+        self.obs_len    = 8
+        # Prediction length
+        self.pred_len   = 12
+        # Flag to consider social interactions
+        self.add_social = add_social
+        # Number of key points
+        self.kp_num     = 18
+        # Key point flag
+        self.add_kp     = add_kp
+        # Obstacles flag
+        self.obstacles    = obstacles
+        self.intersection = False
+        self.delim        = ','
+        self.output_representation = 'dxdy' #
+
+
+
+def relative_to_abs(rel_traj, start_pos):
+    """Relative x,y to absolute x,y coordinates.
+    Args:
+    rel_traj: numpy array [T,2]
+    start_pos: [2]
+    Returns:
+    abs_traj: [T,2]
+    """
+    # batch, seq_len, 2
+    # the relative xy cumulated across time first
+    displacement = np.cumsum(rel_traj, axis=0)
+    abs_traj = displacement + np.array([start_pos])  # [1,2]
+    return abs_traj
+
+#---------------------------------------------- xavi
+epochs = 36
+beta = 0.50
+datasize = 15481
+batch_size = 256 #64 # self.batch_size = 256  # batch size 512
+num_batch = datasize//batch_size+1 # num_batches_per_epoch = 61
+lr_0 = 0.5 # initial lr
+M = 4 # number of cycles
+T = epochs*num_batch # total number of iterations
+
+alpha = 1
+temperature = 1./datasize
+
+def adjust_learning_rate(model, epoch, batch_idx):
+    rcounter = epoch*num_batch+batch_idx
+    cos_inner = np.pi * (rcounter % (T // M))
+    cos_inner /= T // M
+    cos_out = np.cos(cos_inner) + 1
+    lr = 0.5*cos_out*lr_0
+
+    model.optimizer.lr = lr
+    return lr
+    
+def noise_loss(model,lr,alpha):
+    noise_loss = 0.0
+    noise_std = (2/lr*alpha)**0.5
+    
+    variables = model.enc.trainable_weights + model.enctodec.trainable_weights + model.dec.trainable_weights
+    for var in variables:
+        means = tf.zeros(var.shape)
+        noise_loss += tf.reduce_sum(var * tf.random.normal(means.shape,mean=means, stddev = noise_std))
+    return noise_loss
+#---------------------------------------------- 
+
+# Training loop
+def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix):
+    train_loss_results   = []
+    val_loss_results     = []
+    val_metrics_results  = {'mADE': [], 'mFDE': [], 'obs_classif_accuracy': []}
+    train_metrics_results= {'obs_classif_accuracy': []}
+    best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
+    train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+    val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+    train_weights = [] # xavi
+    # TODO: Shuffle
+
+    # Training the main system
+    for epoch in range(config.num_epochs):
+        print('Epoch {}.'.format(epoch + 1))
+        
+        # Cycle over batches
+        total_loss = 0
+        #num_batches_per_epoch = train_data.get_num_batches()
+        #for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+        num_batches_per_epoch= len(list(train_data)) # .cardinality().numpy()
+        
+        batch_idx = 0 # add xavi
+        for batch in tqdm(train_data,ascii = True):
+            #print(batch['obs_traj'].shape)
+            #---------------------------------------------- xavi
+            # Actualizamos el learning rate
+            lr = adjust_learning_rate(model, epoch, batch_idx)
+            if ((batch_idx+epoch*num_batch) % (T//M)) >= ((T//M)*beta):
+                loss_noise = noise_loss(model,lr,alpha)*(temperature/datasize)**.5
+            else:
+                loss_noise = 0
+            #----------------------------------------------
+
+            # Format the data
+            batch_inputs, batch_targets = get_batch(batch, config)
+            # Run the forward pass of the layer.
+            # Compute the loss value for this minibatch.
+            #batch_loss = model.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
+            batch_loss = model.batch_step(batch_inputs, batch_targets, train_metrics, training=True,
+                                                                                loss_noise=loss_noise) # Modify xavi
+
+            # save weights for cycle
+            if ((batch_idx+epoch*num_batch)%(T//M)) >= ((T//M)*beta):
+                if ((batch_idx+epoch*num_batch)%(T//M)) >= ((T//M)-5): # save last 5
+                    train_weights.append(( (batch_idx+epoch*num_batch)//(T//M) , [model.enc.get_weights(), model.enctodec.get_weights(), model.dec.get_weights()]))
+
+            print("loss for trajectory: ", batch_loss, loss_noise)
+            total_loss+= batch_loss
+            batch_idx += 1 # add xavi
+
+        # End epoch
+        total_loss = total_loss / num_batches_per_epoch
+        train_loss_results.append(total_loss)
+
+        # Saving (checkpoint) the model every 2 epochs
+        if (epoch + 1) % 2 == 0:
+            checkpoint.save(file_prefix = checkpoint_prefix)
+
+        # Display information about the current state of the training loop
+        print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+        # print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
+        train_metrics['obs_classif_sca'].reset_states()
+
+        if config.use_validation:
+            # Compute validation loss
+            total_loss = 0
+            # num_batches_per_epoch = val_data.get_num_batches()
+            # for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
+            num_batches_per_epoch=  len(list(val_data)) # .cardinality().numpy()
+            for idx,batch in tqdm(enumerate(val_data),ascii = True):
+                # Format the data
+                batch_inputs, batch_targets = get_batch(batch, config)
+                batch_loss                  = model.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
+                total_loss+= batch_loss
+            # End epoch
+            total_loss = total_loss / num_batches_per_epoch
+            print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
+            val_loss_results.append(total_loss)
+            # Evaluate ADE, FDE metrics on validation data
+            val_quantitative_metrics = evaluation_minadefde(model,val_data,config)
+            val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
+            val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
+            if val_quantitative_metrics["mADE"]< best['mADE']:
+                best['mADE'] = val_quantitative_metrics["mADE"]
+                best['mFDE'] = val_quantitative_metrics["mFDE"]
+                best["patchId"]= idx
+                # Save the best model so far
+                checkpoint.write(checkpoint_prefix+'-best')
+            print('[TRN] Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+    
+    #print(len(train_weights))
+    #print(train_weights)
+    #print(train_weights[59][3][6])
+    #print(train_weights[60][3][6])
+    #print(train_weights[58][3][6])
+    #print(train_weights[57][3][6])
+    # Save the weights of cSG-MCMC
+    pickle_out = open('training_cSGMCMC_weights.pickle',"wb") # xavi
+    pickle.dump(train_weights, pickle_out, protocol=2)
+    pickle_out.close()
+
+    return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
