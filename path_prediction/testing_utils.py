@@ -103,7 +103,10 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
     # Cycle over the trajectories of the bach
     for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
         this_pred_out_abs_set = []
-        for k in range(model.output_samples):
+        nsamples = 1
+        if hasattr(model,"output_samples"):
+            nsamples = model.output_samples
+        for k in range(nsamples):
             # Conserve the x,y coordinates
             if (pred_traj[i,k].shape[0]==config.pred_len):
                 this_pred_out     = pred_traj[i,k,:, :2]
@@ -156,20 +159,20 @@ def evaluation_minadefde(model,test_data,config):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, config)
         pred_out,__                 = model.predict(batch_inputs,batch_targets.shape[1])
-        # this_actual_batch_size      = batch["original_batch_size"]
-        d = []
+        d                           = []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             normin = 1000.0
             diffmin= None
-            for k in range(model.output_samples):
+            if hasattr(model,'output_samples'):
+                nsamples = model.output_samples
+            else:
+                nsamples = 1
+            for k in range(nsamples):
                 # Conserve the x,y coordinates of the kth trajectory
                 this_pred_out     = pred_out[i,k,:, :2] #[pred,2]
                 # Convert it to absolute (starting from the last observed position)
-                if config.output_representation=='dxdy':
-                    this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                else:
-                    this_pred_out_abs = vw_to_abs(this_pred_out, obs_traj_gt[-1])
+                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
                 # Check shape is OK
                 assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
                 # Error for ade/fde

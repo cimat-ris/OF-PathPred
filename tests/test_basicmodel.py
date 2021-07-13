@@ -20,8 +20,8 @@ from path_prediction.model import BasicRNNModel, BasicRNNModelParameters
 from path_prediction.plot_utils import plot_training_data,plot_training_results
 import path_prediction.batches_data
 from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
-from path_prediction.training_utils import training_loop
 from path_prediction.training_utils import Experiment_Parameters
+from path_prediction.testing_utils import evaluation_minadefde
 
 
 def main():
@@ -76,48 +76,55 @@ def main():
     batched_val_data   = val_data.batch(model_parameters.batch_size)
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
-
     # Model
     model     = BasicRNNModel(model_parameters)
-    optimizer = tf.keras.optimizers.SGD()
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
 
     # Training the Model
-    epochs = 25
+    train_loss_results = []
+    val_loss_results   = []
+    val_metrics_results= {'mADE': [], 'mFDE': []}
+
     print("[INF] Training the model")
-    for epoch in range(epochs):
+    for epoch in range(model_parameters.num_epochs ):
         # Training
         print("----- ")
-        print("epoch: ", epoch)
+        print("Epoch: ", epoch)
         error = 0
         total = 0
-        #for batch_idx, (data, target, _) in enumerate(batched_train_data):
         for batch_idx, dicto in enumerate(batched_train_data):
             data   = dicto['obs_traj_rel']
             target = dicto['pred_traj_rel']
             with tf.GradientTape() as tape:
-                loss = model(data, target, training=True)
-                error += loss[1]
-                total += len(target)
-            gradients = tape.gradient(loss, model.trainable_weights)
+                losses  = model(data, target, training=True)
+                avg_loss= tf.reduce_sum(losses)/losses.shape[0]
+                error  += tf.reduce_sum(losses)
+                total  += losses.shape[0]
+            gradients = tape.gradient(avg_loss, model.trainable_weights)
             optimizer.apply_gradients(zip(gradients, model.trainable_weights))
-        print("training loss: ", error/total)
-
+        print("Training loss: ", error.numpy()/total)
+        train_loss_results.append(error/total)
         # Validation
         error = 0
         total = 0
         for batch_idx, dicto in enumerate(batched_val_data):
             data_val   = dicto['obs_traj_rel']
             target_val = dicto['pred_traj_rel']
-            loss_val = model(data_val, target_val)
-            error += loss_val[1]
-            total += len(target_val)
-        print("Validation loss: ", error/total)
+            losses = model(data_val, target_val)
+            error  += tf.reduce_sum(losses)
+            total += losses.shape[0]
+        print("Validation loss: ", error.numpy()/total)
+        val_loss_results.append(error/total)
+        # Evaluate ADE, FDE metrics on validation data
+        val_quantitative_metrics = evaluation_minadefde(model,batched_val_data,model_parameters)
+        val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
+        val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
 
     # Checkpoints
-    checkpoint_dir   = './training_checkpoints'
+    checkpoint_dir   = './training_checkpoints/basicmodel'
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=optimizer,
-                                        weights=tj_enc_dec.enc,)
+                                        weights=model)
 
     # Training
     plot_training    = True
@@ -133,7 +140,7 @@ def main():
     quantitative = True
     if quantitative==True:
         print("[INF] Quantitative testing")
-        results = evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
+        results = evaluation_minadefde(model,batched_test_data,model_parameters)
         plot_comparisons_minadefde(results,dataset_names[idTest])
         print(results)
 
@@ -143,61 +150,9 @@ def main():
         print("[INF] Qualitative testing")
         for i in range(5):
             batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            #evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
-            evaluation_attention(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,display_mode=None)
+            evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
 
 
 
 if __name__ == '__main__':
     main()
-
-
-def plot_traj(pred_traj, obs_traj_gt, pred_traj_gt, test_homography, background):
-    print("-----")
-    homography = np.linalg.inv(test_homography)
-
-    # Convert it to absolute (starting from the last observed position)
-    displacement = np.cumsum(pred_traj, axis=0)
-    this_pred_out_abs = displacement + np.array([obs_traj_gt[-1].numpy()])
-
-    obs   = image_to_world_xy(obs_traj_gt, homography, flip=False)
-    gt    = image_to_world_xy(pred_traj_gt, homography, flip=False)
-    gt = np.concatenate([obs[-1,:].reshape((1,2)), gt],axis=0)
-    tpred   = image_to_world_xy(this_pred_out_abs, homography, flip=False)
-    tpred = np.concatenate([obs[-1,:].reshape((1,2)), tpred],axis=0)
-
-    plt.figure(figsize=(12,12))
-    plt.imshow(background)
-    plt.plot(obs[:,0],obs[:,1],"-b", linewidth=2, label="Observations")
-    plt.plot(gt[:,0], gt[:,1],"-r", linewidth=2, label="Ground truth")
-    plt.plot(tpred[:,0],tpred[:,1],"-g", linewidth=2, label="Prediction")
-    plt.legend()
-    plt.title('Trajectory samples')
-    plt.show()
-
-from lib.obstacles import image_to_world_xy
-from PIL import Image
-
-num_samples = 30
-bck = Image.open('datasets/ucy-zara01/reference.png')
-
-# Testing
-cont = 0
-for batch_idx, dicto in enumerate(batched_test_data):
-    datarel_test = dicto['obs_traj_rel']
-    targetrel_test = dicto['pred_traj_rel']
-    data_test = dicto['obs_traj']
-    target_test = dicto['pred_traj']
-    # prediction
-    pred = model.predict(datarel_test, dim_pred=12)
-    # ploting
-    for i in range(pred.shape[0]):
-        print(cont)
-        plot_traj(pred[i,:,:], data_test[i,:,:], target_test[i,:,:], test_homography, bck)
-        cont += 1
-
-
-        if cont == num_samples:
-            break
-    if cont == num_samples:
-        break

@@ -14,7 +14,8 @@ def get_batch(batch_data, config):
     """Given a batch of data, determine the input and ground truth."""
     N      = len(batch_data['obs_traj_rel'])
     P      = config.P
-    OF     = config.flow_size
+    if hasattr(config, 'flow_size'):
+        OF     = config.flow_size
     T_in   = config.obs_len
     T_pred = config.pred_len
 
@@ -31,7 +32,7 @@ def get_batch(batch_data, config):
     returned_inputs.append(traj_obs_gt)
     # ------------------------------------------------------
     # Social component (through optical flow)
-    if config.add_social:
+    if hasattr(config, 'add_social') and config.add_social:
         obs_flow = np.zeros((N, T_in, OF),dtype ='float32')
         # each batch
         for i, flow_seq in enumerate(batch_data['obs_optical_flow']):
@@ -40,7 +41,7 @@ def get_batch(batch_data, config):
         returned_inputs.append(obs_flow)
     # -----------------------------------------------------------
     # Person pose input
-    if config.add_kp:
+    if hasattr(config, 'add_kp') and config.add_kp:
         obs_kp = np.zeros((N, T_in, KP, 2), dtype='float32')
         # each bacth
         for i, obs_kp_rel in enumerate(batch_data['obs_kp_rel']):

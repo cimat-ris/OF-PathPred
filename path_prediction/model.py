@@ -42,14 +42,13 @@ class BasicRNNModelParameters(object):
 Model parameters.
 """
 class ModelParameters(BasicRNNModelParameters):
-    def __init__(self, add_attention=True, add_kp=False, add_social=False, output_representation='dxdy', rnn_type='lstm'):
+    def __init__(self, add_attention=True, add_kp=False, add_social=False, rnn_type='lstm'):
         super(ModelParameters, self).__init__(rnn_type)
         # -----------------
         self.add_kp         = add_kp
         self.add_social     = add_social
         self.add_attention  = add_attention
         self.stack_rnn_size = 2
-        self.output_representation = output_representation
         self.output_var_dirs= 0
         # Key points
         self.kp_size        = 18
@@ -68,7 +67,8 @@ class BasicRNNModel(keras.Model):
         super(BasicRNNModel, self).__init__()
         # Layers
         self.embedding = tf.keras.layers.Dense(config.emb_size, activation=config.activation_func)
-        self.lstm      = tf.keras.layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True)
+        self.lstm      = tf.keras.layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True,dropout=config.dropout_rate,)
+        self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decode")
         # Activation = None (probar) , tf.keras.activations.relu
         self.decoder   = tf.keras.layers.Dense(config.P,  activation=tf.identity)
         # loss = log(cosh()), log coseno hiperbolico
@@ -88,7 +88,7 @@ class BasicRNNModel(keras.Model):
         for i, target in enumerate(tf.transpose(y, perm=[1, 0, 2])):
             emb_last           = self.embedding(x_last)                        # embedding over last position
             lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
-
+            hn2=self.dropout(hn2)
             # Decoder and Prediction
             dec = self.decoder(hn2)     # shape(256, 2)
             dec = tf.expand_dims(dec, 1)
@@ -115,12 +115,13 @@ class BasicRNNModel(keras.Model):
         # Concatenate the predictions and return
         return loss
 
-    def predict(self, X, dim_pred= 1):
-        nbatches = len(X)
+    def predict(self, inputs, dim_pred= 1):
+        traj_inputs = inputs[0]
+        nbatches    = len(traj_inputs)
         # Last position traj
-        x_last = tf.reshape(X[:,-1,:], (nbatches, 1, -1))
+        x_last = tf.reshape(traj_inputs[:,-1,:], (nbatches, 1, -1))
         # Layers
-        emb = self.embedding(X) # encoder for batch
+        emb = self.embedding(traj_inputs) # encoder for batch
         lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
 
         loss = 0
@@ -138,7 +139,7 @@ class BasicRNNModel(keras.Model):
             hn1 = hn2
             cn1 = cn2
         # Concatenate the predictions and return
-        return tf.concat(pred, 1).numpy()
+        return tf.expand_dims(tf.concat(pred, 1),1), None
 
 ################################################################################
 ############# Encoding
@@ -183,6 +184,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             inputs=tf.cond(self.add_attention and self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
             outputs=self.out,name="trajectory_context_encoder")
 
+    # Call expects an **array of inputs**
     def call(self,inputs,training=None):
         # inputs[0] is the observed trajectory part
         traj_obs_inputs  = inputs[0]
