@@ -60,41 +60,38 @@ class ModelParameters(BasicRNNModelParameters):
         self.mc_samples            = 20
         self.rnn_type              = rnn_type
 
-
+"""
+Very Basic RNN-based Model.
+"""
 class BasicRNNModel(keras.Model):
-    def __init__(self, in_size, embedding_dim, hidden_dim, output_size):
+    def __init__(self, config):
         super(BasicRNNModel, self).__init__()
         # Layers
-        self.embedding = tf.keras.layers.Dense(embedding_dim, activation=tf.nn.tanh)
-        self.lstm = tf.keras.layers.LSTM(hidden_dim, return_sequences=True, return_state=True)
+        self.embedding = tf.keras.layers.Dense(config.emb_size, activation=config.activation_func)
+        self.lstm      = tf.keras.layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True)
         # Activation = None (probar) , tf.keras.activations.relu
-        self.decoder = tf.keras.layers.Dense(output_size,  activation=None)
+        self.decoder   = tf.keras.layers.Dense(config.P,  activation=tf.identity)
         # loss = log(cosh()), log coseno hiperbolico
-        self.loss_fun = tf.keras.metrics.mean_squared_error
+        self.loss_fun  = tf.keras.metrics.mean_squared_error
 
     def call(self, X, y, training=False):
-
-        # Copy data
-        x = X
-
-        # Last position traj
-        x_last = tf.reshape(X[:,-1,:], (len(x), 1, -1))
-
-        # Layers
-        emb = self.embedding(X) # encoder for batch
+        nbatches = len(X)
+        # Last positions
+        x_last = tf.reshape(X[:,-1,:], (nbatches, 1, -1))
+        # Apply layers
+        emb                = self.embedding(X) # embedding
         lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
-
+        # Generate loss
         loss = 0
         pred = []
+        # For each predicted timestep
         for i, target in enumerate(tf.transpose(y, perm=[1, 0, 2])):
-            emb_last = self.embedding(x_last) # encoder for last position
+            emb_last           = self.embedding(x_last)                        # embedding over last position
             lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
 
             # Decoder and Prediction
             dec = self.decoder(hn2)     # shape(256, 2)
-            #dec = tf.reshape(dec, (len(dec), 1, -1))
             dec = tf.expand_dims(dec, 1)
-
             #print("dec:", dec)
             #print("dec shape: ", dec.shape)
             t_pred = dec + x_last    #(256, 1, 2)
@@ -103,12 +100,10 @@ class BasicRNNModel(keras.Model):
             # Calculate of loss
             #print("target original shape: ", target.shape)
             #print("final shapes ", t_pred.shape, " vs ", tf.reshape(target, (len(target), 1, -1)).shape)
-
             loss += self.loss_fun(t_pred, tf.reshape(target, (len(target), 1, -1)))
 
             #print("loss: ", loss)
             #print("loss shape: ", loss.shape)
-
             # Update the last position
             if training:
                 x_last = tf.reshape(target, (len(target), 1, -1))
@@ -121,12 +116,9 @@ class BasicRNNModel(keras.Model):
         return loss
 
     def predict(self, X, dim_pred= 1):
-
-        # Copy data
-        x = X
+        nbatches = len(X)
         # Last position traj
-        x_last = tf.reshape(X[:,-1,:], (len(x), 1, -1))
-
+        x_last = tf.reshape(X[:,-1,:], (nbatches, 1, -1))
         # Layers
         emb = self.embedding(X) # encoder for batch
         lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
@@ -136,20 +128,15 @@ class BasicRNNModel(keras.Model):
         for i in range(dim_pred):
             emb_last = self.embedding(x_last) # encoder for last position
             lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
-
             # Decoder and Prediction
             dec = self.decoder(hn2)
             dec = tf.expand_dims(dec, 1)
-
             t_pred = dec + x_last
             pred.append(t_pred)
-
             # Update the last position
             x_last = t_pred
             hn1 = hn2
             cn1 = cn2
-
-
         # Concatenate the predictions and return
         return tf.concat(pred, 1).numpy()
 
