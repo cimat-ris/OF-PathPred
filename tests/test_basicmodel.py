@@ -29,12 +29,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', default='datasets/',
                         help='glob expression for data files')
-    parser.add_argument('--obstacles', dest='obstacles', action='store_true',help='includes the obstacles in the optical flow')
-    parser.set_defaults(obstacles=False)
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
+    parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
+    parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=35,help='Number of epochs (default: 35)')
+                    type=int, default=25,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     args = parser.parse_args()
@@ -46,7 +46,7 @@ def main():
         print("[INF] Using CPU")
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=args.obstacles)
+    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
@@ -65,6 +65,8 @@ def main():
     model_parameters = BasicRNNModelParameters()
     model_parameters.num_epochs     = args.epochs
     model_parameters.initial_lr     = 0.03
+    model_parameters.emb_size       = 128
+    model_parameters.enc_hidden_size= 128
 
     # Get the necessary data
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
@@ -78,47 +80,7 @@ def main():
 
     # Model
     model     = BasicRNNModel(model_parameters)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
-
-    # Training the Model
-    train_loss_results = []
-    val_loss_results   = []
-    val_metrics_results= {'mADE': [], 'mFDE': []}
-
-    print("[INF] Training the model")
-    for epoch in range(model_parameters.num_epochs ):
-        # Training
-        print("----- ")
-        print("Epoch: ", epoch)
-        error = 0
-        total = 0
-        for batch_idx, dicto in enumerate(batched_train_data):
-            data   = dicto['obs_traj_rel']
-            target = dicto['pred_traj_rel']
-            with tf.GradientTape() as tape:
-                losses  = model(data, target, training=True)
-                avg_loss= tf.reduce_sum(losses)/losses.shape[0]
-                error  += tf.reduce_sum(losses)
-                total  += losses.shape[0]
-            gradients = tape.gradient(avg_loss, model.trainable_weights)
-            optimizer.apply_gradients(zip(gradients, model.trainable_weights))
-        print("Training loss: ", error.numpy()/total)
-        train_loss_results.append(error/total)
-        # Validation
-        error = 0
-        total = 0
-        for batch_idx, dicto in enumerate(batched_val_data):
-            data_val   = dicto['obs_traj_rel']
-            target_val = dicto['pred_traj_rel']
-            losses = model(data_val, target_val)
-            error  += tf.reduce_sum(losses)
-            total += losses.shape[0]
-        print("Validation loss: ", error.numpy()/total)
-        val_loss_results.append(error/total)
-        # Evaluate ADE, FDE metrics on validation data
-        val_quantitative_metrics = evaluation_minadefde(model,batched_val_data,model_parameters)
-        val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
-        val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'
@@ -126,10 +88,55 @@ def main():
     checkpoint       = tf.train.Checkpoint(optimizer=optimizer,
                                         weights=model)
 
-    # Training
-    plot_training    = True
-    if plot_training==True:
-        plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
+    # Training the Model
+    train_loss_results = []
+    val_loss_results   = []
+    val_metrics_results= {'mADE': [], 'mFDE': []}
+
+    if args.noretrain==False:
+        print("[INF] Training the model")
+        for epoch in range(model_parameters.num_epochs ):
+            # Training
+            print("----- ")
+            print("Epoch: ", epoch)
+            total_error = 0
+            total_cases = 0
+            num_batches_per_epoch= batched_train_data.cardinality().numpy()
+            for batch_idx, dicto in enumerate(batched_train_data):
+                data   = dicto['obs_traj_rel']
+                target = dicto['pred_traj_rel']
+                with tf.GradientTape() as tape:
+                    losses      = model(data, target, training=True)
+                    total_error+= losses
+                    total_cases+= num_batches_per_epoch
+                gradients = tape.gradient(losses, model.trainable_weights)
+                optimizer.apply_gradients(zip(gradients, model.trainable_weights))
+            print("Training loss: ", total_error.numpy()/total_cases)
+            train_loss_results.append(total_error/total_cases)
+            # Validation
+            total_error = 0
+            total_cases = 0
+            for batch_idx, dicto in enumerate(batched_val_data):
+                data_val   = dicto['obs_traj_rel']
+                target_val = dicto['pred_traj_rel']
+                losses = model(data_val, target_val)
+                total_error += losses
+                total_cases += num_batches_per_epoch
+            print("Validation loss: ", total_error.numpy()/total_cases)
+            val_loss_results.append(total_error/total_cases)
+            # Evaluate ADE, FDE metrics on validation data
+            val_quantitative_metrics = evaluation_minadefde(model,batched_val_data,model_parameters)
+            val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
+            val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
+            # Saving (checkpoint) the model every 2 epochs
+            if (epoch + 1) % 5 == 0:
+                checkpoint.save(file_prefix = checkpoint_prefix)
+
+        plot_training    = True
+        if plot_training==True:
+            plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
+
+
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
@@ -143,16 +150,16 @@ def main():
         results = evaluation_minadefde(model,batched_test_data,model_parameters)
         plot_comparisons_minadefde(results,dataset_names[idTest])
         print(results)
-
+    print(test_homography)
     # Qualitative testing
     qualitative = True
     if qualitative==True:
         print("[INF] Qualitative testing")
         for i in range(5):
+            print(dataset_dir+dataset_names[idTest])
+            
             batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
-
-
+            evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
 
 if __name__ == '__main__':
     main()
