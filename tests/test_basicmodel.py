@@ -31,6 +31,8 @@ def main():
                         help='glob expression for data files')
     parser.add_argument('--obstacles', dest='obstacles', action='store_true',help='includes the obstacles in the optical flow')
     parser.set_defaults(obstacles=False)
+    parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
+    parser.set_defaults(pickle=False)
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--epochs', '--e',
@@ -53,7 +55,7 @@ def main():
 
     # Load the dataset and perform the split
     idTest = args.dataset_id
-    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=True)
+    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
     # Plot ramdomly a subset of the training data (spatial data only)
     show_training_samples = False
