@@ -5,7 +5,6 @@ import math
 import cv2
 import tensorflow as tf
 from datetime import datetime
-import seaborn as sns
 from path_prediction.obstacles import image_to_world_xy
 from path_prediction.traj_utils import relative_to_abs, vw_to_abs
 
