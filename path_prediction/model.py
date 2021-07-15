@@ -72,7 +72,7 @@ class BasicRNNModel(keras.Model):
         # Activation = None (probar) , tf.keras.activations.relu
         self.decoder   = tf.keras.layers.Dense(config.P,  activation=tf.identity)
         # loss = log(cosh()), log coseno hiperbolico
-        self.loss_fun  = tf.keras.metrics.mean_squared_error
+        self.loss_fun  =  keras.losses.LogCosh()
 
     def call(self, X, y, training=False):
         nbatches = len(X)
@@ -98,12 +98,12 @@ class BasicRNNModel(keras.Model):
             pred.append(t_pred)
 
             # Calculate of loss
-            #print("target original shape: ", target.shape)
-            #print("final shapes ", t_pred.shape, " vs ", tf.reshape(target, (len(target), 1, -1)).shape)
+            # print("target original shape: ", target.shape)
+            # print("final shapes ", t_pred.shape, " vs ", tf.reshape(target, (len(target), 1, -1)).shape)
             loss += self.loss_fun(t_pred, tf.reshape(target, (len(target), 1, -1)))
 
-            #print("loss: ", loss)
-            #print("loss shape: ", loss.shape)
+            # print("loss: ", loss)
+            # print("loss shape: ", loss.shape)
             # Update the last position
             if training:
                 x_last = tf.reshape(target, (len(target), 1, -1))
@@ -111,8 +111,6 @@ class BasicRNNModel(keras.Model):
                 x_last = t_pred
             hn1 = hn2
             cn1 = cn2
-
-        # Concatenate the predictions and return
         return loss
 
     def predict(self, inputs, dim_pred= 1):
