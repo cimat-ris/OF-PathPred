@@ -35,6 +35,8 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
+    parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
+    parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
                     type=int, default=35,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
@@ -76,8 +78,8 @@ def main():
     model_parameters.output_var_dirs= 1
     model_parameters.is_mc_dropout  = False
     model_parameters.initial_lr     = 0.03
-    model_parameters.enc_hidden_size= 128                  # Hidden size of the RNN encoder
-    model_parameters.emb_size       = 128  # Embedding size
+    model_parameters.enc_hidden_size= 256                  # Hidden size of the RNN encoder
+    model_parameters.emb_size       = 256  # Embedding size
 
     # When running on CPU
     if len(physical_devices)==0:
@@ -106,9 +108,8 @@ def main():
                                         decoder=tj_enc_dec.dec)
 
     # Training
-    perform_training = True
     plot_training    = True
-    if perform_training==True:
+    if args.noretrain==False:
         logging.info("Training the model")
         train_loss_results,val_loss_results,val_metrics_results,__ = training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
@@ -130,7 +131,7 @@ def main():
     # Qualitative testing
     qualitative = True
     if qualitative==True:
-        logging("Qualitative testing")
+        logging.info("Qualitative testing")
         for i in range(5):
             batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
             #evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
