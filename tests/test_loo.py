@@ -64,9 +64,11 @@ def main():
     model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
-    model_parameters.output_var_dirs= 4
+    model_parameters.output_var_dirs= 1
     model_parameters.is_mc_dropout  = False
     model_parameters.initial_lr     = 0.03
+    model_parameters.enc_hidden_size= 128                  # Hidden size of the RNN encoder
+    model_parameters.emb_size       = 128  # Embedding size
 
     # When running on CPU
     if len(physical_devices)==0:
@@ -88,7 +90,7 @@ def main():
     tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
 
     # Checkpoints
-    checkpoint_dir   = './training_checkpoints'
+    checkpoint_dir   = './training_checkpoints/ofmodel'
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         encoder=tj_enc_dec.enc,
