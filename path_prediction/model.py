@@ -1,7 +1,5 @@
 import tensorflow as tf
-import functools
-import operator
-import os
+import os,logging,operator,functools
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
@@ -331,7 +329,7 @@ class TrajectoryDecoder(tf.keras.Model):
 class TrajectoryEncoderDecoder():
     # Constructor
     def __init__(self,config):
-        print("[INF] Initialization")
+        logging.info("Initialization")
         # Flags for considering social interations
         self.add_social     = config.add_social
         self.stack_rnn_size = config.stack_rnn_size

@@ -3,6 +3,7 @@ import argparse
 import sys,os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
+import logging
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
@@ -30,19 +31,27 @@ def main():
                         help='glob expression for data files')
     parser.add_argument('--obstacles', dest='obstacles', action='store_true',help='includes the obstacles in the optical flow')
     parser.set_defaults(obstacles=False)
+    parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
+    parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--epochs', '--e',
                     type=int, default=35,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
+    parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
+    parser.set_defaults(pickle=False)
     args = parser.parse_args()
+    if args.log_file=='':
+        logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
+    else:
+        logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
 
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices)>0:
-        print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
     else:
-        print("[INF] Using CPU")
+        logging.info("Using CPU")
 
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=args.obstacles)
@@ -100,28 +109,28 @@ def main():
     perform_training = True
     plot_training    = True
     if perform_training==True:
-        print("[INF] Training the model")
+        logging.info("Training the model")
         train_loss_results,val_loss_results,val_metrics_results,__ = training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
         if plot_training==True:
             plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
-    print("[INF] Restoring last model")
+    logging.info("Restoring last model")
     status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
     # Quantitative testing: ADE/FDE
     quantitative = True
     if quantitative==True:
-        print("[INF] Quantitative testing")
+        logging.info("Quantitative testing")
         results = evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
         plot_comparisons_minadefde(results,dataset_names[idTest])
-        print(results)
+        logging.info(results)
 
     # Qualitative testing
     qualitative = True
     if qualitative==True:
-        print("[INF] Qualitative testing")
+        logging("Qualitative testing")
         for i in range(5):
             batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
             #evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
