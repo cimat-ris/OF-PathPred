@@ -1,5 +1,4 @@
-import os
-import pickle
+import os, pickle, logging
 import numpy as np
 from path_prediction.process_file import prepare_data
 from path_prediction.process_file import prepare_data_trajnetplusplus
@@ -8,11 +7,11 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
     # Dataset to be tested
     testing_datasets_names  = [ds_names[leave_id]]
     training_datasets_names = ds_names[:leave_id]+ds_names[leave_id+1:]
-    print('[INF] Testing/validation dataset:',testing_datasets_names)
-    print('[INF] Training datasets:',training_datasets_names)
+    logging.info('Testing/validation dataset: {}'.format(testing_datasets_names))
+    logging.info('Training datasets: {}'.format(training_datasets_names))
     if not use_pickled_data:
         # Process data specified by the path to get the trajectories with
-        print('[INF] Extracting data from the datasets')
+        logging.info('Extracting data from the datasets')
         test_data  = prepare_data(ds_path, testing_datasets_names, experiment_parameters)
         train_data = prepare_data(ds_path, training_datasets_names, experiment_parameters)
 
@@ -79,7 +78,7 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
         pickle_out.close()
     else:
         # Unpickle the ready-to-use datasets
-        print("[INF] Unpickling...")
+        logging.info("Unpickling...")
         pickle_in = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"rb")
         training_data = pickle.load(pickle_in)
         pickle_in = open(pickle_dir+'/test_data_'+experiment_name+'.pickle',"rb")
@@ -87,9 +86,9 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
         pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
         validation_data = pickle.load(pickle_in)
 
-    print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
-    print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
-    print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
+    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
+    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
+    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
     # Load the homography corresponding to this dataset
     homography_file = os.path.join(ds_path+testing_datasets_names[0]+'/H.txt')
@@ -99,11 +98,11 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
 
 def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test_ds_names,experiment_parameters,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
-    print('[INF] Testing/validation dataset:',test_ds_names)
-    print('[INF] Training datasets:',train_ds_names)
+    logging.info('Testing/validation dataset:',test_ds_names)
+    logging.info('Training datasets:',train_ds_names)
     if True:
         # Process data specified by the path to get the trajectories with
-        print('[INF] Extracting data from the datasets')
+        logging.info('Extracting data from the datasets')
         # Note that for the training data, we do not keep the neighbots information (too heavy!)
         train_data = prepare_data_trajnetplusplus(ds_path+"/train/train/real_data/",train_ds_names,experiment_parameters,keep_neighbors=False)
         test_data  = prepare_data_trajnetplusplus(ds_path+"/test/test/real_data/",test_ds_names, experiment_parameters)
@@ -175,9 +174,9 @@ def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test
         # pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
         # validation_data = pickle.load(pickle_in)
 
-    print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
-    print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
-    print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
+    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
+    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
+    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
     # Load the homography corresponding to this dataset
     # homography_file = os.path.join(ds_path+testing_datasets_names[0]+'/H.txt')
