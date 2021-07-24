@@ -78,7 +78,8 @@ def main():
     model_parameters.output_var_dirs= 1
     model_parameters.is_mc_dropout  = False
     model_parameters.initial_lr     = 0.03
-    model_parameters.enc_hidden_size= 256                  # Hidden size of the RNN encoder
+    model_parameters.enc_hidden_size= 128  # Hidden size of the RNN encoder
+    model_parameters.dec_hidden_size= model_parameters.enc_hidden_size # Hidden size of the RNN decoder
     model_parameters.emb_size       = 256  # Embedding size
 
     # When running on CPU
