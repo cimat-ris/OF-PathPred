@@ -63,7 +63,7 @@ def main():
 
     # Load the dataset and perform the split
     idTest = args.dataset_id
-    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=True)
+    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
     # Plot ramdomly a subset of the training data (spatial data only)
     show_training_samples = False
