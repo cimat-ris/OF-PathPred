@@ -1,10 +1,8 @@
-import os
+import os, glob, sys, logging
 from tqdm import tqdm
-import glob
 import numpy as np
 from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.obstacles import load_world_obstacle_polygons
-import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../trajnet++/trajnetplusplustools')))
 import trajnetplusplustools
 
@@ -109,7 +107,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
     obs_len  = parameters.obs_len
     pred_len = parameters.pred_len
     seq_len  = obs_len + pred_len
-    print("[INF] Sequence length (observation+prediction):", seq_len)
+    logging.info("Sequence length (observation+prediction): {}".format(seq_len))
 
     # Lists that will hold the data
     num_person_starting_at_frame = []
@@ -127,10 +125,10 @@ def prepare_data(datasets_path, datasets_names, parameters):
         seq_pos_dataset      = []
         #TODO: avoid having the csv name here
         traj_data_path       = os.path.join(datasets_path+dataset_name, 'mundo/mun_pos.csv')
-        print("[INF] Reading "+traj_data_path)
+        logging.info("Reading "+traj_data_path)
         # Read obstacles files
         if parameters.obstacles:
-            print("[INF] Reading obstacle files")
+            logging.info("Reading obstacle files")
             obstacles_world = load_world_obstacle_polygons(datasets_path,dataset_name)
         else:
             obstacles_world = None
@@ -140,7 +138,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
 
         # We suppose that the frame ids are in ascending order
         frame_ids = np.unique(raw_traj_data[:, 0]).tolist()
-        print("[INF] Total number of frames: ",len(frame_ids))
+        logging.info("Total number of frames: {}".format(len(frame_ids)))
 
         raw_traj_data_per_frame = [] # people in frame
         # Group the spatial pedestrian data frame by frame
@@ -274,10 +272,10 @@ def prepare_data(datasets_path, datasets_names, parameters):
         obs_neighbors         = seq_neighbors_dataset[:,:obs_len,:,:]
         seq_pos_dataset = np.concatenate(seq_pos_dataset,axis=0)
         obs_traj        = seq_pos_dataset[:, :obs_len, :]
-        print("[INF] Total number of trajectories in this dataset: ",obs_traj.shape[0])
+        logging.info("Total number of trajectories in this dataset: ".format(obs_traj.shape[0]))
         # At the dataset level
         if parameters.add_social:
-            print("[INF] Add social interaction data (optical flow)")
+            logging.info("Add social interaction data (optical flow)")
             if parameters.obstacles:
                 of_sim = OpticalFlowSimulator()
                 flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,obstacles_world)
@@ -294,7 +292,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
     seq_theta_all = np.concatenate(seq_theta_all, axis=0)
     seq_frames_all= np.concatenate(seq_frames_all, axis=0)
     seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
-    print("[INF] Total number of sample sequences: ",len(seq_pos_all))
+    logging.info("Total number of sample sequences: ".format(len(seq_pos_all)))
 
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]

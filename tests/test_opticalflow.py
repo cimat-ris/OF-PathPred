@@ -1,13 +1,11 @@
 # Imports
-import sys,os
+import sys, os, argparse, logging,random
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
-import argparse
 import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('[INF] Tensorflow version: ',tf.__version__)
-tf.test.gpu_device_name()
 import matplotlib.pyplot as plt
 from tensorflow.python.client import device_lib
 device_lib.list_local_devices()
@@ -28,11 +26,23 @@ def main():
     parser.add_argument('--path', default='datasets/',
                         help='glob expression for data files')
     parser.add_argument('--obstacles', dest='obstacles', action='store_true',help='includes the obstacles in the optical flow')
-    parser.add_argument('--no-obstacles', dest='obstacles', action='store_false',help='does not include the obstacles in the optical flow')
-    parser.set_defaults(obstacles=True)
+    parser.set_defaults(obstacles=False)
+    parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
+    parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     args = parser.parse_args()
+    if args.log_file=='':
+        logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
+    else:
+        logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
+    # Info about TF and GPU
+    logging.info('Tensorflow version: {}'.format(tf.__version__))
+    physical_devices = tf.config.list_physical_devices('GPU')
+    if len(physical_devices)>0:
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+    else:
+        logging.info('Using CPU')
 
     # Load the default parameters
     experiment_parameters =     Experiment_Parameters(add_social=True,add_kp=False,obstacles=args.obstacles)

@@ -1,14 +1,9 @@
 # Imports
-import argparse
-import sys,os
+import sys, os, argparse, logging,random
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
-import logging
-import warnings
-warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('[INF] Tensorflow version: ',tf.__version__)
-tf.test.gpu_device_name()
 # Important imports
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -49,6 +44,8 @@ def main():
     else:
         logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
 
+    # Info about TF and GPU
+    logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices)>0:
         logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
