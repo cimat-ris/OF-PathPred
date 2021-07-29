@@ -1,19 +1,13 @@
 # Imports
-import sys, os, argparse, logging,random
+import sys, os, argparse, logging, random
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
-import warnings
-warnings.filterwarnings('ignore')
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from tensorflow.python.client import device_lib
-device_lib.list_local_devices()
-
 from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.process_file import prepare_data
 from path_prediction.training_utils import Experiment_Parameters
-import random
 from datetime import datetime
 random.seed(datetime.now())
 # To test obstacle-related functions

@@ -1,14 +1,8 @@
-import sys,os
+import sys, os, argparse, logging,random, time
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
-import argparse
-import time
-import warnings
-warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('[INF] Tensorflow version: ',tf.__version__)
-tf.test.gpu_device_name()
-import random
 from datetime import datetime
 random.seed(datetime.now())
 import matplotlib.pyplot as plt
@@ -19,18 +13,33 @@ from path_prediction.training_utils import Experiment_Parameters
 from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.process_file import prepare_data_trajnetplusplus
 from path_prediction.datasets_utils import setup_trajnetplusplus_experiment
-import logging
-import socket
 import pickle
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--obs_length', default=8, type=int,help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,help='prediction length')
-    parser.add_argument('--path', default='trajdata',help='glob expression for data files')
+    parser.add_argument('--path', default='datasets/trajnetplusplus',help='glob expression for data files')
+    parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
+    parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     args     = parser.parse_args()
-    train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06","cff_07","cff_08"]
+    if args.log_file=='':
+        logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
+    else:
+        logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
+    # Info about TF and GPU
+    logging.info('Tensorflow version: {}'.format(tf.__version__))
+    physical_devices = tf.config.list_physical_devices('GPU')
+    if len(physical_devices)>0:
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+    else:
+        logging.info('Using CPU')
+
+
+    #train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06","cff_07","cff_08"]
+    train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_08"]
     test_dataset_names = ["biwi_eth"]
+
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False)
     experiment_parameters.obs_len  = args.obs_length

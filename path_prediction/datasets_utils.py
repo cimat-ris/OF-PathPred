@@ -98,8 +98,8 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
 
 def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test_ds_names,experiment_parameters,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
-    logging.info('Testing/validation dataset:',test_ds_names)
-    logging.info('Training datasets:',train_ds_names)
+    logging.info('Testing/validation dataset: {}'.format(test_ds_names))
+    logging.info('Training datasets: {}'.format(train_ds_names))
     if True:
         # Process data specified by the path to get the trajectories with
         logging.info('Extracting data from the datasets')

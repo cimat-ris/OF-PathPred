@@ -3,8 +3,7 @@ from tqdm import tqdm
 import numpy as np
 from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.obstacles import load_world_obstacle_polygons
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../trajnet++/trajnetplusplustools')))
-import trajnetplusplustools
+from trajnetplusplustools.trajnetplusplustools import Reader
 
 def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_neighbors=True):
     """ Prepares the train/val scenes and corresponding goals
@@ -31,13 +30,13 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
     of_sim = OpticalFlowSimulator()
     ## Iterate over file names
     for dataset_name in datasets_names:
-        reader = trajnetplusplustools.Reader(datasets_path + dataset_name + '.ndjson', scene_type='paths')
+        reader = Reader(datasets_path + dataset_name + '.ndjson', scene_type='paths')
         ## Necessary modification of train scene to add filename
         scene = [(dataset_name, s_id, s) for s_id, s in reader.scenes()]
-        print("[INF] File",dataset_name,"with",len(scene),"scenes.")
+        logging.info("File "+dataset_name+" with {} scenes.".format(len(scene)))
         for scene_i, (filename, scene_id, paths) in enumerate(scene):
             # Get the trajectories
-            raw_traj_abs = trajnetplusplustools.Reader.paths_to_xy(paths)
+            raw_traj_abs = Reader.paths_to_xy(paths)
             ped_traj_abs = raw_traj_abs[:,0,:]
             # Keep the full trajectory of the pedestrian of interest (start at 0)
             all_ped_traj_abs.append(ped_traj_abs)

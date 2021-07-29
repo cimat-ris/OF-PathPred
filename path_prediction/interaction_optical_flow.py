@@ -103,7 +103,7 @@ class OpticalFlowSimulator(object):
             # Plot the agent of interest
             plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=10)
             # Direction and normal
-            vec_cur  = current_direction/np.linalg.norm(current_direction)
+            vec_cur  = current_direction/(np.linalg.norm(current_direction)+0.001)
             vec_norm = vector_normal(current_direction)
             vec_l    = 2.0
             plt.arrow(current_position[0],current_position[1],vec_l*vec_cur[0],vec_l*vec_cur[1],color='black',linewidth=1)
