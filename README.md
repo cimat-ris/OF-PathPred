@@ -1,6 +1,6 @@
 # OF-PathPred
 
-This is an adaptation of the NextP algorithm [Liang2019] in tensorflow 2.
+This is a trajctory prediction inspired from the NextP algorithm [Liang2019] and written in tensorflow 2.
 
 We introduced the following modifications:
 * Stacked RNN cells for encoding.
@@ -24,8 +24,17 @@ pip install -r requirements.txt
 
 To run, use the test_loo.py script. It runs training/testing loops in a Leave-One-Out fashion.
 ```Python
-python tests/test_loo.py
+python3 tests/test_loo.py
 ```
+
+To run with the trajnetplusplus dataset, please perform
+```Python
+git submodule init
+```
+
+And download the train/test datasets from: 
+https://github.com/vita-epfl/trajnetplusplusdata/releases
+and put them in datasets/trajnetplusplus/
 
 A few important parameters:
 * idTest gives the id in the dataset_paths array for the one dataset that is used as a test dataset, while the remaining are used for training.
