@@ -1,4 +1,4 @@
-import sys, os, argparse, logging,random, time
+import sys, os, argparse, logging,random, time, json
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--n', type=int, default=5,
-                        help='number of samples')
+                        help='number of samples')    
     parser.add_argument('--trajectory_type', type=int, default=3,
                         help='type of trajectory (2: Lin, 3: NonLin + Int, 4: NonLin + NonInt)')
     parser.add_argument('--interaction_type', type=int, default=2,
@@ -46,7 +46,6 @@ def main():
                         help='number of segments in polar plot radially')
     parser.add_argument('--vr_n', type=int, default=10,
                         help='number of segments in polar plot linearly')
-
     args     = parser.parse_args()
     if args.log_file=='':
         logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
@@ -67,15 +66,40 @@ def main():
     for dataset_file in train_dataset_names:
         filename = os.path.join(args.path,"train/train/real_data",dataset_file+".ndjson")
         logging.info('{dataset:>60s} | {N:>5}'.format(
-            dataset=filename,
+            dataset=dataset_file,
             N=sum(1 for _ in load_all(filename)),
         ))
-    interaction_type = args.interaction_type
-    trajectory_type  = args.trajectory_type
 
     for dataset_file in train_dataset_names:
         filename = os.path.join(args.path,"train/train/real_data",dataset_file+".ndjson")
-        interaction_plots(filename, trajectory_type, interaction_type, args)
+        logging.info('{dataset:>60s}'.format(dataset=dataset_file))
+        tags = {1: [], 2: [], 3: [], 4: []}
+        sub_tags = {1: [], 2: [], 3: [], 4: []}
+        with open(filename, 'r') as f:
+            for line in f:
+                line = json.loads(line)
+                scene = line.get('scene')
+                if scene is not None:
+                    scene_id = scene['id']
+                    scene_tag = scene['tag']
+                    m_tag = scene_tag[0]
+                    s_tag = scene_tag[1]
+                    tags[m_tag].append(scene_id)
+                    for s in s_tag:
+                        sub_tags[s].append(scene_id)
+
+        logging.info("Total Scenes")
+        logging.info('{}'.format(len(tags[1]) + len(tags[2]) + len(tags[3]) + len(tags[4])))
+        logging.info("Main Tags")
+        logging.info("Type 1: {} Type 2: {} Type 3: {} Type 4: {}".format(len(tags[1]),len(tags[2]),len(tags[3]),len(tags[4])))
+        logging.info("Sub Tags")
+        logging.info("LF: {} CA: {} Group: {} Others: {}".format(len(sub_tags[1]),len(sub_tags[2]),len(sub_tags[3]),len(sub_tags[4])))
+
+    logging.info("Plotting velocities distributions and interactions ")
+    for dataset_file in train_dataset_names:
+        filename = os.path.join(args.path,"train/train/real_data",dataset_file+".ndjson")
+        dataset_plots(filename, obs_length=args.obs_len)
+        interaction_plots(filename, args.trajectory_type, args.interaction_type, args)
 
 
 if __name__ == '__main__':
