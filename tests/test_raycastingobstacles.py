@@ -1,16 +1,9 @@
 # Imports
-import argparse
-import sys,os
+import sys, os, argparse, logging, random
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
-import warnings
-warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('Tensorflow version: ',tf.__version__)
-tf.test.gpu_device_name()
-
-from tensorflow.python.client import device_lib
-device_lib.list_local_devices()
 # To test obstacle-related functions
 from path_prediction.obstacles import image_to_world_xy,raycast,generate_obstacle_polygons,load_image_obstacle_polygons, load_world_obstacle_polygons
 import matplotlib.pyplot as plt
@@ -23,13 +16,21 @@ def main():
                         help='glob expression for data files')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
+    parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
+    parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     args = parser.parse_args()
 
+    if args.log_file=='':
+        logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
+    else:
+        logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
+
+    logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices)>0:
-        print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
     else:
-        print("[INF] Using CPU")
+        logging.info('Using CPU')
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
