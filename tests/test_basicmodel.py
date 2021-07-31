@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 # Imports
-import argparse
-import sys,os
+import sys, os, argparse, logging, random
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
-import warnings
-warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('[INF] Tensorflow version: ',tf.__version__)
-tf.test.gpu_device_name()
 # Important imports
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -31,6 +27,8 @@ def main():
                         help='glob expression for data files')
     parser.add_argument('--obstacles', dest='obstacles', action='store_true',help='includes the obstacles in the optical flow')
     parser.set_defaults(obstacles=False)
+    parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
+    parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
     parser.add_argument('--dataset_id', '--id',
@@ -43,11 +41,17 @@ def main():
                     help='recurrent networks to be used (default: "lstm")')
     args = parser.parse_args()
 
+    if args.log_file=='':
+        logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
+    else:
+        logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
+
+    logging.info('Tensorflow version: ',tf.__version__)
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices)>0:
-        print('[INF] Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
     else:
-        print("[INF] Using CPU")
+        logging.info('Using CPU')
 
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
@@ -98,11 +102,11 @@ def main():
     val_metrics_results= {'mADE': [], 'mFDE': []}
 
     if args.noretrain==False:
-        print("[INF] Training the model")
+        logging.info("Training the model")
         for epoch in range(model_parameters.num_epochs ):
             # Training
-            print("----- ")
-            print("Epoch: ", epoch)
+            logging.info("----- ")
+            logging.info("Epoch: {}".format(epoch))
             total_error = 0
             total_cases = 0
             num_batches_per_epoch= batched_train_data.cardinality().numpy()
@@ -115,7 +119,7 @@ def main():
                     total_cases+= num_batches_per_epoch
                 gradients = tape.gradient(losses, model.trainable_weights)
                 optimizer.apply_gradients(zip(gradients, model.trainable_weights))
-            print("Training loss: ", total_error.numpy()/total_cases)
+            logging.info("Training loss: {}".format(total_error.numpy()/total_cases))
             train_loss_results.append(total_error/total_cases)
             # Validation
             total_error = 0
@@ -126,7 +130,7 @@ def main():
                 losses = model(data_val, target_val)
                 total_error += losses
                 total_cases += num_batches_per_epoch
-            print("Validation loss: ", total_error.numpy()/total_cases)
+            logging.info("Validation loss: {}".format(total_error.numpy()/total_cases))
             val_loss_results.append(total_error/total_cases)
             # Evaluate ADE, FDE metrics on validation data
             val_quantitative_metrics = evaluation_minadefde(model,batched_val_data,model_parameters)
@@ -144,24 +148,23 @@ def main():
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
-    print("[INF] Restoring last model")
+    logging.info("Restoring last model")
     status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
     # Quantitative testing: ADE/FDE
     quantitative = True
     if quantitative==True:
-        print("[INF] Quantitative testing")
+        logging.info("Quantitative testing")
         results = evaluation_minadefde(model,batched_test_data,model_parameters)
         plot_comparisons_minadefde(results,dataset_names[idTest])
-        print(results)
+        logging.info(results)
     print(test_homography)
     # Qualitative testing
     qualitative = True
     if qualitative==True:
-        print("[INF] Qualitative testing")
+        logging.info("Qualitative testing")
         for i in range(5):
-            print(dataset_dir+dataset_names[idTest])
-
+            logging.info(dataset_dir+dataset_names[idTest])
             batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
             evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
 
