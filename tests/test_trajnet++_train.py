@@ -31,6 +31,10 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
+    parser.add_argument('--social', dest='social', action='store_true',help='Models social interactions')
+    parser.set_defaults(social=False)
+    parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
+    parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
                     type=int, default=35,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
@@ -54,7 +58,7 @@ def main():
     test_dataset_names = ["biwi_eth"]
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False)
+    experiment_parameters = Experiment_Parameters(add_kp=False)
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     # Load the datasets
@@ -63,7 +67,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,rnn_type=args.rnn)
+    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1
@@ -100,9 +104,10 @@ def main():
                                         decoder=tj_enc_dec.dec)
 
     # Training
-    logging.info("Training the model")
-    train_loss_results,val_loss_results,val_metrics_results,__ = training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
-    plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
+    if args.noretrain==False:
+        logging.info("Training the model")
+        train_loss_results,val_loss_results,val_metrics_results,__ = training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
+        plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
