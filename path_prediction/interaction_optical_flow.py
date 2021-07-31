@@ -150,9 +150,9 @@ class OpticalFlowSimulator(object):
         current_vel = np.array(current_vel)
         delta_vel   = neighbor_velocity-current_vel
         delta_vel_l = np.array([rotation_matrix[0,0]*delta_vel[0]+rotation_matrix[0,1]*delta_vel[1],rotation_matrix[1,0]*delta_vel[0]+rotation_matrix[1,1]*delta_vel[1]])
-
-        x = relative_position_l[1]/relative_position_l[0]
-        return (delta_vel_l[1]-x*delta_vel_l[0])/relative_position_l[0]
+        # TODO
+        x = relative_position_l[1]/(relative_position_l[0]+0.0001)
+        return (delta_vel_l[1]-x*delta_vel_l[0])/(relative_position_l[0]++0.0001)
 
     """
          Receives:
