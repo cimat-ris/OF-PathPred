@@ -30,15 +30,14 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
         idx_val   = idx[training:]
         # Training set
         training_data = {
-            "obs_traj":      train_data["obs_traj"][idx_train],
-            "obs_traj_rel":  train_data["obs_traj_rel"][idx_train],
-            "obs_traj_theta":train_data["obs_traj_theta"][idx_train],
-            "pred_traj":     train_data["pred_traj"][idx_train],
-            "pred_traj_rel": train_data["pred_traj_rel"][idx_train],
-            "frames_ids":    train_data["frames_ids"][idx_train]
+            "obs_traj":        train_data["obs_traj"][idx_train],
+            "obs_traj_rel":    train_data["obs_traj_rel"][idx_train],
+            "obs_traj_theta":  train_data["obs_traj_theta"][idx_train],
+            "pred_traj":       train_data["pred_traj"][idx_train],
+            "pred_traj_rel":   train_data["pred_traj_rel"][idx_train],
+            "frames_ids":      train_data["frames_ids"][idx_train],
+            "obs_optical_flow":train_data["obs_optical_flow"][idx_train]
         }
-        if experiment_parameters.add_social:
-            training_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_train]
         # Test set
         testing_data = {
             "obs_traj":      test_data["obs_traj"][:],
@@ -46,10 +45,9 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
             "obs_traj_theta":test_data["obs_traj_theta"][:],
             "pred_traj":     test_data["pred_traj"][:],
             "pred_traj_rel": test_data["pred_traj_rel"][:],
-            "frames_ids":    test_data["frames_ids"][:]
+            "frames_ids":    test_data["frames_ids"][:],
+            "obs_optical_flow": test_data["obs_optical_flow"][:]
         }
-        if experiment_parameters.add_social:
-            testing_data["obs_optical_flow"]=test_data["obs_optical_flow"][:]
         # Validation set
         validation_data ={
             "obs_traj":      train_data["obs_traj"][idx_val],
@@ -57,11 +55,9 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
             "obs_traj_theta":train_data["obs_traj_theta"][idx_val],
             "pred_traj":     train_data["pred_traj"][idx_val],
             "pred_traj_rel": train_data["pred_traj_rel"][idx_val],
-            "frames_ids":    train_data["frames_ids"][idx_val]
+            "frames_ids":    train_data["frames_ids"][idx_val],
+            "obs_optical_flow": train_data["obs_optical_flow"][idx_val]
         }
-        if experiment_parameters.add_social:
-            validation_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_val]
-
         # Training dataset
         pickle_out = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"wb")
         pickle.dump(training_data, pickle_out, protocol=2)

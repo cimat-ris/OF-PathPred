@@ -28,7 +28,7 @@ def main():
     args = parser.parse_args()
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
+    experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
 
     # Dataset to be tested
     dataset_dir   = "datasets/"

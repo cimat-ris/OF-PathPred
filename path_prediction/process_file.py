@@ -273,17 +273,16 @@ def prepare_data(datasets_path, datasets_names, parameters):
         obs_traj        = seq_pos_dataset[:, :obs_len, :]
         logging.info("Total number of trajectories in this dataset: ".format(obs_traj.shape[0]))
         # At the dataset level
-        if parameters.add_social:
-            logging.info("Add social interaction data (optical flow)")
-            if parameters.obstacles:
-                of_sim = OpticalFlowSimulator()
-                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,obstacles_world)
-            else:
-                of_sim = OpticalFlowSimulator()
-                flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,None)
-            all_flow.append(flow)
-            all_vis_neigh.append(vis_neigh)
-            all_vis_obst.append(vis_obst)
+        logging.info("Add social interaction data (optical flow)")
+        if parameters.obstacles:
+            of_sim = OpticalFlowSimulator()
+            flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,obstacles_world)
+        else:
+            of_sim = OpticalFlowSimulator()
+            flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,None)
+        all_flow.append(flow)
+        all_vis_neigh.append(vis_neigh)
+        all_vis_obst.append(vis_obst)
     # Upper level (all datasets)
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
     seq_pos_all   = np.concatenate(seq_pos_all, axis=0)

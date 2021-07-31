@@ -30,6 +30,8 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
+    parser.add_argument('--social', dest='social', action='store_true',help='Models social interactions')
+    parser.set_defaults(social=False)
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
@@ -53,7 +55,7 @@ def main():
         logging.info("Using CPU")
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=args.obstacles)
+    experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=args.obstacles)
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
@@ -69,7 +71,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=experiment_parameters.add_social,rnn_type=args.rnn)
+    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1

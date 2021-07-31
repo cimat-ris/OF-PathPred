@@ -21,7 +21,7 @@ from path_prediction.model import TrajectoryEncoderDecoder, Model_Parameters
 from path_prediction.obstacles import image_to_world_xy
 
 # Load the default parameters
-experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False,obstacles=False)
+experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
 dataset_dir   = "datasets/"
 dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 

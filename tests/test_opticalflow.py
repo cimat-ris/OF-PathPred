@@ -39,7 +39,7 @@ def main():
         logging.info('Using CPU')
 
     # Load the default parameters
-    experiment_parameters =     Experiment_Parameters(add_social=True,add_kp=False,obstacles=args.obstacles)
+    experiment_parameters =     Experiment_Parameters(add_kp=False,obstacles=args.obstacles)
     # Dataset to be tested
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']

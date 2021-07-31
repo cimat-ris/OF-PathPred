@@ -8,18 +8,15 @@ from path_prediction.batches_data import get_batch
 from path_prediction.testing_utils import evaluation_minadefde
 
 # Parameters
-# The only datasets that can use add_social are those of ETH/UCY
 # The only datasets that can use add_kp are PETS2009-S2L1, TOWN-CENTRE
 class Experiment_Parameters:
-    def __init__(self,add_social=False,add_kp=False,obstacles=False):
+    def __init__(self,add_kp=False,obstacles=False):
         # Maximum number of persons in a frame
         self.person_max =70
         # Observation length (trajlet size)
         self.obs_len    = 8
         # Prediction length
         self.pred_len   = 12
-        # Flag to consider social interactions
-        self.add_social = add_social
         # Number of key points
         self.kp_num     = 18
         # Key point flag
