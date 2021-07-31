@@ -71,7 +71,7 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
             all_neigbors_traj_abs[i]=tmp
         all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs,dtype='float16')
-    print("[INF] Total trajectories: ",all_ped_traj_abs.shape[0])
+    logging.info("Total trajectories: {}".format(all_ped_traj_abs.shape[0]))
     # We get the obs traj and pred_traj
     # [total, obs_len, 2]
     # [total, pred_len, 2]
