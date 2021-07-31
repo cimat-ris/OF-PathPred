@@ -29,6 +29,8 @@ def main():
     parser.add_argument('--path', default='datasets/trajnetplusplus',help='glob expression for data files')
     parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
+    parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
+    parser.set_defaults(pickle=False)
     parser.add_argument('--epochs', '--e',
                     type=int, default=35,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
@@ -48,15 +50,15 @@ def main():
 
 
     train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06","cff_07","cff_08"]
-    #train_dataset_names = ["biwi_hotel"]
+    #train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003"]
     test_dataset_names = ["biwi_eth"]
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_social=True,add_kp=False)
+    experiment_parameters = Experiment_Parameters(add_social=False,add_kp=False)
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     # Load the datasets
-    training_data,validation_data,testing_data = setup_trajnetplusplus_experiment('TRAJNETPLUSPLUS',args.path,train_dataset_names,test_dataset_names,experiment_parameters)
+    training_data,validation_data,testing_data = setup_trajnetplusplus_experiment('TRAJNETPLUSPLUS',args.path,train_dataset_names,test_dataset_names,experiment_parameters,use_pickled_data=args.pickle)
     logging.info("Total number of training trajectories: {}".format(training_data["obs_traj"].shape[0]))
 
     #############################################################
