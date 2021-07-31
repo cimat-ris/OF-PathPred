@@ -96,11 +96,11 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
     return training_data,validation_data,test_data,test_homography
 
 
-def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test_ds_names,experiment_parameters,pickle_dir='pickle/',validation_proportion=0.1):
+def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test_ds_names,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
     logging.info('Testing/validation dataset: {}'.format(test_ds_names))
     logging.info('Training datasets: {}'.format(train_ds_names))
-    if True:
+    if use_pickled_data==False:
         # Process data specified by the path to get the trajectories with
         logging.info('Extracting data from the datasets')
         # Note that for the training data, we do not keep the neighbots information (too heavy!)
@@ -164,21 +164,16 @@ def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test
         pickle.dump(validation_data, pickle_out, protocol=2)
         pickle_out.close()
     else:
-        pass
         # Unpickle the ready-to-use datasets
-        # print("[INF] Unpickling...")
-        # pickle_in = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"rb")
-        # training_data = pickle.load(pickle_in)
-        # pickle_in = open(pickle_dir+'/test_data_'+experiment_name+'.pickle',"rb")
-        # test_data = pickle.load(pickle_in)
-        # pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
-        # validation_data = pickle.load(pickle_in)
+        logging.info("Unpickling...")
+        pickle_in = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"rb")
+        training_data = pickle.load(pickle_in)
+        pickle_in = open(pickle_dir+'/test_data_'+experiment_name+'.pickle',"rb")
+        test_data = pickle.load(pickle_in)
+        pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
+        validation_data = pickle.load(pickle_in)
 
     logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
     logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
     logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
-
-    # Load the homography corresponding to this dataset
-    # homography_file = os.path.join(ds_path+testing_datasets_names[0]+'/H.txt')
-    # test_homography = np.genfromtxt(homography_file)
     return training_data,validation_data,test_data
