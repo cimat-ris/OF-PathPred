@@ -130,4 +130,4 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
         print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
         train_metrics['obs_classif_sca'].reset_states()
 
-    return train_loss_results,val_loss_results,val_metrics_results,best["patchId"]
+    return train_loss_results,val_loss_results,val_metrics_results,best["batchId"]
