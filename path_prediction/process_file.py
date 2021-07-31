@@ -314,16 +314,14 @@ def prepare_data(datasets_path, datasets_names, parameters):
     }
 
     # Optical flow
-    if parameters.add_social:
-        all_flow     = np.concatenate(all_flow,axis=0)
-        all_vis_neigh= np.concatenate(all_vis_neigh,axis=0)
+    all_flow     = np.concatenate(all_flow,axis=0)
+    all_vis_neigh= np.concatenate(all_vis_neigh,axis=0)
+    data.update({
+        "obs_optical_flow": all_flow,
+        "obs_visible_neighbors": all_vis_neigh
+    })
+    if parameters.obstacles:
+        all_vis_obst = np.concatenate(all_vis_obst,axis=0)
         data.update({
-            "obs_optical_flow": all_flow,
-            "obs_visible_neighbors": all_vis_neigh
-        })
-        if parameters.obstacles:
-            all_vis_obst = np.concatenate(all_vis_obst,axis=0)
-            data.update({
-                "obs_visible_obstacles": all_vis_obst
-            })
+                "obs_visible_obstacles": all_vis_obst})
     return data
