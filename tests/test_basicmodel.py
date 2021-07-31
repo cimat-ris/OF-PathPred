@@ -46,7 +46,7 @@ def main():
     else:
         logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
 
-    logging.info('Tensorflow version: ',tf.__version__)
+    logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
     if len(physical_devices)>0:
         logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))

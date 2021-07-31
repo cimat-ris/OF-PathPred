@@ -1,18 +1,11 @@
-import sys,os
+import sys, os, argparse, logging, random
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
-import argparse
-import warnings
-warnings.filterwarnings('ignore')
 import tensorflow as tf
-print('[INF] Tensorflow version: ',tf.__version__)
-tf.test.gpu_device_name()
-import random
 from datetime import datetime
 random.seed(datetime.now())
 import matplotlib.pyplot as plt
-from tensorflow.python.client import device_lib
-device_lib.list_local_devices()
 
 # Important imports
 from path_prediction.process_file import prepare_data
@@ -25,7 +18,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', default='datasets/',
                         help='glob expression for data files')
+    parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
+    parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     args = parser.parse_args()
+
+
+    if args.log_file=='':
+        logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
+    else:
+        logging.basicConfig(filename=args.log_file,format='%(levelname)s: %(message)s',level=args.log_level)
+
+    logging.info('Tensorflow version: {}'.format(tf.__version__))
+    physical_devices = tf.config.list_physical_devices('GPU')
+    if len(physical_devices)>0:
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+    else:
+        logging.info('Using CPU')
 
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
@@ -79,9 +87,9 @@ def main():
     }
 
 
-    print("[INF] Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
-    print("[INF] Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
-    print("[INF] Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
+    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
+    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
+    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
 
     # Plot ramdomly a subset of the training data (spatial data only)
     nSamples = min(30,training)
