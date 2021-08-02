@@ -219,7 +219,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
                         # Get the data of this specific person
                         neighbor_data = frame_data[frame_data[:, 0]==neighbor_ped_id,:]
                         # If we have information for this pedestrian, add it to the neighbors struture
-                        if neighbor_data.size != 0:
+                        if neighbor_data.size != 0 and neighbor_ped_idx<person_max:
                             neighbors_ped_seq[frame_idx,neighbor_ped_idx,:] = neighbor_data
                 # Contains the neighbor data for ped_count
                 neighbors_data[ped_count,:,:,:] = neighbors_ped_seq
