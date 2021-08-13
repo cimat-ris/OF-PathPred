@@ -1,5 +1,5 @@
 import tensorflow as tf
-import os,logging,operator,functools
+import os,logging,operator,functools,sys
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
@@ -28,7 +28,7 @@ class BasicRNNModelParameters(object):
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 256                  # Hidden size of the RNN encoder
+        self.enc_hidden_size= 128                  # Hidden size of the RNN encoder
         self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
         self.emb_size       = 128  # Embedding size
         self.dropout_rate   = 0.3  # Dropout rate during training
