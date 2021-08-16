@@ -185,8 +185,12 @@ def evaluation_minadefde(model,test_data,config):
                     diffmin = diff
             d.append(diffmin)
         l2dis += d
-    ade = [t for o in l2dis for t in o] # average displacement
-    fde = [o[-1] for o in l2dis] # final displacement
+    # TODO: verificar
+    ade = [0]
+    fde = [0]
+    if len(l2dis)>0:
+        ade = [t for o in l2dis for t in o] # average displacement
+        fde = [o[-1] for o in l2dis] # final displacement
     return { "mADE": np.mean(ade), "mFDE": np.mean(fde)}
 
 
