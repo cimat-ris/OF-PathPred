@@ -138,11 +138,6 @@ class OpticalFlowSimulator(object):
         # Relative position (world frame)
         relative_position_w = [neighbor_position[0]-current_position[0],neighbor_position[1]-current_position[1]]
 
-        # Angle corresponding to the current direction
-        #theta = math.atan2(current_direction[1], current_direction[0])
-        # Rotation matrix
-        #mr = np.array( [[math.cos(theta),-math.sin(theta)],[math.sin(theta),math.cos(theta)]])
-
         # Transforms the relative position of the neighbor in the rotated frame
         relative_position_l = np.array( [rotation_matrix[0,0]*relative_position_w[0]+rotation_matrix[0,1]*relative_position_w[1],rotation_matrix[1,0]*relative_position_w[0]+rotation_matrix[1,1]*relative_position_w[1]])
 
@@ -236,7 +231,6 @@ class OpticalFlowSimulator(object):
                                     visible_obstacles[k,:]       = [current_position[0]+l[0]*ck,current_position[1]+l[0]*sk]
                                     visible_neighbors[k,:]       = [np.Inf,np.Inf]
                                     flow[k]                      = self.optical_flow_contribution(current_position,visible_obstacles[k,:],current_direction,current_vel,[0,0],mr)
-
         return flow,visible_neighbors,visible_obstacles
 
     """
@@ -248,8 +242,7 @@ class OpticalFlowSimulator(object):
     """
     def compute_opticalflow_seq(self,obs_traj,neighbors,obstacles):
 
-        direcciones = vectores_direccion(obs_traj)
-
+        directions = vectores_direccion(obs_traj)
         # Sequence length
         sequence_length  = neighbors.shape[0]
         # Maximum number of neigbors
@@ -297,8 +290,8 @@ class OpticalFlowSimulator(object):
                 other_x = frame[other_ped_index, 1]
                 other_y = frame[other_ped_index, 2]
 
-                # If the neighbor is id==Id or is a no-neighnor (id==0)
-                if((other_x== x_current and other_y== y_current) or np.isnan(frame[other_ped_index, 1])):
+                # If the neighbor is id==Id or is a no-neighnor (id==Nan)
+                if((other_x== x_current and other_y== y_current) or np.isnan(neighbors[i,other_ped_index,:]).any()):
                     continue
 
                 # This is to verify that the pedestrian is not in the neighborhood
@@ -307,6 +300,8 @@ class OpticalFlowSimulator(object):
 
                 # Beginning of the trajectory
                 if(i==0):
+                    if np.isnan(neighbors[i+1,other_ped_index,:]).any():
+                        continue
                     # TODO: to simplify: this velocity is the same as the one at i=1, then we could just copy it after the loop
                     if(frame_pos[other_ped_index,0]==0):
                         vel_other = [0.,0.]
@@ -319,16 +314,16 @@ class OpticalFlowSimulator(object):
                         vel_before_neighbors[other_ped_index,:]= vel_other
                 # Inside the sequence
                 else:
+                    if np.isnan(neighbors[i-1,other_ped_index,:]).any():
+                        continue
                     if(prev_frame[other_ped_index,0]==0):
                         vel_other = vel_before_neighbors[other_ped_index,:]
                         vel_before_neighbors[other_ped_index,:] = vel_other
                     else:
                         other_x_ant = prev_frame[other_ped_index,1]
                         other_y_ant = prev_frame[other_ped_index,2]
-
                         vel_other = [other_x-other_x_ant, other_y-other_y_ant]
                         vel_before_neighbors[other_ped_index,:]= vel_other
-
                 # Keep the set of velocities
                 vel_p_veci.append(vel_other)
                 # Keep the set of positions
@@ -336,9 +331,9 @@ class OpticalFlowSimulator(object):
 
             # Evaluate the flow from the sets of neigbors
             if obstacles is not None:
-                optical_flow[i,:], visible_neighbors[i,:,:], visible_obstacles[i,:,:] = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
+                optical_flow[i,:], visible_neighbors[i,:,:], visible_obstacles[i,:,:] = self.get_flow_in_cone(obs_traj[i],directions[i],v_obser,p_veci,vel_p_veci,obstacles)
             else:
-                optical_flow[i,:], visible_neighbors[i,:,:], __ = self.get_flow_in_cone(obs_traj[i],direcciones[i],v_obser,p_veci,vel_p_veci,obstacles)
+                optical_flow[i,:], visible_neighbors[i,:,:], __ = self.get_flow_in_cone(obs_traj[i],directions[i],v_obser,p_veci,vel_p_veci,obstacles)
         return optical_flow, visible_neighbors, visible_obstacles
 
     # Main function for optical flow computation
