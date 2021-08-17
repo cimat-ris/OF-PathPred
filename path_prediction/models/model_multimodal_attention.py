@@ -8,44 +8,17 @@ from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense
 from tensorflow.keras import models
 from path_prediction.traj_utils import relative_to_abs, vw_to_abs
-from path_prediction.modules import TrajectoryEncoder, SocialEncoder, FocalAttention,TrajectoryDecoderInitializer, ObservedTrajectoryClassifier
-
-"""
-Basic Model parameters.
-"""
-class BasicRNNModelParameters(object):
-    def __init__(self, rnn_type='lstm'):
-        # -----------------
-        # Observation/prediction lengths
-        self.obs_len        = 8
-        self.pred_len       = 12
-        self.seq_len        = self.obs_len + self.pred_len
-        # Rnn type
-        self.rnn_type       = rnn_type
-        # For training
-        self.num_epochs     = 35
-        self.batch_size     = 256  # batch size 512
-        self.use_validation = True
-        # Network architecture
-        self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 128                  # Hidden size of the RNN encoder
-        self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
-        self.emb_size       = 128  # Embedding size
-        self.dropout_rate   = 0.3  # Dropout rate during training
-        self.activation_func= tf.nn.tanh
-        self.optimizer      = 'adam'
-        self.initial_lr     = 0.01
-
+from .modules import TrajectoryEncoder, SocialEncoder, FocalAttention,TrajectoryDecoderInitializer, ObservedTrajectoryClassifier
+from path_prediction.models.model_deterministic_rnn import BasicRNNModelParameters
 """
 Model parameters.
 """
 class ModelParameters(BasicRNNModelParameters):
-    def __init__(self, add_attention=True, add_kp=False, add_social=False, rnn_type='lstm'):
+    def __init__(self, add_kp=False, add_social=False, rnn_type='lstm'):
         super(ModelParameters, self).__init__(rnn_type)
         # -----------------
         self.add_kp         = add_kp
         self.add_social     = add_social
-        self.add_attention  = add_attention
         self.stack_rnn_size = 2
         self.output_var_dirs= 0
         # Key points
@@ -53,94 +26,13 @@ class ModelParameters(BasicRNNModelParameters):
         # Optical flow
         self.flow_size      = 64
         # MC dropout
-        self.is_mc_dropout         = False
-        self.mc_samples            = 20
-        self.rnn_type              = rnn_type
-
-"""
-Very Basic RNN-based Model.
-"""
-class BasicRNNModel(keras.Model):
-    def __init__(self, config):
-        super(BasicRNNModel, self).__init__()
-        # Layers
-        self.embedding = tf.keras.layers.Dense(config.emb_size, activation=config.activation_func)
-        self.lstm      = tf.keras.layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True,dropout=config.dropout_rate,)
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decode")
-        # Activation = None (probar) , tf.keras.activations.relu
-        self.decoder   = tf.keras.layers.Dense(config.P,  activation=tf.identity)
-        # loss = log(cosh()), log coseno hiperbolico
-        self.loss_fun  =  keras.losses.LogCosh()
-
-    def call(self, X, y, training=False):
-        nbatches = len(X)
-        # Last positions
-        x_last = tf.reshape(X[:,-1,:], (nbatches, 1, -1))
-        # Apply layers
-        emb                = self.embedding(X) # embedding
-        lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
-        # Generate loss
-        loss = 0
-        pred = []
-        # For each predicted timestep
-        for i, target in enumerate(tf.transpose(y, perm=[1, 0, 2])):
-            emb_last           = self.embedding(x_last)                        # embedding over last position
-            lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
-            hn2=self.dropout(hn2)
-            # Decoder and Prediction
-            dec = self.decoder(hn2)     # shape(256, 2)
-            dec = tf.expand_dims(dec, 1)
-            #print("dec:", dec)
-            #print("dec shape: ", dec.shape)
-            t_pred = dec + x_last    #(256, 1, 2)
-            pred.append(t_pred)
-
-            # Calculate of loss
-            # print("target original shape: ", target.shape)
-            # print("final shapes ", t_pred.shape, " vs ", tf.reshape(target, (len(target), 1, -1)).shape)
-            loss += self.loss_fun(t_pred, tf.reshape(target, (len(target), 1, -1)))
-
-            # print("loss: ", loss)
-            # print("loss shape: ", loss.shape)
-            # Update the last position
-            if training:
-                x_last = tf.reshape(target, (len(target), 1, -1))
-            else:
-                x_last = t_pred
-            hn1 = hn2
-            cn1 = cn2
-        return loss
-
-    def predict(self, inputs, dim_pred= 1):
-        traj_inputs = inputs[0]
-        nbatches    = len(traj_inputs)
-        # Last position traj
-        x_last = tf.reshape(traj_inputs[:,-1,:], (nbatches, 1, -1))
-        # Layers
-        emb = self.embedding(traj_inputs) # encoder for batch
-        lstm_out, hn1, cn1 = self.lstm(emb) # LSTM for batch [seq_len, batch, input_size]
-
-        loss = 0
-        pred = []
-        for i in range(dim_pred):
-            emb_last = self.embedding(x_last) # encoder for last position
-            lstm_out, hn2, cn2 = self.lstm(emb_last, initial_state=[hn1, cn1]) # lstm for last position with hidden states from batch
-            # Decoder and Prediction
-            dec = self.decoder(hn2)
-            dec = tf.expand_dims(dec, 1)
-            t_pred = dec + x_last
-            pred.append(t_pred)
-            # Update the last position
-            x_last = t_pred
-            hn1 = hn2
-            cn1 = cn2
-        # Concatenate the predictions and return
-        return tf.expand_dims(tf.concat(pred, 1),1), None
+        self.is_mc_dropout  = False
+        self.mc_samples     = 20
+        self.rnn_type       = rnn_type
 
 ################################################################################
 ############# Encoding
 ################################################################################
-
 """ Custom model class for the encoding part (trajectory and social context)
 """
 class TrajectoryAndContextEncoder(tf.keras.Model):
@@ -148,8 +40,6 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         super(TrajectoryAndContextEncoder, self).__init__()
         # Flag for using social features
         self.add_social     = config.add_social
-        # Flag for using attention mechanism
-        self.add_attention  = config.add_attention
         # The RNN stack size
         self.stack_rnn_size = config.stack_rnn_size
         # Input layers
@@ -164,7 +54,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         self.obs_classif      = ObservedTrajectoryClassifier(config)
 
         # We use the social features only when the two flags (add_social and add_attention are on)
-        if (self.add_attention and self.add_social):
+        if (self.add_social):
             # In the case of handling social interactions, add a third input
             self.input_layer_social = layers.Input(soc_shape,name="social_features")
             # Encoding: Social interactions
@@ -177,16 +67,18 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
 
         # Call init again. This is a workaround for being able to use summary()
         super(TrajectoryAndContextEncoder, self).__init__(
-            inputs=tf.cond(self.add_attention and self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
+            inputs=tf.cond(self.add_social, lambda: [self.input_layer_traj,self.input_layer_social], lambda: [self.input_layer_traj]),
             outputs=self.out,name="trajectory_context_encoder")
 
     # Call expects an **array of inputs**
     def call(self,inputs,training=None):
         # inputs[0] is the observed trajectory part
         traj_obs_inputs  = inputs[0]
-        if self.add_attention and self.add_social:
+        if self.add_social:
             # inputs[1] are the social interaction features
             soc_inputs     = inputs[1]
+            tf.debugging.assert_all_finite(soc_inputs,"PBM")
+
         # ----------------------------------------------------------
         # Encoding
         # ----------------------------------------------------------
@@ -203,7 +95,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # ----------------------------------------------------------
         # Social interaccion (through optical flow)
         # ----------------------------------------------------------
-        if self.add_social and self.add_attention:
+        if self.add_social:
             # Applies the optical flow descriptor through the LSTM
             outputs = self.soc_enc(soc_inputs,training=training)
             # Last states from social encoding
@@ -231,7 +123,6 @@ class TrajectoryDecoder(tf.keras.Model):
     def __init__(self, config):
         super(TrajectoryDecoder, self).__init__(name="trajectory_decoder")
         self.add_social     = config.add_social
-        self.add_attention  = config.add_attention
         self.stack_rnn_size = config.stack_rnn_size
         self.is_mc_dropout  = config.is_mc_dropout
         self.rnn_type       = config.rnn_type
@@ -258,12 +149,11 @@ class TrajectoryDecoder(tf.keras.Model):
         # RNN layer
         self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         self.M = 1
-        if (self.add_attention and self.add_social):
+        if (self.add_social):
             self.M=self.M+1
 
         # Attention layer
-        if (self.add_attention):
-            self.focal_attention = FocalAttention(config,self.M)
+        self.focal_attention = FocalAttention(config,self.M)
         # Dropout layer
         self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decoder_h")
         # Mapping from h to positions
@@ -298,15 +188,10 @@ class TrajectoryDecoder(tf.keras.Model):
         # query is the last h so far: [N,h_dim]. Since last_states is a pair (h,c), we take last_states[0]
         query              = last_states[0]
         # Use attention to define the augmented input here
-        if self.add_attention:
-            attention, Wft  = self.focal_attention(query, context)
-            # TODO: apply the embedding to the concatenation instead of just on the first part (positions)
-            # Augmented input: [N,1,h_dim+emb]
-            augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
-        else:
-            Wft             = None
-            # Input is just the embedded inputs
-            augmented_inputs= decoder_inputs_emb
+        attention, Wft  = self.focal_attention(query, context)
+        # TODO: apply the embedding to the concatenation instead of just on the first part (positions)
+        # Augmented input: [N,1,h_dim+emb]
+        augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
         if (self.rnn_type=='gru'):
             outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states[0],training=(training or self.is_mc_dropout))
@@ -385,6 +270,7 @@ class TrajectoryEncoderDecoder():
             #########################################################################################
             # Encoding is done here
             traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=training)
+
             #########################################################################################
             # Decoding is done here
             # Iterate over these possible initializing states
