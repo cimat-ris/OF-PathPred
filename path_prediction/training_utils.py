@@ -1,8 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
-import math
-import os
+import math, logging, os
 from tqdm import tqdm
 from path_prediction.batches_data import get_batch
 from path_prediction.testing_utils import evaluation_minadefde
@@ -23,9 +22,7 @@ class Experiment_Parameters:
         self.add_kp     = add_kp
         # Obstacles flag
         self.obstacles    = obstacles
-        self.intersection = False
         self.delim        = ','
-        self.output_representation = 'dxdy' #
 
 def relative_to_abs(rel_traj, start_pos):
     """Relative x,y to absolute x,y coordinates.
@@ -50,11 +47,10 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
     best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
     train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
     val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
-    # TODO: Shuffle
 
     # Training the main system
     for epoch in range(config.num_epochs):
-        print('Epoch {}.'.format(epoch + 1))
+        logging.info('Epoch {}.'.format(epoch + 1))
         # Cycle over batches
         total_loss = 0
         #num_batches_per_epoch = train_data.get_num_batches()
@@ -76,7 +72,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
             checkpoint.save(file_prefix = checkpoint_prefix)
 
         # Display information about the current state of the training loop
-        print('[TRN] Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
+        logging.info('Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
         # print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
         train_metrics['obs_classif_sca'].reset_states()
 
@@ -93,7 +89,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
-            print('[TRN] Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
+            logging.info('Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
             val_loss_results.append(total_loss)
             # Evaluate ADE, FDE metrics on validation data
             val_quantitative_metrics = evaluation_minadefde(model,val_data,config)
@@ -105,7 +101,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
                 best["patchId"]= idx
                 # Save the best model so far
                 checkpoint.write(checkpoint_prefix+'-best')
-            print('[TRN] Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+            print('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
 
     # Training the classifier
     for epoch in range(0):

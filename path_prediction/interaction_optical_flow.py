@@ -66,6 +66,8 @@ class OpticalFlowSimulator(object):
     def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles,title):
         """ Funcion para graficar y visualizar los vectores y puntos"""
         plt.subplots(4,3,figsize=(15,15))
+        print(optical_flow)
+        # Six consecutive timesteps
         for seq_pos in range(1,7):
             # Definition of the subplot
             plt.subplot(4,3,seq_pos+3*((seq_pos-1)//3))
@@ -105,18 +107,20 @@ class OpticalFlowSimulator(object):
             # Direction and normal
             vec_cur  = current_direction/(np.linalg.norm(current_direction)+0.001)
             vec_norm = vector_normal(current_direction)
+            print(vec_norm)
             vec_l    = 2.0
             plt.arrow(current_position[0],current_position[1],vec_l*vec_cur[0],vec_l*vec_cur[1],color='black',linewidth=1)
             plt.arrow(current_position[0],current_position[1],-vec_l*vec_norm[0],-vec_l*vec_norm[1],color='red',linewidth=1)
             plt.arrow(current_position[0],current_position[1],+vec_l*vec_norm[0],+vec_l*vec_norm[1],color='red',linewidth=1)
             # Whole trajectory of the agent of interest
             plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='blue')
+            # 20m wide, 12m high
             plt.xlim((current_position[0]-10.0,current_position[0]+10.0))
             plt.ylim((current_position[1]-6.0,current_position[1]+6.0))
             # Plot the optical flow
             plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
             thetas = np.linspace(self.theta0,self.thetaf,65)[:-1]
-            plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
+            plt.bar(thetas,np.log(1.0+optical_flow[seq_pos]),width=0.05,color='blue')
             plt.plot(thetas,np.zeros_like(thetas))
             plt.xlim((0,3.14))
             plt.ylim((-1,1))
@@ -254,9 +258,7 @@ class OpticalFlowSimulator(object):
             visible_obstacles= np.zeros((sequence_length,self.num_rays,2), dtype='float')
         else:
             visible_obstacles = None
-        second_frame = neighbors[1,:,:]
         # Only used when we work with all neighbors
-        vel_before_neighbors  = np.zeros((mnp,2), dtype='float')
         velocity_main         = np.zeros((sequence_length,2), dtype='float')
         velocity_main[1:]     = obs_traj[1:][:]-obs_traj[:-1][:]
         velocity_main[0]      = velocity_main[1]

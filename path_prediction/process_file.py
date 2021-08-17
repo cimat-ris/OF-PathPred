@@ -164,26 +164,14 @@ def prepare_data(datasets_path, datasets_names, parameters):
             # Consider frame sequences of size seq_len = obs+pred
             # id_frame, id_person, x, y por every person present in the frame
             raw_seq_data = raw_traj_data_per_frame[idx:idx+seq_len]
-            if parameters.intersection:
-                # Intersection of the id_person of "raw_seq_data"
-                # i.e. the pedestrian ids present in ALL th frames
-                peds_in_seq = reduce(set.intersection,
-                                [set(peds_id_list[:,1]) for peds_id_list in
-                                raw_seq_data])
-                peds_in_seq = sorted(list(peds_in_seq))
-                raw_seq_data= np.concatenate(raw_seq_data,axis=0)
-            else:
-                raw_seq_data= np.concatenate(raw_seq_data,axis=0)
-                # Unique indices for the persons in the sequence "raw_seq_data"
-                peds_in_seq = np.unique(raw_seq_data[:,1])
-                # List of all the persons in this sequence
-                peds_in_seq = list(peds_in_seq)
+            raw_seq_data = np.concatenate(raw_seq_data,axis=0)
+            # Unique indices for the persons in the sequence "raw_seq_data"
+            peds_in_seq = np.unique(raw_seq_data[:,1])
             # Number of pedestrians to consider
-            num_peds_in_seq = len(peds_in_seq)
-
+            num_peds_in_seq = peds_in_seq.shape[0]
             # The following two arrays have the same shape
             # "pos_seq_data" contains all the absolute positions of all the pedestrians in the sequence
-            # and he information is encoded in an absolute frame (no transformation)
+            # and the information is encoded in an absolute frame (no transformation)
             pos_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
             # Same, with only the displacements
             rel_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
@@ -200,7 +188,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
 
             ped_count = 0
             # For all the persons appearing in this sequence
-            # We will make one entry in the sequences list
+            # We will make one entry in the sequences list provided that it is present in all frames
             for ped_id in peds_in_seq:
                 # Get the information about ped_id, in the whole sequence
                 ped_seq_data = raw_seq_data[raw_seq_data[:,1]==ped_id,:]
@@ -209,7 +197,6 @@ def prepare_data(datasets_path, datasets_names, parameters):
                     # We do not have enough observations for this person
                     continue
 
-                # List of all the persons in the frame, to build the neighbors array
                 # Check whether the first 8 positions are not the same
                 # TODO: is it OK to do that?
                 equal_consecutive = 0
@@ -241,13 +228,8 @@ def prepare_data(datasets_path, datasets_names, parameters):
                 ped_seq_pos = ped_seq_data[:,2:]
                 # Spatial data (relative)
                 ped_seq_rel = np.zeros_like(ped_seq_pos)
-                if parameters.output_representation=='dxdy':
-                    # First frame of the relative array is set to zeros
-                    ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
-                else:
-                    ped_seq_rel[1:, 0] = np.log(0.001+np.linalg.norm(ped_seq_pos[1:, :] - ped_seq_pos[:-1, :],axis=1)/0.5)
-                    ped_seq_rel[1:, 1] = (np.arctan2(ped_seq_pos[1:, 1] - ped_seq_pos[:-1, 1],ped_seq_pos[1:, 0] - ped_seq_pos[:-1, 0]))/10.0
-                    ped_seq_rel[0, :]  = ped_seq_rel[1, :]
+                # First frame of the relative array is set to zeros
+                ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
 
                 # Absolute x,y and displacements for all person_id
                 pos_seq_data[ped_count, :, :] = ped_seq_pos
@@ -284,7 +266,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
         obs_neighbors         = seq_neighbors_dataset[:,:obs_len,:,:]
         seq_pos_dataset = np.concatenate(seq_pos_dataset,axis=0)
         obs_traj        = seq_pos_dataset[:, :obs_len, :]
-        logging.info("Total number of trajectories in this dataset: ".format(obs_traj.shape[0]))
+        logging.info("Total number of trajectories in this dataset: {}".format(obs_traj.shape[0]))
         # At the dataset level
         logging.info("Add social interaction data (optical flow)")
         if parameters.obstacles:
@@ -299,6 +281,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
     # Upper level (all datasets)
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
     seq_pos_all   = np.concatenate(seq_pos_all, axis=0)
+    # TODO: rel and theta could be simply generated here
     seq_rel_all   = np.concatenate(seq_rel_all, axis=0)
     seq_theta_all = np.concatenate(seq_theta_all, axis=0)
     seq_frames_all= np.concatenate(seq_frames_all, axis=0)
