@@ -3,7 +3,9 @@ from tqdm import tqdm
 import numpy as np
 from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.obstacles import load_world_obstacle_polygons
-from trajnetplusplustools.trajnetplusplustools import Reader
+# Since it is used as a submodule, the trajnetplusplustools directory should be there
+sys.path.append("../trajnetplusplustools")
+from trajnetplusplustools import Reader
 
 def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_neighbors=True):
     """ Prepares the train/val scenes and corresponding goals
@@ -62,8 +64,19 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
     all_ped_traj_abs     = np.array(all_ped_traj_abs,dtype='float16')
     all_ped_traj_rel     = np.array(all_ped_traj_rel,dtype='float16')
     all_ped_traj_theta   = np.array(all_ped_traj_theta,dtype='float16')
-    all_flows            = np.array(all_flows,dtype='float16')
+    all_flows            = np.array(all_flows)
     all_visible_neighbors= np.array(all_visible_neighbors,dtype='float16')
+
+    # Data sanity check
+    logging.debug("Checking data consistency")
+    logging.debug("Nan in all_ped_traj_abs {} ".format(np.isnan(all_ped_traj_abs).any()))
+    logging.debug("Nan in all_ped_traj_rel {} ".format(np.isnan(all_ped_traj_rel).any()))
+    logging.debug("Nan in all_ped_traj_theta {} ".format(np.isnan(all_ped_traj_theta).any()))
+    logging.debug("Nan in all_flows {} ".format(np.isnan(all_flows).any()))
+    logging.debug("Inf in all_flows {} ".format(np.isinf(all_flows).any()))
+    logging.debug("Nan in all_visible_neighbors {} ".format(np.isnan(all_visible_neighbors).any()))
+    logging.debug("Inf in all_visible_neighbors {} ".format(np.isinf(all_visible_neighbors).any()))
+
     if keep_neighbors:
         for i in range(len(all_neigbors_traj_abs)):
             # TODO: avoid using 3 dimensions?
