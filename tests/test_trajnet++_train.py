@@ -14,7 +14,7 @@ from path_prediction.interaction_optical_flow import OpticalFlowSimulator
 from path_prediction.process_file import prepare_data_trajnetplusplus
 from path_prediction.datasets_utils import setup_trajnetplusplus_experiment
 from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.model import TrajectoryEncoderDecoder, ModelParameters
+from path_prediction.models.model_multimodal_attention import TrajectoryEncoderDecoder, ModelParameters
 from path_prediction.plot_utils import plot_training_data,plot_training_results
 from path_prediction.training_utils import training_loop
 import path_prediction.batches_data
@@ -53,8 +53,8 @@ def main():
         logging.info('Using CPU')
 
 
-    train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06","cff_07","cff_08"]
-    #train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003"]
+    #train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06","cff_07","cff_08"]
+    train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003"]
     test_dataset_names = ["biwi_eth"]
 
     # Load the default parameters
@@ -67,7 +67,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
+    model_parameters = ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1
@@ -114,6 +114,7 @@ def main():
     logging.info("Restoring last model")
     status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
+    # TODO: testing
 
 if __name__ == '__main__':
     main()
