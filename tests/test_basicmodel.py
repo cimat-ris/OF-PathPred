@@ -2,17 +2,15 @@
 # Imports
 import sys, os, argparse, logging, random
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
 import tensorflow as tf
 # Important imports
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras import models
+from tensorflow.keras import layers, models
 from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.model import BasicRNNModel, BasicRNNModelParameters
+from path_prediction.models.model_deterministic_rnn import *
 from path_prediction.plot_utils import plot_training_data,plot_training_results
 import path_prediction.batches_data
 from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
@@ -48,10 +46,10 @@ def main():
 
     logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
-    if len(physical_devices)>0:
-        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
-    else:
-        logging.info('Using CPU')
+    #if len(physical_devices)>0:
+    #    logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+    #else:
+    logging.info('Using CPU')
 
     # Load the default parameters
     experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
@@ -62,11 +60,6 @@ def main():
     # Load the dataset and perform the split
     idTest = args.dataset_id
     training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
-
-    # Plot ramdomly a subset of the training data (spatial data only)
-    show_training_samples = False
-    if show_training_samples:
-        plot_training_data(training_data,experiment_parameters)
 
     #############################################################
     # Model parameters

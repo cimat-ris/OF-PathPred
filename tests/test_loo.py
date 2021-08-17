@@ -1,7 +1,6 @@
 # Imports
 import sys, os, argparse, logging,random
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
 import tensorflow as tf
 # Important imports
@@ -11,7 +10,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
 from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.model import TrajectoryEncoderDecoder, ModelParameters
+from path_prediction.models.model_multimodal_attention import TrajectoryEncoderDecoder, ModelParameters
 from path_prediction.plot_utils import plot_training_data,plot_training_results
 import path_prediction.batches_data
 from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
@@ -71,7 +70,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = ModelParameters(add_attention=True,add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
+    model_parameters = ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1
