@@ -12,7 +12,6 @@ Trajectory encoder through embedding+RNN.
 class TrajectoryEncoder(tf.Module):
     def __init__(self, config):
         self.stack_rnn_size  = config.stack_rnn_size
-        self.is_mc_dropout   = config.is_mc_dropout
         # xy encoder: [N,T1,h_dim]
         super(TrajectoryEncoder, self).__init__(name="trajectory_encoder")
         # Linear embedding of the observed positions (for each x,y)
@@ -42,7 +41,7 @@ class TrajectoryEncoder(tf.Module):
         x = self.traj_xy_emb_enc(traj_inputs)
         # Applies the position sequence through the LSTM
         # The training parameter is important for dropout
-        return self.lstm(x,training=(training or self.is_mc_dropout))
+        return self.lstm(x,training=training)
 
 """
 Social encoding through embedding+RNN.
@@ -50,7 +49,6 @@ Social encoding through embedding+RNN.
 class SocialEncoder(tf.Module):
     def __init__(self, config):
         super(SocialEncoder, self).__init__(name="social_encoder")
-        self.is_mc_dropout   = config.is_mc_dropout
         # Linear embedding of the social part
         self.traj_social_emb_enc = layers.Dense(config.emb_size,
             activation=config.activation_func,
@@ -69,7 +67,7 @@ class SocialEncoder(tf.Module):
         # Linear embedding of the observed trajectories
         x = self.traj_social_emb_enc(social_inputs)
         # Applies the position sequence through the LSTM
-        x = self.lstm(x,training=(training or self.is_mc_dropout))
+        x = self.lstm(x,training=training)
         return x
 
 """
@@ -165,7 +163,6 @@ Observed trajectory classifier: during training, takes the observed trajectory a
 class ObservedTrajectoryClassifier(tf.Module):
     def __init__(self, config):
         super(ObservedTrajectoryClassifier, self).__init__(name="observed_trajectory_classification")
-        self.is_mc_dropout  = config.is_mc_dropout
         self.output_var_dirs= config.output_var_dirs
         self.output_samples = 2*config.output_var_dirs+1
         input_observed_shape= (config.enc_hidden_size)

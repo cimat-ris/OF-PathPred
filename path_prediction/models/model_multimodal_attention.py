@@ -22,8 +22,6 @@ class ModelParameters(BasicRNNModelParameters):
         self.kp_size        = 18
         # Optical flow
         self.flow_size      = 64
-        # MC dropout
-        self.is_mc_dropout  = False
         self.mc_samples     = 20
         self.rnn_type       = rnn_type
 
@@ -121,7 +119,6 @@ class TrajectoryDecoder(tf.keras.Model):
         super(TrajectoryDecoder, self).__init__(name="trajectory_decoder")
         self.add_social     = config.add_social
         self.stack_rnn_size = config.stack_rnn_size
-        self.is_mc_dropout  = config.is_mc_dropout
         self.rnn_type       = config.rnn_type
         # Linear embedding of the encoding resulting observed trajectories
         self.traj_xy_emb_dec = layers.Dense(config.emb_size,
@@ -191,12 +188,12 @@ class TrajectoryDecoder(tf.keras.Model):
         augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
         if (self.rnn_type=='gru'):
-            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states[0],training=(training or self.is_mc_dropout))
+            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states[0],training=training)
             # Last h state repeated to have always 2 tensors in cur_states
             cur_states = outputs[1:2]
             cur_states.append(outputs[1:2])
         else:
-            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=(training or self.is_mc_dropout))
+            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=training)
             # Last h,c states
             cur_states = outputs[1:3]
         # Apply dropout layer on the h  state before mapping to positions x,y
@@ -370,15 +367,3 @@ class TrajectoryEncoderDecoder():
         traj_pred_set   = tf.stack(traj_pred_set,  axis=1)
         att_weights_set = tf.stack(att_weights_set,axis=1)
         return traj_pred_set,att_weights_set
-
-    # Prediction (testing) with mc dropout for one batch
-    def predict_mcdropout(self, batch_inputs, n_steps, mc_samples=1):
-        all_samples       = []
-        all_probabilities = []
-        all_att_weights   = []
-        for i in range(mc_samples):
-            traj_pred_set,att_weights_pred_set = self.predict(batch_inputs, n_steps)
-            all_samples.append([traj_pred_set,att_weights_pred_set])
-            all_probabilities.append(obs_classif_logits)
-            all_att_weights.append(att_weights_pred_set)
-        return all_samples, all_probabilities
