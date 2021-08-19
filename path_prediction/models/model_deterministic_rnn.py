@@ -3,10 +3,7 @@ import os,logging,operator,functools,sys
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense
-from tensorflow.keras import models
-from path_prediction.traj_utils import relative_to_abs, vw_to_abs
+from tensorflow.keras import layers, models, losses
 
 """
 Basic Model parameters.
@@ -22,7 +19,7 @@ class BasicRNNModelParameters(object):
         self.rnn_type       = rnn_type
         # For training
         self.num_epochs     = 35
-        self.batch_size     = 256  # batch size 512
+        self.batch_size     = 256 
         self.use_validation = True
         # Network architecture
         self.P              =   2 # Dimensions of the position vectors
@@ -41,13 +38,13 @@ class BasicRNNModel(keras.Model):
     def __init__(self, config):
         super(BasicRNNModel, self).__init__()
         # Layers
-        self.embedding = tf.keras.layers.Dense(config.emb_size, activation=config.activation_func)
-        self.lstm      = tf.keras.layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True,activation='tanh',dropout=config.dropout_rate,)
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decode")
+        self.embedding = layers.Dense(config.emb_size, activation=config.activation_func)
+        self.lstm      = layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True,activation='tanh',dropout=config.dropout_rate,)
+        self.dropout = layers.Dropout(config.dropout_rate,name="dropout_decode")
         # Activation = None (probar) , tf.keras.activations.relu
-        self.decoder   = tf.keras.layers.Dense(config.P,  activation=tf.identity)
+        self.decoder   = layers.Dense(config.P,  activation=tf.identity)
         # loss = log(cosh()), log coseno hiperbolico
-        self.loss_fun  =  keras.losses.LogCosh()
+        self.loss_fun  =  losses.LogCosh()
 
     def call(self, X, y, training=False):
         nbatches = len(X)

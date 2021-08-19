@@ -1,13 +1,9 @@
-import tensorflow as tf
-import functools
-import operator
-import os
+import functools, os
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense
 from keras import backend as K
 
 """
@@ -20,7 +16,7 @@ class TrajectoryEncoder(tf.Module):
         # xy encoder: [N,T1,h_dim]
         super(TrajectoryEncoder, self).__init__(name="trajectory_encoder")
         # Linear embedding of the observed positions (for each x,y)
-        self.traj_xy_emb_enc = tf.keras.layers.Dense(config.emb_size,
+        self.traj_xy_emb_enc = layers.Dense(config.emb_size,
             activation=config.activation_func,
             use_bias=True,
             name='position_embedding')
@@ -30,14 +26,14 @@ class TrajectoryEncoder(tf.Module):
         # - last pair of states (h,c) for the first layer
         # - last pair of states (h,c) for the second layer
         # - ... and so on
-        self.lstm_cells= [tf.keras.layers.LSTMCell(config.enc_hidden_size,
+        self.lstm_cells= [layers.LSTMCell(config.enc_hidden_size,
                 name   = 'trajectory_encoder_cell',
                 dropout= config.dropout_rate,
                 recurrent_dropout=config.dropout_rate) for _ in range(self.stack_rnn_size)]
-        self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
+        self.lstm_cell = layers.StackedRNNCells(self.lstm_cells)
         # Recurrent neural network using the previous cell
         # Initial state is zero; We return the full sequence of h's and the pair of last states
-        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+        self.lstm      = layers.RNN(self.lstm_cell,
                 return_sequences= True,
                 return_state    = True)
 
@@ -56,16 +52,16 @@ class SocialEncoder(tf.Module):
         super(SocialEncoder, self).__init__(name="social_encoder")
         self.is_mc_dropout   = config.is_mc_dropout
         # Linear embedding of the social part
-        self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
+        self.traj_social_emb_enc = layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='social_feature_embedding')
         # LSTM cell, including dropout
-        self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
+        self.lstm_cell = layers.LSTMCell(config.enc_hidden_size,
             name   = 'social_encoder_cell',
             dropout= config.dropout_rate,
             recurrent_dropout= config.dropout_rate)
         # Recurrent neural network using the previous cell
-        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+        self.lstm      = layers.RNN(self.lstm_cell,
             return_sequences= True,
             return_state    = True)
 
@@ -84,8 +80,8 @@ Focal attention layer.
 class FocalAttention(tf.Module):
     def __init__(self,config,M):
         super(FocalAttention, self).__init__(name="focal_attention")
-        self.flatten  = tf.keras.layers.Flatten()
-        self.reshape  = tf.keras.layers.Reshape((M, config.obs_len))
+        self.flatten  = layers.Flatten()
+        self.reshape  = layers.Reshape((M, config.obs_len))
 
     def __call__(self,query, context):
         # query  : [N,D1]
@@ -120,20 +116,20 @@ class TrajectoryDecoderInitializer(tf.Module):
         self.add_social     = config.add_social
         self.output_var_dirs= config.output_var_dirs
         # Dropout layer
-        self.dropout        = tf.keras.layers.Dropout(config.dropout_rate)
+        self.dropout        = layers.Dropout(config.dropout_rate)
         # Linear embeddings from trajectory to hidden state
-        self.traj_enc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+        self.traj_enc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.relu,
             name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-        self.traj_enc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+        self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.relu,
             name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
         if self.add_social:
             # Linear embeddings from social state to hidden state
-            self.traj_soc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
+            self.traj_soc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
                 activation=tf.keras.activations.relu,
                 name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-            self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
+            self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
                 activation=tf.keras.activations.relu,
                 name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
 
@@ -174,7 +170,7 @@ class ObservedTrajectoryClassifier(tf.Module):
         self.output_samples = 2*config.output_var_dirs+1
         input_observed_shape= (config.enc_hidden_size)
         self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
-        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
+        self.dense_layer_observed = layers.Dense(64, activation="relu", name="observed_dense")
         self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
 
     # Call to the classifier p(z|x,y)

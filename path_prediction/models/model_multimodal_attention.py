@@ -4,12 +4,9 @@ from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense
-from tensorflow.keras import models
-from path_prediction.traj_utils import relative_to_abs, vw_to_abs
+from tensorflow.keras import layers, models, losses
 from .modules import TrajectoryEncoder, SocialEncoder, FocalAttention,TrajectoryDecoderInitializer, ObservedTrajectoryClassifier
-from path_prediction.models.model_deterministic_rnn import BasicRNNModelParameters
+from .model_deterministic_rnn import BasicRNNModelParameters
 """
 Model parameters.
 """
@@ -127,27 +124,27 @@ class TrajectoryDecoder(tf.keras.Model):
         self.is_mc_dropout  = config.is_mc_dropout
         self.rnn_type       = config.rnn_type
         # Linear embedding of the encoding resulting observed trajectories
-        self.traj_xy_emb_dec = tf.keras.layers.Dense(config.emb_size,
+        self.traj_xy_emb_dec = layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='trajectory_position_embedding')
         # RNN cell
         # Condition for cell type
         if self.rnn_type == 'gru':
             # GRU cell
-            self.dec_cell_traj = tf.keras.layers.GRUCell(config.dec_hidden_size,
-                                                         recurrent_initializer='glorot_uniform',
-                                                         dropout=config.dropout_rate,
-                                                         recurrent_dropout=config.dropout_rate,
-                                                         name='trajectory_decoder_cell_with_GRU')
+            self.dec_cell_traj = layers.GRUCell(config.dec_hidden_size,
+                                                recurrent_initializer='glorot_uniform',
+                                                dropout=config.dropout_rate,
+                                                recurrent_dropout=config.dropout_rate,
+                                                name='trajectory_decoder_cell_with_GRU')
         else:
             # LSTM cell
-            self.dec_cell_traj = tf.keras.layers.LSTMCell(config.dec_hidden_size,
-                                                          recurrent_initializer='glorot_uniform',
-                                                          name='trajectory_decoder_cell',
-                                                          dropout=config.dropout_rate,
-                                                          recurrent_dropout=config.dropout_rate)
+            self.dec_cell_traj = layers.LSTMCell(config.dec_hidden_size,
+                                                recurrent_initializer='glorot_uniform',
+                                                name='trajectory_decoder_cell',
+                                                dropout=config.dropout_rate,
+                                                recurrent_dropout=config.dropout_rate)
         # RNN layer
-        self.recurrentLayer = tf.keras.layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
+        self.recurrentLayer = layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
         self.M = 1
         if (self.add_social):
             self.M=self.M+1
@@ -155,9 +152,9 @@ class TrajectoryDecoder(tf.keras.Model):
         # Attention layer
         self.focal_attention = FocalAttention(config,self.M)
         # Dropout layer
-        self.dropout = tf.keras.layers.Dropout(config.dropout_rate,name="dropout_decoder_h")
+        self.dropout = layers.Dropout(config.dropout_rate,name="dropout_decoder_h")
         # Mapping from h to positions
-        self.h_to_xy = tf.keras.layers.Dense(config.P,
+        self.h_to_xy = layers.Dense(config.P,
             activation=tf.identity,
             name='h_to_xy')
 
@@ -244,9 +241,8 @@ class TrajectoryEncoderDecoder():
         self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
 
         # Instantiate the loss operator
-        #self.loss_fn = keras.losses.MeanSquaredError()
-        self.loss_fn       = keras.losses.LogCosh()
-        self.loss_fn_local = keras.losses.LogCosh(keras.losses.Reduction.NONE)
+        self.loss_fn       = losses.LogCosh()
+        self.loss_fn_local = losses.LogCosh(losses.Reduction.NONE)
 
     # Trick to reset the weights: We save them and reload them
     def save_tmp(self):
@@ -274,7 +270,7 @@ class TrajectoryEncoderDecoder():
             #########################################################################################
             # Decoding is done here
             # Iterate over these possible initializing states
-            losses = []
+            losses_over_samples = []
             for k in range(self.output_samples):
                 # Sample-wise loss values
                 loss_values         = 0
@@ -300,20 +296,20 @@ class TrajectoryEncoderDecoder():
                     # Update the states
                     traj_cur_states = dec_states
                 # Keep loss values for all self.output_samples cases
-                losses.append(tf.squeeze(loss_values,axis=1))
+                losses_over_samples.append(tf.squeeze(loss_values,axis=1))
             # Stack into a tensor batch_size x self.output_samples
-            losses          = tf.stack(losses, axis=1)
-            closest_samples = tf.math.argmin(losses, axis=1)
+            losses_over_samples  = tf.stack(losses_over_samples, axis=1)
+            closest_samples      = tf.math.argmin(losses_over_samples, axis=1)
             #########################################################################################
-            softmax_samples = tf.nn.softmax(-losses/0.01, axis=1)
+            softmax_samples      = tf.nn.softmax(-losses_over_samples/0.01, axis=1)
             metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
-            loss_value  += 0.005* tf.reduce_sum(tf.keras.losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses.shape[0]
+            loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
             #########################################################################################
             # Losses are accumulated here
             # Get the vector of losses at the minimal value for each sample of the batch
-            losses_at_min= tf.gather_nd(losses,tf.stack([range(losses.shape[0]),closest_samples],axis=1))
+            losses_at_min= tf.gather_nd(losses_over_samples,tf.stack([range(losses_over_samples.shape[0]),closest_samples],axis=1))
             # Sum over the batches, divided by the batch size
-            loss_value  += tf.reduce_sum(losses_at_min)/losses.shape[0]
+            loss_value  += tf.reduce_sum(losses_at_min)/losses_over_samples.shape[0]
             # TODO: tune this value in a more principled way?
             # L2 weight decay
             loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
