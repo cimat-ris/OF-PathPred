@@ -8,15 +8,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers, models
-from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.models.model_deterministic_rnn import *
-from path_prediction.plot_utils import plot_training_data,plot_training_results
-import path_prediction.batches_data
-from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
-from path_prediction.training_utils import Experiment_Parameters
-from path_prediction.testing_utils import evaluation_minadefde
-
+from tensorflow.keras import layers, models, optimizers
+from path_prediction import models, utils
 
 def main():
     # Parsing arguments
@@ -46,24 +39,24 @@ def main():
 
     logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
-    #if len(physical_devices)>0:
-    #    logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
-    #else:
-    logging.info('Using CPU')
+    if len(physical_devices)>0:
+        logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
+    else:
+        logging.info('Using CPU')
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
+    experiment_parameters = utils.training_utils.Experiment_Parameters(add_kp=False,obstacles=False)
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 
     # Load the dataset and perform the split
     idTest = args.dataset_id
-    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
+    training_data,validation_data,test_data,test_homography = utils.datasets_utils.setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
     #############################################################
     # Model parameters
-    model_parameters = BasicRNNModelParameters()
+    model_parameters = models.model_deterministic_rnn.BasicRNNModelParameters()
     model_parameters.num_epochs     = args.epochs
     model_parameters.initial_lr     = 0.03
     model_parameters.emb_size       = 128
@@ -80,8 +73,8 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    model     = BasicRNNModel(model_parameters)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    model     = models.model_deterministic_rnn.BasicRNNModel(model_parameters)
+    optimizer = optimizers.Adam(learning_rate=1e-4)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'
@@ -126,7 +119,7 @@ def main():
             logging.info("Validation loss: {}".format(total_error.numpy()/total_cases))
             val_loss_results.append(total_error/total_cases)
             # Evaluate ADE, FDE metrics on validation data
-            val_quantitative_metrics = evaluation_minadefde(model,batched_val_data,model_parameters)
+            val_quantitative_metrics = utils.testing_utils.evaluation_minadefde(model,batched_val_data,model_parameters)
             val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
             val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
             # Saving (checkpoint) the model every 2 epochs
@@ -135,8 +128,7 @@ def main():
 
         plot_training    = True
         if plot_training==True:
-            plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
-
+            utils.plot_utils.plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
 
     # Testing
@@ -148,18 +140,17 @@ def main():
     quantitative = True
     if quantitative==True:
         logging.info("Quantitative testing")
-        results = evaluation_minadefde(model,batched_test_data,model_parameters)
-        plot_comparisons_minadefde(results,dataset_names[idTest])
+        results = utils.testing_utils.evaluation_minadefde(model,batched_test_data,model_parameters)
+        utils.testing_utils.plot_comparisons_minadefde(results,dataset_names[idTest])
         logging.info(results)
-    print(test_homography)
     # Qualitative testing
     qualitative = True
     if qualitative==True:
         logging.info("Qualitative testing")
         for i in range(5):
             logging.info(dataset_dir+dataset_names[idTest])
-            batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
+            batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
+            utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
 
 if __name__ == '__main__':
     main()
