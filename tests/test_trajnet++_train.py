@@ -8,18 +8,7 @@ random.seed(datetime.now())
 import matplotlib.pyplot as plt
 
 # Important imports
-import path_prediction.batches_data
-from path_prediction.training_utils import Experiment_Parameters
-from path_prediction.interaction_optical_flow import OpticalFlowSimulator
-from path_prediction.process_file import prepare_data_trajnetplusplus
-from path_prediction.datasets_utils import setup_trajnetplusplus_experiment
-from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.models.model_multimodal_attention import TrajectoryEncoderDecoder, ModelParameters
-from path_prediction.plot_utils import plot_training_data,plot_training_results
-from path_prediction.training_utils import training_loop
-import path_prediction.batches_data
-from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
-
+from path_prediction import models, utils
 import pickle
 
 def main():
@@ -58,16 +47,16 @@ def main():
     test_dataset_names = ["biwi_eth"]
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_kp=False)
+    experiment_parameters = utils.training_utils.Experiment_Parameters(add_kp=False)
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     # Load the datasets
-    training_data,validation_data,testing_data = setup_trajnetplusplus_experiment('TRAJNETPLUSPLUS',args.path,train_dataset_names,test_dataset_names,experiment_parameters,use_pickled_data=args.pickle)
+    training_data,validation_data,testing_data = utils.datasets_utils.setup_trajnetplusplus_experiment('TRAJNETPLUSPLUS',args.path,train_dataset_names,test_dataset_names,experiment_parameters,use_pickled_data=args.pickle)
     logging.info("Total number of training trajectories: {}".format(training_data["obs_traj"].shape[0]))
 
     #############################################################
     # Model parameters
-    model_parameters = ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
+    model_parameters = models.model_multimodal_attention.ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1
@@ -94,7 +83,7 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    tj_enc_dec = TrajectoryEncoderDecoder(model_parameters)
+    tj_enc_dec = models.model_multimodal_attention.TrajectoryEncoderDecoder(model_parameters)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/ofmodel-trajnet++'
@@ -106,8 +95,8 @@ def main():
     # Training
     if args.noretrain==False:
         logging.info("Training the model")
-        train_loss_results,val_loss_results,val_metrics_results,__ = training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
-        plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
+        train_loss_results,val_loss_results,val_metrics_results,__ = utils.training_utils.training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
+        utils.plot_utils.plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
