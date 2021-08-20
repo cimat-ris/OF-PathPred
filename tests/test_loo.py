@@ -9,6 +9,8 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, models
 from path_prediction import models, utils
+from path_prediction.models.model_multimodal_attention import PredictorMultAtt
+from path_prediction.models.model_multimodal_of import PredictorMultOf
 
 def main():
     # Parsing arguments
@@ -55,14 +57,16 @@ def main():
     idTest = args.dataset_id
     training_data,validation_data,test_data,test_homography = utils.datasets_utils.setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
-
+    test = False
     #############################################################
     # Model parameters
-    model_parameters = models.model_multimodal_attention.ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
+    if test:
+        model_parameters = PredictorMultOf.Parameters(rnn_type=args.rnn)
+    else:
+        model_parameters = PredictorMultAtt.Parameters(add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 5
-    model_parameters.is_mc_dropout  = False
     model_parameters.initial_lr     = 0.03
     model_parameters.enc_hidden_size= 128  # Hidden size of the RNN encoder
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size # Hidden size of the RNN decoder
@@ -85,13 +89,17 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    tj_enc_dec = models.model_multimodal_attention.TrajectoryEncoderDecoder(model_parameters)
+    if test:
+        tj_enc_dec = PredictorMultOf(model_parameters)
+    else:
+        tj_enc_dec = PredictorMultAtt(model_parameters)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/ofmodel'
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         encoder=tj_enc_dec.enc,
+                                        enctodec = tj_enc_dec.enctodec,
                                         decoder=tj_enc_dec.dec)
 
     # Training

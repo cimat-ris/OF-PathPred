@@ -1,20 +1,19 @@
+import tensorflow as tf
 import os,logging,operator,functools,sys
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, models, losses
-from .modules import FocalAttention
-from .blocks import TrajectoryAndContextEncoder,TrajectoryDecoderInitializer
+from .blocks import TrajectoryAndContextEncoder, TrajectoryDecoderInitializer
 from .model_deterministic_rnn import PredictorDetRNN
 
 """ Trajectory decoder.
     Generates samples for the next position
 """
-class DecoderAtt(tf.keras.Model):
+class DecoderOf(tf.keras.Model):
     def __init__(self, config):
-        super(DecoderAtt, self).__init__(name="trajectory_decoder")
-        self.add_social     = config.add_social
+        super(DecoderOf, self).__init__(name="trajectory_decoder")
         self.stack_rnn_size = config.stack_rnn_size
         self.rnn_type       = config.rnn_type
         # Linear embedding of the encoding resulting observed trajectories
@@ -39,18 +38,10 @@ class DecoderAtt(tf.keras.Model):
                                                 recurrent_dropout=config.dropout_rate)
         # RNN layer
         self.recurrentLayer = layers.RNN(self.dec_cell_traj,return_sequences=True,return_state=True)
-        self.M = 1
-        if (self.add_social):
-            self.M=self.M+1
-
-        # Attention layer
-        self.focal_attention = FocalAttention(config,self.M)
         # Dropout layer
         self.dropout = layers.Dropout(config.dropout_rate,name="dropout_decoder_h")
         # Mapping from h to positions
-        self.h_to_xy = layers.Dense(config.P,
-            activation=tf.identity,
-            name='h_to_xy')
+        self.h_to_xy = layers.Dense(config.P,activation=tf.identity,name='h_to_xy')
 
         # Input layers
         # Position input
@@ -60,29 +51,20 @@ class DecoderAtt(tf.keras.Model):
         # Proposals for inital states
         self.input_layer_hid1= layers.Input(enc_last_state_shape,name="initial_state_h")
         self.input_layer_hid2= layers.Input(enc_last_state_shape,name="initial_state_c")
-        # Context shape: [N,M,T1,h_dim]
-        ctxt_shape = (self.M,config.obs_len,config.enc_hidden_size)
-        # Context input
-        self.input_layer_ctxt = layers.Input(ctxt_shape,name="context")
-        self.out = self.call((self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2),self.input_layer_ctxt))
+        self.out = self.call((self.input_layer_pos,(self.input_layer_hid1,self.input_layer_hid2)))
         # Call init again. This is a workaround for being able to use summary
-        super(DecoderAtt, self).__init__(
-                    inputs= [self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2,self.input_layer_ctxt],
+        super(DecoderOf, self).__init__(
+                    inputs= [self.input_layer_pos,self.input_layer_hid1,self.input_layer_hid2],
                     outputs=self.out)
 
     # Call to the decoder
     def call(self, inputs, training=None):
-        dec_input, last_states, context = inputs
+        dec_input, last_states = inputs
         # Embedding from positions
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
-        # context: [N,1,h_dim]
-        # query is the last h so far: [N,h_dim]. Since last_states is a pair (h,c), we take last_states[0]
-        query              = last_states[0]
-        # Use attention to define the augmented input here
-        attention, Wft  = self.focal_attention(query, context)
         # TODO: apply the embedding to the concatenation instead of just on the first part (positions)
         # Augmented input: [N,1,h_dim+emb]
-        augmented_inputs= tf.concat([decoder_inputs_emb, attention], axis=2)
+        augmented_inputs= tf.concat([decoder_inputs_emb], axis=2)
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
         if (self.rnn_type=='gru'):
             outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states[0],training=training)
@@ -99,29 +81,29 @@ class DecoderAtt(tf.keras.Model):
         # Something new: we try to learn the residual to the constant velocity case
         # Hence the output is equal to th input plus what we learn
         decoder_out_xy = self.h_to_xy(decoder_latent) + dec_input
-        return decoder_out_xy, cur_states, Wft
+        return decoder_out_xy, cur_states
 
 # The main class
-class PredictorMultAtt():
+class PredictorMultOf():
+
     """
     Model parameters.
     """
     class Parameters(PredictorDetRNN.parameters):
-        def __init__(self, add_social=False, rnn_type='lstm'):
-            super(PredictorMultAtt.Parameters, self).__init__(rnn_type)
+        def __init__(self, rnn_type='lstm'):
+            super(PredictorMultOf.Parameters, self).__init__(rnn_type)
             # -----------------
-            self.add_social     = add_social
             self.stack_rnn_size = 2
             self.output_var_dirs= 0
             # Optical flow
             self.flow_size      = 64
+            self.add_social     = True
             self.rnn_type       = rnn_type
 
     # Constructor
     def __init__(self,config):
         logging.info("Initialization")
         # Flags for considering social interations
-        self.add_social     = config.add_social
         self.stack_rnn_size = config.stack_rnn_size
         self.output_samples = 2*config.output_var_dirs+1
         self.output_var_dirs= config.output_var_dirs
@@ -131,11 +113,8 @@ class PredictorMultAtt():
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
-        # Encoder to decoder initialization
-        self.enctodec = TrajectoryDecoderInitializer(config)
-        self.enc.summary()
         # Decoder
-        self.dec = DecoderAtt(config)
+        self.dec = DecoderOf(config)
         self.dec.summary()
         #########################################################################################
 
@@ -168,19 +147,17 @@ class PredictorMultAtt():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables to be trained
-        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights
+        variables = self.enc.trainable_weights + self.dec.trainable_weights
         # Open a GradientTape to record the operations run during the forward pass, which enables auto-differentiation.
         # The total loss will be accumulated on this variable
         loss_value = 0
         with tf.GradientTape() as g:
             #########################################################################################
-            # Encoding is done here
-            last_states, context, obs_classif_logits = self.enc(batch_inputs, training=training)
-
-            #########################################################################################
-            # Mapping encoding to state of the decoder
-            traj_cur_states_set = self.enctodec(last_states)
-
+            # Encoding
+            traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=training)
+            print(len(traj_cur_states_set))
+            print(traj_cur_states_set[0][0].shape)
+            print(traj_cur_states_set[1][0].shape)
             #########################################################################################
             # Decoding is done here
             # Iterate over these possible initializing states
@@ -196,8 +173,8 @@ class PredictorMultAtt():
                 for t in range(0, batch_targets.shape[1]):
                     # ------------------------ xy decoder--------------------------------------
                     # passing enc_output to the decoder
-                    t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=training)
-                    t_target               = tf.expand_dims(batch_targets[:, t], 1)
+                    t_pred, dec_states = self.dec([dec_input,traj_cur_states],training=training)
+                    t_target           = tf.expand_dims(batch_targets[:, t], 1)
                     # Loss
                     loss_values += (batch_targets.shape[1]-t)*self.loss_fn_local(t_target, t_pred)
                     if training==True:
@@ -250,8 +227,7 @@ class PredictorMultAtt():
         # Last observed position from the trajectories
         traj_obs_last     = traj_obs_inputs[:, -1]
         # Feed-forward start here
-        last_states, context, obs_classif_logits = self.enc(batch_inputs, training=False)
-        traj_cur_states_set = self.enctodec(last_states,training=False)
+        traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=False)
         # This will store the trajectories and the attention weights
         traj_pred_set  = []
         att_weights_set= []

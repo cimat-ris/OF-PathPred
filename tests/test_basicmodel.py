@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, models, optimizers
 from path_prediction import models, utils
+from path_prediction.models.model_deterministic_rnn import PredictorDetRNN
 
 def main():
     # Parsing arguments
@@ -56,7 +57,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = models.model_deterministic_rnn.BasicRNNModelParameters()
+    model_parameters = PredictorDetRNN.parameters()
     model_parameters.num_epochs     = args.epochs
     model_parameters.initial_lr     = 0.03
     model_parameters.emb_size       = 128
@@ -73,7 +74,7 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    model     = models.model_deterministic_rnn.BasicRNNModel(model_parameters)
+    model     = PredictorDetRNN(model_parameters)
     optimizer = optimizers.Adam(learning_rate=1e-4)
 
     # Checkpoints

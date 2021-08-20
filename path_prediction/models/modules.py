@@ -105,59 +105,6 @@ class FocalAttention(tf.Module):
 
 
 """
-Trajectory decoder initializer.
-Allows to generate multiple ouputs. By learning to fit variations on the initial states of the decoder.
-"""
-class TrajectoryDecoderInitializer(tf.Module):
-    def __init__(self, config):
-        super(TrajectoryDecoderInitializer, self).__init__(name="trajectory_decoder_initializer")
-        self.add_social     = config.add_social
-        self.output_var_dirs= config.output_var_dirs
-        # Dropout layer
-        self.dropout        = layers.Dropout(config.dropout_rate)
-        # Linear embeddings from trajectory to hidden state
-        self.traj_enc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,
-            name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-        self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,
-            name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
-        if self.add_social:
-            # Linear embeddings from social state to hidden state
-            self.traj_soc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,
-                name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-            self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,
-                name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
-
-    # Call to the decoder initializer
-    def __call__(self, encoders_states, training=None):
-        # The list of decoder states in decoder_init_states
-        decoder_init_states = []
-        traj_encoder_states  = encoders_states[0]
-        # Append this pair of hidden states to the list of hypothesis (mean value)
-        decoder_init_states.append(traj_encoder_states)
-        if self.add_social:
-            soc_encoder_states = encoders_states[1]
-        for i in range(self.output_var_dirs):
-            # Map the trajectory hidden states to variations of the initializer state
-            decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
-            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
-            if self.add_social:
-                # Map the social features hidden states to variations of the initializer state
-                decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
-                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
-            # Define two opposite states based on these variations
-            decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
-            decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
-            decoder_init_states.append([decoder_init_h,decoder_init_c])
-            decoder_init_h   = traj_encoder_states[0]-decoder_init_dh
-            decoder_init_c   = traj_encoder_states[1]-decoder_init_dc
-            decoder_init_states.append([decoder_init_h,decoder_init_c])
-        return decoder_init_states
-
-"""
 Observed trajectory classifier: during training, takes the observed trajectory and predict the class
 """
 class ObservedTrajectoryClassifier(tf.Module):

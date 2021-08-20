@@ -6,37 +6,38 @@ from tensorflow import keras
 from tensorflow.keras import layers, models, losses
 
 """
-Basic Model parameters.
+Very Basic RNN-based Predictor.
 """
-class BasicRNNModelParameters(object):
-    def __init__(self, rnn_type='lstm'):
-        # -----------------
-        # Observation/prediction lengths
-        self.obs_len        = 8
-        self.pred_len       = 12
-        self.seq_len        = self.obs_len + self.pred_len
-        # Rnn type
-        self.rnn_type       = rnn_type
-        # For training
-        self.num_epochs     = 35
-        self.batch_size     = 256 
-        self.use_validation = True
-        # Network architecture
-        self.P              =   2 # Dimensions of the position vectors
-        self.enc_hidden_size= 128                  # Hidden size of the RNN encoder
-        self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
-        self.emb_size       = 128  # Embedding size
-        self.dropout_rate   = 0.3  # Dropout rate during training
-        self.activation_func= tf.nn.tanh
-        self.optimizer      = 'adam'
-        self.initial_lr     = 0.01
+class PredictorDetRNN(keras.Model):
+    """
+    Basic Model parameters.
+    """
+    class parameters(object):
+        def __init__(self, rnn_type='lstm'):
+            # -----------------
+            # Observation/prediction lengths
+            self.obs_len        = 8
+            self.pred_len       = 12
+            self.seq_len        = self.obs_len + self.pred_len
+            # Rnn type
+            self.rnn_type       = rnn_type
+            # For training
+            self.num_epochs     = 35
+            self.batch_size     = 256
+            self.use_validation = True
+            # Network architecture
+            self.P              =   2 # Dimensions of the position vectors
+            self.enc_hidden_size= 128                  # Hidden size of the RNN encoder
+            self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
+            self.emb_size       = 128  # Embedding size
+            self.dropout_rate   = 0.3  # Dropout rate during training
+            self.activation_func= tf.nn.tanh
+            self.optimizer      = 'adam'
+            self.initial_lr     = 0.01
 
-"""
-Very Basic RNN-based Model.
-"""
-class BasicRNNModel(keras.Model):
+
     def __init__(self, config):
-        super(BasicRNNModel, self).__init__()
+        super(PredictorDetRNN, self).__init__()
         # Layers
         self.embedding = layers.Dense(config.emb_size, activation=config.activation_func)
         self.lstm      = layers.LSTM(config.enc_hidden_size, return_sequences=True, return_state=True,activation='tanh',dropout=config.dropout_rate,)
