@@ -13,12 +13,17 @@ Trajectory decoder initializer.
 Allows to generate multiple ouputs. By learning to fit variations on the initial states of the decoder.
 """
 class TrajectoryDecoderInitializer(tf.keras.Model):
-    def __init__(self, config, add_social=False):
+    def __init__(self, config):
         super(TrajectoryDecoderInitializer, self).__init__(name="trajectory_decoder_initializer")
-        self.add_social     = add_social
+        self.add_social     = config.add_social
         self.output_var_dirs= config.output_var_dirs
         # Dropout layer
         self.dropout        = layers.Dropout(config.dropout_rate)
+        h_shape             =  (config.enc_hidden_size)
+        # TODO: Do we need both h and c?
+        # Input
+        self.input_layer_traj_h = layers.Input(h_shape,name="encoded_trajectory_h")
+        self.input_layer_traj_c = layers.Input(h_shape,name="encoded_trajectory_c")
         # Linear embeddings from trajectory to hidden state
         self.traj_enc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.relu,
@@ -26,6 +31,7 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.relu,
             name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+
         if self.add_social:
             # Linear embeddings from social state to hidden state
             self.traj_soc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
@@ -34,9 +40,21 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
             self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
                 activation=tf.keras.activations.relu,
                 name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+            # In the case of handling social interactions, add a third input
+            self.input_layer_social_h = layers.Input(h_shape,name="social_features_h")
+            self.input_layer_social_c = layers.Input(h_shape,name="social_features_c")
+            # Get output layer now with `call` method
+            self.out = self.call([[self.input_layer_traj_h,self.input_layer_traj_c],[self.input_layer_social_h,self.input_layer_social_c]])
+        else:
+            # Get output layer now with `call` method
+            self.out = self.call([[self.input_layer_traj_h,self.input_layer_traj_c]])
+        # Call init again. This is a workaround for being able to use summary()
+        super(TrajectoryDecoderInitializer, self).__init__(
+            inputs=tf.cond(self.add_social, lambda: [[self.input_layer_traj_h,self.input_layer_traj_c],[self.input_layer_social_h,self.input_layer_social_c]], lambda: [[self.input_layer_traj_h,self.input_layer_traj_c]]),
+            outputs=self.out,name="trajectory_decoder_initializer")
 
     # Call to the decoder initializer
-    def __call__(self, encoders_states, training=None):
+    def call(self, encoders_states, training=None):
         # The list of decoder states in decoder_init_states
         decoder_init_states = []
         traj_encoder_states  = encoders_states[0]
@@ -139,8 +157,6 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # Apply classifier to guess what is th most probable output
         obs_classif_logits = self.obs_classif(traj_last_states[0][0])
         if self.add_social:
-            #return traj_last_states,soc_last_states, obs_enc_h
             return [traj_last_states[0],soc_last_states], context, obs_classif_logits
         else:
-            #return traj_last_states, obs_enc_h
             return [traj_last_states[0]], context, obs_classif_logits

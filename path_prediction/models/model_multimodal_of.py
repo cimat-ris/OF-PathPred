@@ -113,6 +113,9 @@ class PredictorMultOf():
         # Encoder: Positions and context
         self.enc = TrajectoryAndContextEncoder(config)
         self.enc.summary()
+        # Encoder to decoder initialization
+        self.enctodec = TrajectoryDecoderInitializer(config)
+        self.enctodec.summary()
         # Decoder
         self.dec = DecoderOf(config)
         self.dec.summary()

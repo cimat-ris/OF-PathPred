@@ -133,7 +133,7 @@ class PredictorMultAtt():
         self.enc.summary()
         # Encoder to decoder initialization
         self.enctodec = TrajectoryDecoderInitializer(config)
-        self.enc.summary()
+        self.enctodec.summary()
         # Decoder
         self.dec = DecoderAtt(config)
         self.dec.summary()
