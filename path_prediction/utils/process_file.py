@@ -265,7 +265,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
     # TODO: rel and theta could be simply generated here
     # All the displacements are estimated here.
     seq_rel_all           = np.zeros_like(seq_pos_all)
-    seq_rel_all[:,1:,:]   = seq_pos_all[:,1:,:]-seq_pos_all[:,-1:,:]
+    seq_rel_all[:,1:,:]   = seq_pos_all[:,1:,:]-seq_pos_all[:,:-1,:]
     # Note that padding is done at the first displacement with the second displacement
     seq_rel_all[:,0,:]    = seq_rel_all[:,1,:]
     seq_theta_all         = np.zeros_like(seq_pos_all[:,:,0:1])
