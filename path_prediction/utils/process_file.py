@@ -124,8 +124,6 @@ def prepare_data(datasets_path, datasets_names, parameters):
     # Lists that will hold the data
     num_person_starting_at_frame = []
     seq_pos_all                  = []
-    seq_theta_all                = []
-    seq_rel_all                  = []
     seq_neighbors_all            = []
     seq_frames_all               = []  # [N, seq_len]
     all_flow                     = []
@@ -173,10 +171,6 @@ def prepare_data(datasets_path, datasets_names, parameters):
             # "pos_seq_data" contains all the absolute positions of all the pedestrians in the sequence
             # and the information is encoded in an absolute frame (no transformation)
             pos_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
-            # Same, with only the displacements
-            rel_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
-            # Same with orientations
-            theta_seq_data = np.zeros((num_peds_in_seq, seq_len, 1), dtype="float32")
             # Is the array that have the sequence of Id_person of all people that there are in frame sequence
             frame_ids_seq_data = np.zeros((num_peds_in_seq, seq_len), dtype="int32")
 
@@ -226,18 +220,8 @@ def prepare_data(datasets_path, datasets_names, parameters):
 
                 # Spatial data (absolute positions) for ped
                 ped_seq_pos = ped_seq_data[:,2:]
-                # Spatial data (relative)
-                ped_seq_rel = np.zeros_like(ped_seq_pos)
-                # First frame of the relative array is set to zeros
-                ped_seq_rel[1:, :] = ped_seq_pos[1:, :] - ped_seq_pos[:-1, :]
-
                 # Absolute x,y and displacements for all person_id
                 pos_seq_data[ped_count, :, :] = ped_seq_pos
-                rel_seq_data[ped_count, :, :] = ped_seq_rel
-                # Orientations
-                theta_seq_data[ped_count,1:, 0] = np.arctan2(ped_seq_pos[1:, 1] - ped_seq_pos[:-1, 1],ped_seq_pos[1:, 0] - ped_seq_pos[:-1, 0])
-                theta_seq_data[ped_count,0,  0] = theta_seq_data[ped_count,1,  0]
-
                 # For each tracked person
                 # we keep the list of all the frames in which it is present
                 frame_ids_seq_data[ped_count, :] = frame_ids[idx:idx+seq_len]
@@ -249,9 +233,6 @@ def prepare_data(datasets_path, datasets_names, parameters):
             # Only count_ped data are preserved in the following three arrays
             # Append all the trajectories (pos_seq_data) starting at this frame
             seq_pos_all.append(pos_seq_data[:ped_count])
-            # Append all the displacement trajectories (pos_seq_data) starting at this frame
-            seq_rel_all.append(rel_seq_data[:ped_count])
-            seq_theta_all.append(theta_seq_data[:ped_count])
             # Append all the frame ranges (frame_ids_seq_data) starting at this frame
             seq_frames_all.append(frame_ids_seq_data[:ped_count])
             # Information used locally for this dataset
@@ -282,9 +263,16 @@ def prepare_data(datasets_path, datasets_names, parameters):
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
     seq_pos_all   = np.concatenate(seq_pos_all, axis=0)
     # TODO: rel and theta could be simply generated here
-    seq_rel_all   = np.concatenate(seq_rel_all, axis=0)
-    seq_theta_all = np.concatenate(seq_theta_all, axis=0)
-    seq_frames_all= np.concatenate(seq_frames_all, axis=0)
+    # All the displacements are estimated here.
+    seq_rel_all           = np.zeros_like(seq_pos_all)
+    seq_rel_all[:,1:,:]   = seq_pos_all[:,1:,:]-seq_pos_all[:,-1:,:]
+    # Note that padding is done at the first displacement with the second displacement
+    seq_rel_all[:,0,:]    = seq_rel_all[:,1,:]
+    seq_theta_all         = np.zeros_like(seq_pos_all[:,:,0:1])
+    seq_theta_all[:,1:,0] = np.arctan2(seq_pos_all[:, 1:, 1] - seq_pos_all[:,:-1, 1],seq_pos_all[:,1:, 0] - seq_pos_all[:,:-1, 0])
+    seq_theta_all[:,0,  0]= seq_theta_all[:,1,  0]
+
+    seq_frames_all    = np.concatenate(seq_frames_all, axis=0)
     seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
     logging.info("Total number of sample sequences: ".format(len(seq_pos_all)))
 
