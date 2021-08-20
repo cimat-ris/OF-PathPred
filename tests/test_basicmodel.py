@@ -149,7 +149,6 @@ def main():
     if qualitative==True:
         logging.info("Qualitative testing")
         for i in range(5):
-            logging.info(dataset_dir+dataset_names[idTest])
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
             utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
 
