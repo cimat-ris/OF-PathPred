@@ -119,40 +119,38 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
 
     # Call expects an **array of inputs**
     def call(self,inputs,training=None):
-        # inputs[0] is the observed trajectory part
+        # inputs[0] is the observed trajectory part, [nbatch,obs_length,P]
         traj_obs_inputs  = inputs[0]
         if self.add_social:
-            # inputs[1] are the social interaction features
+            # inputs[1] are the social interaction features, [nbatch,obs_length,flow_size]
             soc_inputs     = inputs[1]
-            tf.debugging.assert_all_finite(soc_inputs,"PBM")
-
         # ----------------------------------------------------------
         # Encoding
         # ----------------------------------------------------------
-        # Applies the position sequence through the LSTM: [N,T1,H]
+        # Applies the position sequence through the LSTM:
         # In the case of stacked cells, output is:
         # sequence of outputs , last states (h,c) level 1, last states (h,c) level 2, ...
         outputs          = self.traj_enc(traj_obs_inputs,training=training)
-        # Sequence of outputs at the highst level
+        # Sequence of outputs at the highest level, [nbatch,obs_length,enc_hidden_size]
         traj_h_seq       = outputs[0]
-        # The last pairs of states, for each level of the stackd RNN
+        # The last pairs of states, for each level of the stackd RNN, [nbatch,enc_hidden_size]
         traj_last_states = outputs[1:1+self.stack_rnn_size]
-        # Get the sequence of output hidden states into enc_h_list
-        enc_h_list          = [traj_h_seq]
+        # Get the sequence of output hidden states into enc_h_list (for attention)
+        enc_h_list       = [traj_h_seq]
         # ----------------------------------------------------------
         # Social interaccion (through optical flow)
         # ----------------------------------------------------------
         if self.add_social:
             # Applies the optical flow descriptor through the LSTM
             outputs = self.soc_enc(soc_inputs,training=training)
-            # Last states from social encoding
+            # Last states from social encoding, each [nbatch,enc_hidden_size]
             soc_last_states = [outputs[1],outputs[2]]
             # Sequences of outputs from the social encoding
             soc_h_seq       = outputs[0]
             # Get soc_h_seq into to the list enc_h_list
             enc_h_list.append(soc_h_seq)
         # Pack all observed hidden states (lists) from all M features into a context tensor
-        # The final size should be [N,M,T_obs,h_dim]
+        # The final size should be [nbatch,M,obs_length,enc_hidden_size]
         context          = tf.stack(enc_h_list, axis=1)
         # Apply classifier to guess what is th most probable output
         obs_classif_logits = self.obs_classif(traj_last_states[0][0])
