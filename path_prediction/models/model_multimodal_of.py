@@ -136,14 +136,6 @@ class PredictorMultOf():
         self.loss_fn       = losses.LogCosh()
         self.loss_fn_local = losses.LogCosh(losses.Reduction.NONE)
 
-    # Trick to reset the weights: We save them and reload them
-    def save_tmp(self):
-        self.enc.save_weights('tmp_enc.h5')
-        self.dec.save_weights('tmp_dec.h5')
-    def load_tmp(self):
-        self.enc.load_weights('tmp_enc.h5')
-        self.dec.load_weights('tmp_dec.h5')
-
     # Single training/testing step, for one batch: batch_inputs are the observations, batch_targets are the targets
     def batch_step(self, batch_inputs, batch_targets, metrics, training=True):
         traj_obs_inputs = batch_inputs[0]
@@ -157,10 +149,10 @@ class PredictorMultOf():
         with tf.GradientTape() as g:
             #########################################################################################
             # Encoding
-            traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=training)
-            print(len(traj_cur_states_set))
-            print(traj_cur_states_set[0][0].shape)
-            print(traj_cur_states_set[1][0].shape)
+            last_states, context, obs_classif_logits = self.enc(batch_inputs, training=training)
+            #########################################################################################
+            # Mapping encoding to state of the decoder
+            traj_cur_states_set = self.enctodec(last_states)
             #########################################################################################
             # Decoding is done here
             # Iterate over these possible initializing states
@@ -230,16 +222,17 @@ class PredictorMultOf():
         # Last observed position from the trajectories
         traj_obs_last     = traj_obs_inputs[:, -1]
         # Feed-forward start here
-        traj_cur_states_set, context, obs_classif_logits = self.enc(batch_inputs, training=False)
+        last_states, context, obs_classif_logits = self.enc(batch_inputs, training=False)
+        # Mapping encoding to state of the decoder
+        traj_cur_states_set = self.enctodec(last_states)
+
         # This will store the trajectories and the attention weights
         traj_pred_set  = []
-        att_weights_set= []
 
         # Iterate over these possible initializing states
         for k in range(self.output_samples):
             # List for the predictions and attention weights
             traj_pred   = []
-            att_weights = []
             # Decoder state is initialized here
             traj_cur_states  = traj_cur_states_set[k]
             # The first input to the decoder is the last observed position [Nx1xK]
@@ -248,19 +241,15 @@ class PredictorMultOf():
             for t in range(0, n_steps):
                 # ------------------------ xy decoder--------------------------------------
                 # Passing enc_output to the decoder
-                t_pred, dec_states, wft = self.dec([dec_input,traj_cur_states,context],training=False)
+                t_pred, dec_states = self.dec([dec_input,traj_cur_states],training=False)
                 # Next input is the last predicted position
                 dec_input = t_pred
                 # Add it to the list of predictions
                 traj_pred.append(t_pred)
-                att_weights.append(wft)
                 # Reuse the hidden states for the next step
                 traj_cur_states = dec_states
             traj_pred   = tf.squeeze(tf.stack(traj_pred, axis=1))
-            att_weights = tf.squeeze(tf.stack(att_weights, axis=1))
             traj_pred_set.append(traj_pred)
-            att_weights_set.append(att_weights)
         # Results as tensors
         traj_pred_set   = tf.stack(traj_pred_set,  axis=1)
-        att_weights_set = tf.stack(att_weights_set,axis=1)
-        return traj_pred_set,att_weights_set
+        return traj_pred_set

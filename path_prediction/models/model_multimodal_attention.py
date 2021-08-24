@@ -154,14 +154,6 @@ class PredictorMultAtt():
         self.loss_fn       = losses.LogCosh()
         self.loss_fn_local = losses.LogCosh(losses.Reduction.NONE)
 
-    # Trick to reset the weights: We save them and reload them
-    def save_tmp(self):
-        self.enc.save_weights('tmp_enc.h5')
-        self.dec.save_weights('tmp_dec.h5')
-    def load_tmp(self):
-        self.enc.load_weights('tmp_enc.h5')
-        self.dec.load_weights('tmp_dec.h5')
-
     # Single training/testing step, for one batch: batch_inputs are the observations, batch_targets are the targets
     def batch_step(self, batch_inputs, batch_targets, metrics, training=True):
         traj_obs_inputs = batch_inputs[0]
@@ -214,12 +206,19 @@ class PredictorMultAtt():
             # Stack into a tensor batch_size x self.output_samples
             losses_over_samples  = tf.stack(losses_over_samples, axis=1)
             closest_samples      = tf.math.argmin(losses_over_samples, axis=1)
+
             #########################################################################################
+            # Losses are accumulated here
             softmax_samples      = tf.nn.softmax(-losses_over_samples/0.01, axis=1)
             metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
             loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
+
             #########################################################################################
-            # Losses are accumulated here
+            #
+            ortho_cost  = 0.002*self.enctodec.ortho_cost()
+            loss_value +=   ortho_cost
+
+            #########################################################################################
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses_over_samples,tf.stack([range(losses_over_samples.shape[0]),closest_samples],axis=1))
             # Sum over the batches, divided by the batch size
@@ -254,13 +253,11 @@ class PredictorMultAtt():
         traj_cur_states_set = self.enctodec(last_states,training=False)
         # This will store the trajectories and the attention weights
         traj_pred_set  = []
-        att_weights_set= []
 
         # Iterate over these possible initializing states
         for k in range(self.output_samples):
             # List for the predictions and attention weights
             traj_pred   = []
-            att_weights = []
             # Decoder state is initialized here
             traj_cur_states  = traj_cur_states_set[k]
             # The first input to the decoder is the last observed position [Nx1xK]
@@ -269,19 +266,15 @@ class PredictorMultAtt():
             for t in range(0, n_steps):
                 # ------------------------ xy decoder--------------------------------------
                 # Passing enc_output to the decoder
-                t_pred, dec_states, wft = self.dec([dec_input,traj_cur_states,context],training=False)
+                t_pred, dec_states, __ = self.dec([dec_input,traj_cur_states,context],training=False)
                 # Next input is the last predicted position
                 dec_input = t_pred
                 # Add it to the list of predictions
                 traj_pred.append(t_pred)
-                att_weights.append(wft)
                 # Reuse the hidden states for the next step
                 traj_cur_states = dec_states
             traj_pred   = tf.squeeze(tf.stack(traj_pred, axis=1))
-            att_weights = tf.squeeze(tf.stack(att_weights, axis=1))
             traj_pred_set.append(traj_pred)
-            att_weights_set.append(att_weights)
         # Results as tensors
         traj_pred_set   = tf.stack(traj_pred_set,  axis=1)
-        att_weights_set = tf.stack(att_weights_set,axis=1)
-        return traj_pred_set,att_weights_set
+        return traj_pred_set
