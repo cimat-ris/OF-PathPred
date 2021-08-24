@@ -99,7 +99,7 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
     attention     = []
     batch_inputs, batch_targets = get_batch(batch, config)
     # Perform prediction
-    pred_traj,attention_weights = model.predict(batch_inputs,batch_targets.shape[1])
+    pred_traj  = model.predict(batch_inputs,batch_targets.shape[1])
     # Cycle over the trajectories of the bach
     for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
         this_pred_out_abs_set = []
@@ -120,11 +120,11 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
         traj_gt.append(pred_traj_gt)
         traj_pred.append(this_pred_out_abs_set)
         neighbors.append(neighbors_gt)
-    return traj_obs,traj_gt,traj_pred,neighbors,attention_weights
+    return traj_obs,traj_gt,traj_pred,neighbors
 
 # Perform a qualitative evaluation over a batch of n_trajectories
 def evaluation_qualitative(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
-    traj_obs,traj_gt,traj_pred,neighbors,__ = predict_from_batch(model,batch,config)
+    traj_obs,traj_gt,traj_pred,neighbors = predict_from_batch(model,batch,config)
     # Plot ground truth and predictions
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
@@ -158,7 +158,7 @@ def evaluation_minadefde(model,test_data,config):
     for batch in tqdm(test_data,ascii = True):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, config)
-        pred_out,__                 = model.predict(batch_inputs,batch_targets.shape[1])
+        pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
         d                           = []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
