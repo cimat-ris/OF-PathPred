@@ -26,19 +26,19 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         self.input_layer_traj_c = layers.Input(h_shape,name="encoded_trajectory_c")
         # Linear embeddings from trajectory to hidden state
         self.traj_enc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,
+            activation=tf.keras.activations.relu,use_bias=False,
             name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
         self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,
+            activation=tf.keras.activations.relu,use_bias=False,
             name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
 
         if self.add_social:
             # Linear embeddings from social state to hidden state
             self.traj_soc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,
+                activation=tf.keras.activations.relu,use_bias=False,
                 name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
             self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,
+                activation=tf.keras.activations.relu,use_bias=False,
                 name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
             # In the case of handling social interactions, add a third input
             self.input_layer_social_h = layers.Input(h_shape,name="social_features_h")
@@ -78,6 +78,15 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
             decoder_init_c   = traj_encoder_states[1]-decoder_init_dc
             decoder_init_states.append([decoder_init_h,decoder_init_c])
         return decoder_init_states
+
+    def ortho_cost(self):
+        sum = 0
+        for i in range(self.output_var_dirs):
+            for j in range(i+1,self.output_var_dirs):
+                # Map the trajectory hidden states to variations of the initializer state
+                dots = tf.reduce_sum(tf.math.multiply(self.traj_enc_h_to_dec_h[i].kernel,self.traj_enc_h_to_dec_h[j].kernel),axis=0,keepdims=True)
+                sum += tf.reduce_sum(tf.square(dots))
+        return sum
 
 ################################################################################
 ############# Encoding
@@ -155,6 +164,6 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # Apply classifier to guess what is th most probable output
         obs_classif_logits = self.obs_classif(traj_last_states[0][0])
         if self.add_social:
-            return [traj_last_states[0],soc_last_states], context, obs_classif_logits
+            return [traj_last_states[1],soc_last_states], context, obs_classif_logits
         else:
-            return [traj_last_states[0]], context, obs_classif_logits
+            return [traj_last_states[1]], context, obs_classif_logits
