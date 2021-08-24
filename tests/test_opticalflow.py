@@ -5,13 +5,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from path_prediction.interaction_optical_flow import OpticalFlowSimulator
-from path_prediction.process_file import prepare_data
-from path_prediction.training_utils import Experiment_Parameters
+from path_prediction.utils.interaction_optical_flow import OpticalFlowSimulator
+from path_prediction.utils.process_file import prepare_data
+from path_prediction.utils.training_utils import Experiment_Parameters
 from datetime import datetime
-random.seed(datetime.now())
+random.seed()
 # To test obstacle-related functions
-from path_prediction.obstacles import image_to_world_xy,generate_obstacle_polygons,load_world_obstacle_polygons
+from path_prediction.utils.obstacles import image_to_world_xy,generate_obstacle_polygons,load_world_obstacle_polygons
 
 
 def main():
@@ -60,9 +60,10 @@ def main():
         visible_obst_sample     = data['obs_visible_obstacles'][idSample][0]
     else:
         visible_obst_sample     = None
-    OFSimulator          = OpticalFlowSimulator()
+        # Optical flow
+    OFSimulator          = OpticalFlowSimulator(log_polar_mapping=False)
     # Plot simulated optical flow
-    OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow, with obstacles")
+    OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow")
 
 
 if __name__ == '__main__':
