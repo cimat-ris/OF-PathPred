@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import math
-import cv2
 
 def norm_angle(angle):
     if angle<-math.pi/2.0:
@@ -51,7 +50,7 @@ def vectores_direccion(data):
 
 # Main class for computing the optical flow
 class OpticalFlowSimulator(object):
-    def __init__(self, theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, use_bounds=False, lim=[0,0,0,0,1]):
+    def __init__(self, log_polar_mapping=False,theta0 = 5*np.pi/180.0, thetaf = 175*np.pi/180.0, num_rays=64, use_bounds=False, lim=[0,0,0,0,1]):
         self.theta0    = theta0
         self.thetaf    = thetaf
         self.delta     = (thetaf-theta0)/num_rays
@@ -64,23 +63,25 @@ class OpticalFlowSimulator(object):
         self.width_bound = width/lim[4]
 
     def plot_flow(self,trajectory,neighbors_trajectory,optical_flow,visible_neighbors,visible_obstacles,obstacles,title):
-        """ Funcion para graficar y visualizar los vectores y puntos"""
-        plt.subplots(4,3,figsize=(15,15))
-        print(optical_flow)
+        """ Visualization of the optical flow and current spatial situation"""
+        plt.subplots(2,3,figsize=(15,15))
         # Six consecutive timesteps
-        for seq_pos in range(1,7):
+        for seq_pos in range(1,4):
             # Definition of the subplot
-            plt.subplot(4,3,seq_pos+3*((seq_pos-1)//3))
+            ax =plt.subplot(2,3,seq_pos+3*((seq_pos-1)//3))
+            ax.set_aspect('equal')
             current_position  = trajectory[seq_pos]
-            current_direction = (trajectory[seq_pos]-trajectory[seq_pos-1])/np.linalg.norm(0.00001+trajectory[seq_pos]-trajectory[seq_pos-1])
+            current_direction = trajectory[seq_pos]-trajectory[seq_pos-1]
             # Plot the neighbors
             for neighbor in neighbors_trajectory[seq_pos]:
                 if neighbor[0]>0:
                     plt.plot(neighbor[1],neighbor[2],color='green',marker='o',markersize=10)
-                    # TODO: broken
-                    #for neighbor_prev in neighbors_trajectory[seq_pos-1]:
-                    #    if (not np.isnan(neighbor_prev[1])) and (not np.isnan(neighbor[1])):
-                    #        plt.arrow(neighbor[1],neighbor[2],neighbor[1]-neighbor_prev[1],neighbor[2]-neighbor_prev[2],color='green')
+                    # Neighbors directions
+                    for neighbor_prev in neighbors_trajectory[seq_pos-1]:
+                        if neighbor_prev[0]==neighbor[0]:
+                            neighbor_direction = (neighbor[1:3]-neighbor_prev[1:3])/(0.00001+np.linalg.norm(neighbor[1:3]-neighbor_prev[1:3]))
+                            if (not np.isnan(neighbor_prev[:]).any()) and (not np.isnan(neighbor[:]).any()):
+                                plt.arrow(neighbor[1],neighbor[2],neighbor_direction[0],neighbor_direction[1],color='green')
             # Plot the visible neighbors
             for neighbor in visible_neighbors[seq_pos]:
                 plt.plot(neighbor[0],neighbor[1],color='red',marker='o',markersize=8)
@@ -101,28 +102,26 @@ class OpticalFlowSimulator(object):
             if obstacles is not None:
                 # Draw obstacles
                 for obst in obstacles:
-                    plt.plot(obst[:,0],obst[:,1],"g-")
+                    plt.fill(obst[:,0],obst[:,1],"g-")
             # Plot the agent of interest
             plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=10)
             # Direction and normal
             vec_cur  = current_direction/(np.linalg.norm(current_direction)+0.001)
             vec_norm = vector_normal(current_direction)
-            print(vec_norm)
             vec_l    = 2.0
             plt.arrow(current_position[0],current_position[1],vec_l*vec_cur[0],vec_l*vec_cur[1],color='black',linewidth=1)
             plt.arrow(current_position[0],current_position[1],-vec_l*vec_norm[0],-vec_l*vec_norm[1],color='red',linewidth=1)
             plt.arrow(current_position[0],current_position[1],+vec_l*vec_norm[0],+vec_l*vec_norm[1],color='red',linewidth=1)
             # Whole trajectory of the agent of interest
             plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='blue')
-            # 20m wide, 12m high
+            # 20m wide
             plt.xlim((current_position[0]-10.0,current_position[0]+10.0))
-            plt.ylim((current_position[1]-6.0,current_position[1]+6.0))
             # Plot the optical flow
-            plt.subplot(4,3,seq_pos+3*(1+(seq_pos-1)//3))
+            plt.subplot(2,3,seq_pos+3*(1+(seq_pos-1)//3))
             thetas = np.linspace(self.theta0,self.thetaf,65)[:-1]
             plt.bar(thetas,np.log(1.0+optical_flow[seq_pos]),width=0.05,color='blue')
             plt.plot(thetas,np.zeros_like(thetas))
-            plt.xlim((0,3.14))
+            plt.xlim((0,math.pi))
             plt.ylim((-1,1))
         plt.suptitle(title)
         plt.savefig('./of-sample.pdf')
