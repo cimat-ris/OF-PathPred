@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
+    parser.add_argument('--samples',type=int, default=5,help='dataset id (default: 0)')
     args = parser.parse_args()
     if args.log_file=='':
         logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
@@ -39,7 +40,7 @@ def main():
         logging.info('Using CPU')
 
     # Load the default parameters
-    experiment_parameters =     Experiment_Parameters(add_kp=False,obstacles=args.obstacles)
+    experiment_parameters =     Experiment_Parameters(obstacles=args.obstacles)
     # Dataset to be tested
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
@@ -49,21 +50,23 @@ def main():
     obstacles_world = load_world_obstacle_polygons(dataset_dir,dataset_name)
     # Process data to get the trajectories (just for dataset_id)
     data = prepare_data(dataset_dir, [dataset_name], experiment_parameters)
-    # Select a random sequence within this dataset
-    idSample = random.sample(range(1,data["obs_traj"].shape[0]), 1)
-    # The random sequence selected
-    traj_sample             = data['obs_traj'][idSample][0]
-    traj_neighbors          = data['obs_neighbors'][idSample][0]
-    optical_flow_sample     = data['obs_optical_flow'][idSample][0]
-    visible_neighbors_sample= data['obs_visible_neighbors'][idSample][0]
-    if experiment_parameters.obstacles:
-        visible_obst_sample     = data['obs_visible_obstacles'][idSample][0]
-    else:
-        visible_obst_sample     = None
-        # Optical flow
-    OFSimulator          = OpticalFlowSimulator(log_polar_mapping=False)
-    # Plot simulated optical flow
-    OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow")
+
+    for i in range(args.samples):
+        # Select a random sequence within this dataset
+        idSample = random.sample(range(1,data["obs_traj"].shape[0]), 1)
+        # The random sequence selected
+        traj_sample             = data['obs_traj'][idSample][0]
+        traj_neighbors          = data['obs_neighbors'][idSample][0]
+        optical_flow_sample     = data['obs_optical_flow'][idSample][0]
+        visible_neighbors_sample= data['obs_visible_neighbors'][idSample][0]
+        if experiment_parameters.obstacles:
+            visible_obst_sample     = data['obs_visible_obstacles'][idSample][0]
+        else:
+            visible_obst_sample     = None
+            # Optical flow
+        OFSimulator          = OpticalFlowSimulator(log_polar_mapping=False)
+        # Plot simulated optical flow
+        OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow")
 
 
 if __name__ == '__main__':
