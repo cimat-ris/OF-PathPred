@@ -41,6 +41,7 @@ def main():
 
     # Load the default parameters
     experiment_parameters =     Experiment_Parameters(obstacles=args.obstacles)
+    experiment_parameters.person_max = 10
     # Dataset to be tested
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
@@ -63,7 +64,7 @@ def main():
             visible_obst_sample     = data['obs_visible_obstacles'][idSample][0]
         else:
             visible_obst_sample     = None
-            # Optical flow
+        # Optical flow
         OFSimulator          = OpticalFlowSimulator(log_polar_mapping=False)
         # Plot simulated optical flow
         OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow")
