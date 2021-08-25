@@ -65,7 +65,7 @@ def main():
         else:
             visible_obst_sample     = None
         # Optical flow
-        OFSimulator          = OpticalFlowSimulator(log_polar_mapping=False)
+        OFSimulator          = OpticalFlowSimulator()
         # Plot simulated optical flow
         OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow")
 
