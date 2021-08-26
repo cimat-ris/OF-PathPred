@@ -40,11 +40,4 @@ def get_batch(batch_data, config):
                 obs_flow[i,j,:] = flow_step
         returned_inputs.append(obs_flow)
     # -----------------------------------------------------------
-    # Person pose input
-    if hasattr(config, 'add_kp') and config.add_kp:
-        obs_kp = np.zeros((N, T_in, KP, 2), dtype='float32')
-        # each bacth
-        for i, obs_kp_rel in enumerate(batch_data['obs_kp_rel']):
-            for j, obs_kp_step in enumerate(obs_kp_rel):
-                obs_kp[i, j, :, :] = obs_kp_step
     return returned_inputs,traj_pred_gt
