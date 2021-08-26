@@ -46,7 +46,7 @@ def main():
         logging.info('Using CPU')
 
     # Load the default parameters
-    experiment_parameters = utils.training_utils.Experiment_Parameters(add_kp=False,obstacles=False)
+    experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=False)
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']

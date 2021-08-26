@@ -7,19 +7,16 @@ from .batches_data import get_batch
 from .testing_utils import evaluation_minadefde
 
 # Parameters
-# The only datasets that can use add_kp are PETS2009-S2L1, TOWN-CENTRE
 class Experiment_Parameters:
-    def __init__(self,add_kp=False,obstacles=False):
+    def __init__(self,obstacles=False):
         # Maximum number of persons in a frame
         self.person_max =70
+        # Log-polar mapping for optical flow
+        self.log_polar_mapping = False
         # Observation length (trajlet size)
         self.obs_len    = 8
         # Prediction length
         self.pred_len   = 12
-        # Number of key points
-        self.kp_num     = 18
-        # Key point flag
-        self.add_kp     = add_kp
         # Obstacles flag
         self.obstacles    = obstacles
         self.delim        = ','
