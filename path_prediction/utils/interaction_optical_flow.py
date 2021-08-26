@@ -119,22 +119,27 @@ class OpticalFlowSimulator(object):
             plt.plot(current_position[0],current_position[1],color='blue',marker='o',markersize=10)
             # Direction and normal
             vec_cur  = current_direction/(np.linalg.norm(current_direction)+0.001)
-            vec_norm = vector_normal(current_direction)
-            vec_l    = 2.0
-            plt.arrow(current_position[0],current_position[1],vec_l*vec_cur[0],vec_l*vec_cur[1],color='black',linewidth=1)
-            plt.arrow(current_position[0],current_position[1],-vec_l*vec_norm[0],-vec_l*vec_norm[1],color='red',linewidth=1)
-            plt.arrow(current_position[0],current_position[1],+vec_l*vec_norm[0],+vec_l*vec_norm[1],color='red',linewidth=1)
+            if np.linalg.norm(current_direction)>0:
+                vec_norm = vector_normal(current_direction)
+                vec_l    = 2.0
+                plt.arrow(current_position[0],current_position[1],vec_l*vec_cur[0],vec_l*vec_cur[1],color='black',linewidth=1)
+                plt.arrow(current_position[0],current_position[1],-vec_l*vec_norm[0],-vec_l*vec_norm[1],color='red',linewidth=1)
+                plt.arrow(current_position[0],current_position[1],+vec_l*vec_norm[0],+vec_l*vec_norm[1],color='red',linewidth=1)
+            else:
+                plt.plot(current_position[0],current_position[1],color='white',marker='o',markersize=7)
             # Whole trajectory of the agent of interest
             plt.plot(trajectory[:,0],trajectory[:,1],linewidth=1,color='blue')
             # 20m wide
             plt.xlim((current_position[0]-10.0,current_position[0]+10.0))
             # Plot the optical flow
             plt.subplot(2,3,seq_pos+3*(1+(seq_pos-1)//3))
-            thetas = np.linspace(self.parameters.theta0,self.parameters.thetaf,65)[:-1]
+            thetas = np.linspace(self.parameters.theta0-math.pi*0.5,self.parameters.thetaf-math.pi*0.5,65)[:-1]
             plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
             plt.plot(thetas,np.zeros_like(thetas))
-            plt.xlim((0,math.pi))
-            plt.ylim((-1,1))
+            plt.xlim((-math.pi*0.5,math.pi*0.5))
+            if self.parameters.log_polar_mapping:
+                plt.xscale('symlog', linthresh=1.0)
+            plt.ylim((-2,2))
         plt.suptitle(title)
         plt.savefig('./of-sample.pdf')
         plt.show()
