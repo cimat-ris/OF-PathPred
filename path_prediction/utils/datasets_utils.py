@@ -81,9 +81,9 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
         pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
         validation_data = pickle.load(pickle_in)
 
-    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
-    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
-    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
+    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]]))+" trajectories")
+    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]]))+" trajectories")
+    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]]))+" trajectories")
 
     # Load the homography corresponding to this dataset
     homography_file = os.path.join(ds_path+testing_datasets_names[0]+'/H.txt')
