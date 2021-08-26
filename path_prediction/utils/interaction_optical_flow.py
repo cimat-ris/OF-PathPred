@@ -187,7 +187,7 @@ class OpticalFlowSimulator(object):
         # Angle corresponding to the current direction in current position
         theta           = math.atan2(current_direction[1], current_direction[0])
         # Rotation matrix to map from **world** to **local** frame
-        c, s            = math.cos(theta), math.sin(theta)
+        c, s            = math.cos(theta-math.pi*0.5), math.sin(theta-math.pi*0.5)
         mr              = np.array([[c,s],[-s,c]])
 
         # Scan the neighbors
