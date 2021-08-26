@@ -3,14 +3,13 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
 import tensorflow as tf
-from datetime import datetime
-random.seed(datetime.now())
+random.seed()
 import matplotlib.pyplot as plt
 
 # Important imports
-from path_prediction.process_file import prepare_data
-import path_prediction.batches_data
-from path_prediction.training_utils import Experiment_Parameters
+from path_prediction.utils.process_file import prepare_data
+import path_prediction.utils.batches_data
+from path_prediction.utils.training_utils import Experiment_Parameters
 
 
 def main():
