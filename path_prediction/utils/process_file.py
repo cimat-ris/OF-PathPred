@@ -120,6 +120,9 @@ def prepare_data(datasets_path, datasets_names, parameters):
     pred_len = parameters.pred_len
     seq_len  = obs_len + pred_len
     logging.info("Sequence length (observation+prediction): {}".format(seq_len))
+    # Object for estimating optical flow
+    of_sim_par = OpticalFlowSimulator.Parameters(log_polar_mapping=parameters.log_polar_mapping)
+    of_sim     = OpticalFlowSimulator(parameters=of_sim_par)
 
     # Lists that will hold the data
     num_person_starting_at_frame = []
@@ -204,7 +207,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
                 neighbors_ped_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
                 # Scan all the frames of the sequence
                 for frame_idx,frame_id in enumerate(np.unique(raw_seq_data[:,0]).tolist()):
-                    # Information of frame "frame_id"
+                    # Information of the present frame "frame_id"
                     frame_data = raw_seq_data[raw_seq_data[:,0]==frame_id,:]
                     # Id, x, y of the pedestrians of frame "frame_id"
                     frame_data = frame_data[:,1:4]
@@ -248,21 +251,15 @@ def prepare_data(datasets_path, datasets_names, parameters):
         seq_pos_dataset = np.concatenate(seq_pos_dataset,axis=0)
         obs_traj        = seq_pos_dataset[:, :obs_len, :]
         logging.info("Total number of trajectories in this dataset: {}".format(obs_traj.shape[0]))
-        # At the dataset level
+        # Compute the optical flow at the dataset level: Because the datasets have different obstacles maps
         logging.info("Add social interaction data (optical flow)")
-        if parameters.obstacles:
-            of_sim = OpticalFlowSimulator()
-            flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,obstacles_world)
-        else:
-            of_sim = OpticalFlowSimulator()
-            flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors, obs_traj,parameters.obs_len,None)
+        flow,vis_neigh,vis_obst = of_sim.compute_opticalflow_batch(obs_neighbors,obs_traj,parameters.obs_len,obstacles_world)
         all_flow.append(flow)
         all_vis_neigh.append(vis_neigh)
         all_vis_obst.append(vis_obst)
     # Upper level (all datasets)
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
     seq_pos_all   = np.concatenate(seq_pos_all, axis=0)
-    # TODO: rel and theta could be simply generated here
     # All the displacements are estimated here.
     seq_rel_all           = np.zeros_like(seq_pos_all)
     seq_rel_all[:,1:,:]   = seq_pos_all[:,1:,:]-seq_pos_all[:,:-1,:]

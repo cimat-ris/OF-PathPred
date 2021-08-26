@@ -42,6 +42,7 @@ def main():
     # Load the default parameters
     experiment_parameters =     Experiment_Parameters(obstacles=args.obstacles)
     experiment_parameters.person_max = 10
+    experiment_parameters.log_polar_mapping = True
     # Dataset to be tested
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
@@ -51,6 +52,10 @@ def main():
     obstacles_world = load_world_obstacle_polygons(dataset_dir,dataset_name)
     # Process data to get the trajectories (just for dataset_id)
     data = prepare_data(dataset_dir, [dataset_name], experiment_parameters)
+
+    # Optical flow
+    OFSimulatorParameters = OpticalFlowSimulator.Parameters(log_polar_mapping=experiment_parameters.log_polar_mapping)
+    OFSimulator = OpticalFlowSimulator(parameters=OFSimulatorParameters)
 
     for i in range(args.samples):
         # Select a random sequence within this dataset
@@ -64,8 +69,6 @@ def main():
             visible_obst_sample     = data['obs_visible_obstacles'][idSample][0]
         else:
             visible_obst_sample     = None
-        # Optical flow
-        OFSimulator          = OpticalFlowSimulator()
         # Plot simulated optical flow
         OFSimulator.plot_flow(traj_sample,traj_neighbors,optical_flow_sample,visible_neighbors_sample,visible_obst_sample,obstacles_world,title="Sample optical flow")
 

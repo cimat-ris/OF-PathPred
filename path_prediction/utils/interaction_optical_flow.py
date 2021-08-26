@@ -54,15 +54,17 @@ class OpticalFlowSimulator(object):
     Model parameters.
     """
     class Parameters():
-        def __init__(self):
+        def __init__(self,log_polar_mapping=False):
             # -----------------
+            self.a         = 1.0
             self.num_rays  = 64
             self.theta0    = 5*np.pi/180.0
             self.thetaf    = 175*np.pi/180.0
             self.delta     = (self.thetaf-self.theta0)/self.num_rays
+            self.deltalog  = (np.log(self.a + self.thetaf - np.pi*0.5)-np.log(self.a))/(self.num_rays*0.5)
             self.use_bounds= False
             self.lim       = [0,0,0,0,1]
-            self.log_polar_mapping= False
+            self.log_polar_mapping= log_polar_mapping
 
     def __init__(self, parameters=Parameters()):
         self.parameters  = parameters
@@ -184,9 +186,15 @@ class OpticalFlowSimulator(object):
 
         # Scan the neighbors
         for neighbor_position,neighbor_velocity in zip(neighbors_positions,neighbors_velocities):
-            bearing = norm_angle((math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-theta))
+            bearing = norm_angle(math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-theta)
             # Check if it is visible
-            k = int(nlen/2.-bearing/self.parameters.delta)
+            if self.parameters.log_polar_mapping==False:
+                k = int(nlen/2.-bearing/self.parameters.delta)
+            else:
+                if bearing>=0:
+                    k = int(nlen/2.-np.log(self.parameters.a+bearing)/self.parameters.deltalog)
+                else:
+                    k = int(nlen/2.-(2.0*np.log(self.parameters.a)-np.log(self.parameters.a-bearing))/self.parameters.deltalog)
             if k>=0 and k<self.parameters.num_rays:
                 d =(current_position[0]-neighbor_position[0])**2+(current_position[1]-neighbor_position[1])**2
                 # Distance to this neighbor
