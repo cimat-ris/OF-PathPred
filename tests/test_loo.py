@@ -23,6 +23,8 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
+    parser.add_argument('--model', '--m',choices=['attention', 'of'],default='attention',
+                    help='model (default: 0)')
     parser.add_argument('--social', dest='social', action='store_true',help='Models social interactions')
     parser.set_defaults(social=False)
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
@@ -48,8 +50,8 @@ def main():
         logging.info("Using CPU")
 
     # Load the default parameters
-    experiment_parameters = utils.training_utils.Experiment_Parameters(add_kp=False,obstacles=args.obstacles)
-
+    experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=args.obstacles)
+    experiment_parameters.log_polar_mapping = True
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 
@@ -57,13 +59,15 @@ def main():
     idTest = args.dataset_id
     training_data,validation_data,test_data,test_homography = utils.datasets_utils.setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
-    test = False
     #############################################################
     # Model parameters
-    if test:
+    if args.model=="of":
         model_parameters = PredictorMultOf.Parameters(rnn_type=args.rnn)
     else:
-        model_parameters = PredictorMultAtt.Parameters(add_social=args.social,rnn_type=args.rnn)
+        if args.model=="attention":
+            model_parameters = PredictorMultAtt.Parameters(add_social=args.social,rnn_type=args.rnn)
+        else:
+            logging.error("No such model")
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 5
@@ -89,13 +93,13 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    if test:
+    if args.model=="of":
         tj_enc_dec = PredictorMultOf(model_parameters)
     else:
         tj_enc_dec = PredictorMultAtt(model_parameters)
-
+    tj_enc_dec
     # Checkpoints
-    checkpoint_dir   = './training_checkpoints/ofmodel'
+    checkpoint_dir   = './training_checkpoints/ofmodel'+args.model
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         encoder=tj_enc_dec.enc,

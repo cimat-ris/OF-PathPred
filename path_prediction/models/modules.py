@@ -33,6 +33,7 @@ class TrajectoryEncoder(tf.Module):
         # Recurrent neural network using the previous cell
         # Initial state is zero; We return the full sequence of h's and the pair of last states
         self.lstm      = layers.RNN(self.lstm_cell,
+                name   = 'trajectory_encoder_rnn',
                 return_sequences= True,
                 return_state    = True)
 
@@ -60,6 +61,7 @@ class SocialEncoder(tf.Module):
             recurrent_dropout= config.dropout_rate)
         # Recurrent neural network using the previous cell
         self.lstm      = layers.RNN(self.lstm_cell,
+            name   = 'social_encoder_rnn',
             return_sequences= True,
             return_state    = True)
 

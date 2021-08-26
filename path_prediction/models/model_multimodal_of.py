@@ -14,7 +14,6 @@ from .model_deterministic_rnn import PredictorDetRNN
 class DecoderOf(tf.keras.Model):
     def __init__(self, config):
         super(DecoderOf, self).__init__(name="trajectory_decoder")
-        self.stack_rnn_size = config.stack_rnn_size
         self.rnn_type       = config.rnn_type
         # Linear embedding of the encoding resulting observed trajectories
         self.traj_xy_emb_dec = layers.Dense(config.emb_size,
@@ -33,7 +32,7 @@ class DecoderOf(tf.keras.Model):
             # LSTM cell
             self.dec_cell_traj = layers.LSTMCell(config.dec_hidden_size,
                                                 recurrent_initializer='glorot_uniform',
-                                                name='trajectory_decoder_cell',
+                                                name='trajectory_decoder_cell_with_LSTM',
                                                 dropout=config.dropout_rate,
                                                 recurrent_dropout=config.dropout_rate)
         # RNN layer
@@ -62,17 +61,14 @@ class DecoderOf(tf.keras.Model):
         dec_input, last_states = inputs
         # Embedding from positions
         decoder_inputs_emb = self.traj_xy_emb_dec(dec_input)
-        # TODO: apply the embedding to the concatenation instead of just on the first part (positions)
-        # Augmented input: [N,1,h_dim+emb]
-        augmented_inputs= tf.concat([decoder_inputs_emb], axis=2)
         # Application of the RNN: outputs are [N,1,dec_hidden_size],[N,dec_hidden_size],[N,dec_hidden_size]
         if (self.rnn_type=='gru'):
-            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states[0],training=training)
+            outputs    = self.recurrentLayer(decoder_inputs_emb,initial_state=last_states[0],training=training)
             # Last h state repeated to have always 2 tensors in cur_states
             cur_states = outputs[1:2]
             cur_states.append(outputs[1:2])
         else:
-            outputs    = self.recurrentLayer(augmented_inputs,initial_state=last_states,training=training)
+            outputs    = self.recurrentLayer(decoder_inputs_emb,initial_state=last_states,training=training)
             # Last h,c states
             cur_states = outputs[1:3]
         # Apply dropout layer on the h  state before mapping to positions x,y
@@ -192,6 +188,8 @@ class PredictorMultOf():
             loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
             #########################################################################################
             # Losses are accumulated here
+            ortho_cost  = 0.005*self.enctodec.ortho_loss()
+            loss_value +=   ortho_cost
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses_over_samples,tf.stack([range(losses_over_samples.shape[0]),closest_samples],axis=1))
             # Sum over the batches, divided by the batch size

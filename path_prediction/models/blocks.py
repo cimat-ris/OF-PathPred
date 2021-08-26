@@ -17,10 +17,10 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         super(TrajectoryDecoderInitializer, self).__init__(name="trajectory_decoder_initializer")
         self.add_social     = config.add_social
         self.output_var_dirs= config.output_var_dirs
+        self.cosineloss     = tf.keras.losses.CosineSimilarity(axis=0,reduction=tf.keras.losses.Reduction.SUM)
         # Dropout layer
         self.dropout        = layers.Dropout(config.dropout_rate)
         h_shape             =  (config.enc_hidden_size)
-        # TODO: Do we need both h and c?
         # Input
         self.input_layer_traj_h = layers.Input(h_shape,name="encoded_trajectory_h")
         self.input_layer_traj_c = layers.Input(h_shape,name="encoded_trajectory_c")
@@ -37,12 +37,12 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
             self.traj_soc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
                 activation=tf.keras.activations.relu,use_bias=False,
                 name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-            self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,use_bias=False,
-                name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+            #self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
+            #    activation=tf.keras.activations.relu,use_bias=False,
+            #    name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
             # In the case of handling social interactions, add a third input
-            self.input_layer_social_h = layers.Input(h_shape,name="social_features_h")
-            self.input_layer_social_c = layers.Input(h_shape,name="social_features_c")
+            self.input_layer_social_h = layers.Input(h_shape,name="encoded_social_h")
+            self.input_layer_social_c = layers.Input(h_shape,name="encoded_social_c")
             # Get output layer now with `call` method
             self.out = self.call([[self.input_layer_traj_h,self.input_layer_traj_c],[self.input_layer_social_h,self.input_layer_social_c]])
         else:
@@ -65,11 +65,13 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         for i in range(self.output_var_dirs):
             # Map the trajectory hidden states to variations of the initializer state
             decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
-            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
+            #decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
+            decoder_init_dc  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[1])
             if self.add_social:
                 # Map the social features hidden states to variations of the initializer state
                 decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
-                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+                #decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+                decoder_init_dc = decoder_init_dc + self.traj_soc_h_to_dec_h[i](soc_encoder_states[1])
             # Define two opposite states based on these variations
             decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
             decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
@@ -79,13 +81,13 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
             decoder_init_states.append([decoder_init_h,decoder_init_c])
         return decoder_init_states
 
-    def ortho_cost(self):
+    def ortho_loss(self):
         sum = 0
         for i in range(self.output_var_dirs):
             for j in range(i+1,self.output_var_dirs):
                 # Map the trajectory hidden states to variations of the initializer state
-                dots = tf.reduce_sum(tf.math.multiply(self.traj_enc_h_to_dec_h[i].kernel,self.traj_enc_h_to_dec_h[j].kernel),axis=0,keepdims=True)
-                sum += tf.reduce_sum(tf.square(dots))
+                dots = self.cosineloss(self.traj_enc_h_to_dec_h[i].kernel,self.traj_enc_h_to_dec_h[j].kernel)
+                sum += tf.square(dots)
         return sum
 
 ################################################################################
