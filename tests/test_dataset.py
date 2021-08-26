@@ -36,7 +36,7 @@ def main():
         logging.info('Using CPU')
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
+    experiment_parameters = Experiment_Parameters(obstacles=False)
 
     # Dataset to be tested
     dataset_dir   = "datasets/"
