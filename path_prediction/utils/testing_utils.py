@@ -1,7 +1,7 @@
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
-import cv2
+import cv2, heapq
 from matplotlib import pyplot as plt
 from .traj_utils import relative_to_abs, vw_to_abs
 from .plot_utils import plot_gt_preds,plot_background,plot_neighbors,plot_attention
@@ -103,9 +103,7 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
     # Cycle over the trajectories of the bach
     for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
         this_pred_out_abs_set = []
-        nsamples = 1
-        if hasattr(model,"output_samples"):
-            nsamples = model.output_samples
+        nsamples = pred_traj.shape[1]
         for k in range(nsamples):
             # Conserve the x,y coordinates
             if (pred_traj[i,k].shape[0]==config.pred_len):
@@ -149,11 +147,34 @@ def evaluation_attention(model,batch,config,background=None,homography=None,flip
     plot_attention(ax2,traj_obs,traj_pred,attention,homography,flip=flip,step=11)
     plt.show()
 
+# For a multiple-output prediction, evaluate the minADE and minFDE
+def minadefde(obs_traj_gt, pred_traj_gt,pred_traj):
+    nsamples = pred_traj.shape[0]
+    ademin = np.inf
+    fdemin = np.inf
+    for k in range(nsamples):
+        # Conserve the x,y coordinates of the kth trajectory
+        this_pred_out     = pred_traj[k,:, :2] #[pred,2]
+        # Convert it to absolute (starting from the last observed position)
+        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+        # Check shape is OK
+        assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+        # Error for ade
+        diff = pred_traj_gt - this_pred_out_abs
+        diff = diff**2
+        diff = np.sqrt(np.sum(diff, axis=1))
+        # To keep the smallest ade/fde
+        if np.mean(diff)<ademin:
+            ademin  = np.mean(diff)
+        if diff[-1]<fdemin:
+            fdemin  = diff[-1]
+
+        return ademin,fdemin
+
 # Perform quantitative evaluation
 def evaluation_minadefde(model,test_data,config):
-    l2dis = []
-    # num_batches_per_epoch = test_data.get_num_batches()
-    # for idx, batch in tqdm(test_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
+    ades = []
+    fdes = []
     num_batches_per_epoch= test_data.cardinality().numpy()
     for batch in tqdm(test_data,ascii = True):
         # Format the data
@@ -162,37 +183,28 @@ def evaluation_minadefde(model,test_data,config):
         d                           = []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            normin = 1000.0
-            diffmin= None
-            if hasattr(model,'output_samples'):
-                nsamples = model.output_samples
-            else:
-                nsamples = 1
-            for k in range(nsamples):
-                # Conserve the x,y coordinates of the kth trajectory
-                this_pred_out     = pred_out[i,k,:, :2] #[pred,2]
-                # Convert it to absolute (starting from the last observed position)
-                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-                # Check shape is OK
-                assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
-                # Error for ade/fde
-                diff = pred_traj_gt - this_pred_out_abs
-                diff = diff**2
-                diff = np.sqrt(np.sum(diff, axis=1))
-                # To keep the min
-                if tf.norm(diff)<normin:
-                    normin  = tf.norm(diff)
-                    diffmin = diff
-            d.append(diffmin)
-        l2dis += d
-    # TODO: verificar
-    ade = [0]
-    fde = [0]
-    if len(l2dis)>0:
-        ade = [t for o in l2dis for t in o] # average displacement
-        fde = [o[-1] for o in l2dis] # final displacement
-    return { "mADE": np.mean(ade), "mFDE": np.mean(fde)}
+            made,mfde = minadefde(obs_traj_gt, pred_traj_gt,pred_out[i])
+            ades.append(made)
+            fdes.append(mfde)
+    return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
 
+
+# For a given model, search for the worst cases of mADE
+def exhibit_worstcases(model,test_data,config,nworst=10):
+    worst = []
+    for batch in tqdm(test_data,ascii = True):
+        # Format the data
+        batch_inputs, batch_targets = get_batch(batch, config)
+        pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
+        d                           = []
+        # For all the trajectories in the batch
+        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+            made,__ = minadefde(obs_traj_gt, pred_traj_gt,pred_out[i])
+            if len(worst)<nworst:
+                heappush(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
+            else:
+                heapreplace(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
+    return worst
 
 def plot_comparisons_minadefde(madefde_results,dataset_name):
     labels = list(mADEFDE[dataset_name].keys())
