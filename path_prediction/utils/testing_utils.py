@@ -154,11 +154,9 @@ def minadefde(obs_traj_gt, pred_traj_gt,pred_traj):
     fdemin = np.inf
     for k in range(nsamples):
         # Conserve the x,y coordinates of the kth trajectory
-        this_pred_out     = pred_traj[k,:, :2] #[pred,2]
+        this_pred_traj     = pred_traj[k,:, :2]
         # Convert it to absolute (starting from the last observed position)
-        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
-        # Check shape is OK
-        assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+        this_pred_traj_abs = relative_to_abs(this_pred_traj, obs_traj_gt[-1])
         # Error for ade
         diff = pred_traj_gt - this_pred_out_abs
         diff = diff**2
@@ -168,8 +166,7 @@ def minadefde(obs_traj_gt, pred_traj_gt,pred_traj):
             ademin  = np.mean(diff)
         if diff[-1]<fdemin:
             fdemin  = diff[-1]
-
-        return ademin,fdemin
+    return ademin,fdemin
 
 # Perform quantitative evaluation
 def evaluation_minadefde(model,test_data,config):
@@ -180,7 +177,6 @@ def evaluation_minadefde(model,test_data,config):
         # Format the data
         batch_inputs, batch_targets = get_batch(batch, config)
         pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
-        d                           = []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             made,mfde = minadefde(obs_traj_gt, pred_traj_gt,pred_out[i])
