@@ -158,7 +158,7 @@ def minadefde(obs_traj_gt, pred_traj_gt,pred_traj):
         # Convert it to absolute (starting from the last observed position)
         this_pred_traj_abs = relative_to_abs(this_pred_traj, obs_traj_gt[-1])
         # Error for ade
-        diff = pred_traj_gt - this_pred_out_abs
+        diff = pred_traj_gt - this_pred_traj_abs
         diff = diff**2
         diff = np.sqrt(np.sum(diff, axis=1))
         # To keep the smallest ade/fde
@@ -197,9 +197,9 @@ def exhibit_worstcases(model,test_data,config,nworst=10):
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             made,__ = minadefde(obs_traj_gt, pred_traj_gt,pred_out[i])
             if len(worst)<nworst:
-                heappush(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
+                heapq.heappush(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
             else:
-                heapreplace(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
+                heapq.heapreplace(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
     return worst
 
 def plot_comparisons_minadefde(madefde_results,dataset_name):
