@@ -20,7 +20,8 @@ class Experiment_Parameters:
         # Obstacles flag
         self.obstacles    = obstacles
         self.delim        = ','
-
+        self.validation_as_test = True
+        
 def relative_to_abs(rel_traj, start_pos):
     """Relative x,y to absolute x,y coordinates.
     Args:
@@ -98,7 +99,8 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
                 best["patchId"]= idx
                 # Save the best model so far
                 checkpoint.write(checkpoint_prefix+'-best')
-            print('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+            logging.info('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+            logging.info('Epoch {}. Validation mAFE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
 
     # Training the classifier
     for epoch in range(0):
