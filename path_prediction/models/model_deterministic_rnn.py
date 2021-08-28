@@ -30,7 +30,7 @@ class PredictorDetRNN(keras.Model):
             self.enc_hidden_size= 128                  # Hidden size of the RNN encoder
             self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
             self.emb_size       = 128  # Embedding size
-            self.dropout_rate   = 0.3  # Dropout rate during training
+            self.dropout_rate   = 0.35  # Dropout rate during training
             self.activation_func= tf.nn.tanh
             self.optimizer      = 'adam'
             self.initial_lr     = 0.01
@@ -65,18 +65,11 @@ class PredictorDetRNN(keras.Model):
             # Decoder and Prediction
             dec = self.decoder(hn2)     # shape(256, 2)
             dec = tf.expand_dims(dec, 1)
-            #print("dec:", dec)
-            #print("dec shape: ", dec.shape)
             t_pred = dec + x_last    #(256, 1, 2)
             pred.append(t_pred)
 
             # Calculate of loss
-            # print("target original shape: ", target.shape)
-            # print("final shapes ", t_pred.shape, " vs ", tf.reshape(target, (len(target), 1, -1)).shape)
             loss += self.loss_fun(t_pred, tf.reshape(target, (len(target), 1, -1)))
-
-            # print("loss: ", loss)
-            # print("loss shape: ", loss.shape)
             # Update the last position
             if training:
                 x_last = tf.reshape(target, (len(target), 1, -1))
@@ -110,4 +103,4 @@ class PredictorDetRNN(keras.Model):
             hn1 = hn2
             cn1 = cn2
         # Concatenate the predictions and return
-        return tf.expand_dims(tf.concat(pred, 1),1), None
+        return tf.expand_dims(tf.concat(pred, 1),1)

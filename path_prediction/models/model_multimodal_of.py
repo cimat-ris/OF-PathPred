@@ -138,14 +138,14 @@ class PredictorMultOf():
         # Last observed position from the trajectory
         traj_obs_last = traj_obs_inputs[:, -1]
         # Variables to be trained
-        variables = self.enc.trainable_weights + self.dec.trainable_weights
+        variables = self.enc.trainable_weights + self.enctodec.trainable_weights + self.dec.trainable_weights
         # Open a GradientTape to record the operations run during the forward pass, which enables auto-differentiation.
         # The total loss will be accumulated on this variable
         loss_value = 0
         with tf.GradientTape() as g:
             #########################################################################################
             # Encoding
-            last_states, context, obs_classif_logits = self.enc(batch_inputs, training=training)
+            last_states, context = self.enc(batch_inputs, training=training)
             #########################################################################################
             # Mapping encoding to state of the decoder
             traj_cur_states_set = self.enctodec(last_states)
@@ -183,13 +183,12 @@ class PredictorMultOf():
             losses_over_samples  = tf.stack(losses_over_samples, axis=1)
             closest_samples      = tf.math.argmin(losses_over_samples, axis=1)
             #########################################################################################
-            softmax_samples      = tf.nn.softmax(-losses_over_samples/0.01, axis=1)
-            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
-            loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
+            #softmax_samples      = tf.nn.softmax(-losses_over_samples/0.01, axis=1)
+            #metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
+            #loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
             #########################################################################################
             # Losses are accumulated here
-            ortho_cost  = 0.005*self.enctodec.ortho_loss()
-            loss_value +=   ortho_cost
+            # loss_value = 0.005*self.enctodec.ortho_loss()
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses_over_samples,tf.stack([range(losses_over_samples.shape[0]),closest_samples],axis=1))
             # Sum over the batches, divided by the batch size
@@ -197,7 +196,7 @@ class PredictorMultOf():
             # TODO: tune this value in a more principled way?
             # L2 weight decay
             loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.0008
+                        if 'bias' not in v.name ]) * 0.0015
             #########################################################################################
 
         #########################################################################################
@@ -220,7 +219,7 @@ class PredictorMultOf():
         # Last observed position from the trajectories
         traj_obs_last     = traj_obs_inputs[:, -1]
         # Feed-forward start here
-        last_states, context, obs_classif_logits = self.enc(batch_inputs, training=False)
+        last_states, context = self.enc(batch_inputs, training=False)
         # Mapping encoding to state of the decoder
         traj_cur_states_set = self.enctodec(last_states)
 
@@ -246,7 +245,8 @@ class PredictorMultOf():
                 traj_pred.append(t_pred)
                 # Reuse the hidden states for the next step
                 traj_cur_states = dec_states
-            traj_pred   = tf.squeeze(tf.stack(traj_pred, axis=1))
+            traj_pred   = tf.stack(traj_pred, axis=1)
+            traj_pred   = tf.squeeze(traj_pred,axis=2)
             traj_pred_set.append(traj_pred)
         # Results as tensors
         traj_pred_set   = tf.stack(traj_pred_set,  axis=1)

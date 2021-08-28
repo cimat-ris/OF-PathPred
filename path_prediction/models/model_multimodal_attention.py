@@ -167,8 +167,8 @@ class PredictorMultAtt():
         with tf.GradientTape() as g:
             #########################################################################################
             # Encoding is done here
-            last_states, context, obs_classif_logits = self.enc(batch_inputs, training=training)
-
+            #last_states, context, obs_classif_logits = self.enc(batch_inputs, training=training)
+            last_states, context = self.enc(batch_inputs, training=training)
             #########################################################################################
             # Mapping encoding to state of the decoder
             traj_cur_states_set = self.enctodec(last_states)
@@ -209,14 +209,14 @@ class PredictorMultAtt():
 
             #########################################################################################
             # Losses are accumulated here
-            softmax_samples      = tf.nn.softmax(-losses_over_samples/0.01, axis=1)
-            metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
-            loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
+            #softmax_samples      = tf.nn.softmax(-losses_over_samples/0.01, axis=1)
+            #metrics['obs_classif_sca'].update_state(closest_samples,obs_classif_logits)
+            #loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
 
             #########################################################################################
             #
-            ortho_cost  = 0.002*self.enctodec.ortho_loss()
-            loss_value +=   ortho_cost
+            #ortho_cost  = 0.002*self.enctodec.ortho_loss()
+            #loss_value +=   ortho_cost
 
             #########################################################################################
             # Get the vector of losses at the minimal value for each sample of the batch
@@ -225,8 +225,8 @@ class PredictorMultAtt():
             loss_value  += tf.reduce_sum(losses_at_min)/losses_over_samples.shape[0]
             # TODO: tune this value in a more principled way?
             # L2 weight decay
-            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.0008
+            #loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
+            #            if 'bias' not in v.name ]) * 0.001
             #########################################################################################
 
         #########################################################################################
@@ -249,7 +249,8 @@ class PredictorMultAtt():
         # Last observed position from the trajectories
         traj_obs_last     = traj_obs_inputs[:, -1]
         # Feed-forward start here
-        last_states, context, obs_classif_logits = self.enc(batch_inputs, training=False)
+        # last_states, context, obs_classif_logits = self.enc(batch_inputs, training=False)
+        last_states, context = self.enc(batch_inputs, training=False)
         traj_cur_states_set = self.enctodec(last_states,training=False)
         # This will store the trajectories and the attention weights
         traj_pred_set  = []
@@ -273,7 +274,7 @@ class PredictorMultAtt():
                 traj_pred.append(t_pred)
                 # Reuse the hidden states for the next step
                 traj_cur_states = dec_states
-            traj_pred   = tf.squeeze(tf.stack(traj_pred, axis=1))
+            traj_pred   = tf.squeeze(tf.stack(traj_pred, axis=1),axis=2)
             traj_pred_set.append(traj_pred)
         # Results as tensors
         traj_pred_set   = tf.stack(traj_pred_set,  axis=1)

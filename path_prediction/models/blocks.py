@@ -28,9 +28,9 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         self.traj_enc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.relu,use_bias=False,
             name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-        self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,use_bias=False,
-            name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        #self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
+        #    activation=tf.keras.activations.relu,use_bias=False,
+        #    name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
 
         if self.add_social:
             # Linear embeddings from social state to hidden state
@@ -109,7 +109,7 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # Encoding: Positions
         self.traj_enc         = TrajectoryEncoder(config)
         # Classifier
-        self.obs_classif      = ObservedTrajectoryClassifier(config)
+        # self.obs_classif      = ObservedTrajectoryClassifier(config)
 
         # We use the social features only when the two flags (add_social and add_attention are on)
         if (self.add_social):
@@ -164,8 +164,10 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         # The final size should be [nbatch,M,obs_length,enc_hidden_size]
         context          = tf.stack(enc_h_list, axis=1)
         # Apply classifier to guess what is th most probable output
-        obs_classif_logits = self.obs_classif(traj_last_states[0][0])
+        #obs_classif_logits = self.obs_classif(traj_last_states[0][0])
         if self.add_social:
-            return [traj_last_states[1],soc_last_states], context, obs_classif_logits
+            #return [traj_last_states[1],soc_last_states], context, obs_classif_logits
+            return [traj_last_states[1],soc_last_states], context
         else:
-            return [traj_last_states[1]], context, obs_classif_logits
+            #return [traj_last_states[1]], context, obs_classif_logits
+            return [traj_last_states[1]], context
