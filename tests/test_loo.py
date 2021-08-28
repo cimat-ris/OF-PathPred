@@ -27,6 +27,10 @@ def main():
                     help='model (default: 0)')
     parser.add_argument('--social', dest='social', action='store_true',help='Models social interactions')
     parser.set_defaults(social=False)
+    parser.add_argument('--qualitative', dest='qualitative', action='store_true',help='Performs a qualitative evaluation')
+    parser.set_defaults(qualitative=False)
+    parser.add_argument('--quantitative', dest='quantitative', action='store_true',help='Performs a quantitative evaluation')
+    parser.set_defaults(quantitative=False)
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
@@ -71,7 +75,7 @@ def main():
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 5
-    model_parameters.initial_lr     = 0.03
+    model_parameters.initial_lr     = 0.01
     model_parameters.enc_hidden_size= 128  # Hidden size of the RNN encoder
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size # Hidden size of the RNN decoder
     model_parameters.emb_size       = 256  # Embedding size
@@ -99,7 +103,7 @@ def main():
         tj_enc_dec = PredictorMultAtt(model_parameters)
     tj_enc_dec
     # Checkpoints
-    checkpoint_dir   = './training_checkpoints/ofmodel'+args.model
+    checkpoint_dir   = './training_checkpoints/ofmodel-'+args.model
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
                                         encoder=tj_enc_dec.enc,
@@ -107,35 +111,31 @@ def main():
                                         decoder=tj_enc_dec.dec)
 
     # Training
-    plot_training    = True
     if args.noretrain==False:
         logging.info("Training the model")
         train_loss_results,val_loss_results,val_metrics_results,__ = utils.training_utils.training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
-        if plot_training==True:
-            utils.plot_utils.plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
+        utils.plot_utils.plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
     logging.info("Restoring last model")
-    status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
+    status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
 
     # Quantitative testing: ADE/FDE
-    quantitative = True
-    if quantitative==True:
+    if args.quantitative==True:
         logging.info("Quantitative testing")
         results = utils.testing_utils.evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
         utils.testing_utils.plot_comparisons_minadefde(results,dataset_names[idTest])
         logging.info(results)
 
     # Qualitative testing
-    qualitative = True
-    if qualitative==True:
+    if args.qualitative==True:
         logging.info("Qualitative testing")
         for i in range(5):
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            utils.testing_utils.evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=False,n_peds_max=1,display_mode=None)
-
-
+            utils.testing_utils.evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
+        worst = utils.testing_utils.exhibit_worstcases(tj_enc_dec,batched_test_data,model_parameters)
+        print(worst)
 
 if __name__ == '__main__':
     main()

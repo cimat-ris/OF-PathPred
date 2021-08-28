@@ -106,7 +106,7 @@ def main():
                     total_cases+= num_batches_per_epoch
                 gradients = tape.gradient(losses, model.trainable_weights)
                 optimizer.apply_gradients(zip(gradients, model.trainable_weights))
-            logging.info("Training loss: {}".format(total_error.numpy()/total_cases))
+            logging.info("Training loss: {:.6f}".format(total_error.numpy()/total_cases))
             train_loss_results.append(total_error/total_cases)
             # Validation
             total_error = 0
@@ -117,7 +117,7 @@ def main():
                 losses = model(data_val, target_val)
                 total_error += losses
                 total_cases += num_batches_per_epoch
-            logging.info("Validation loss: {}".format(total_error.numpy()/total_cases))
+            logging.info("Validation loss: {:.6f}".format(total_error.numpy()/total_cases))
             val_loss_results.append(total_error/total_cases)
             # Evaluate ADE, FDE metrics on validation data
             val_quantitative_metrics = utils.testing_utils.evaluation_minadefde(model,batched_val_data,model_parameters)
