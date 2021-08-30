@@ -34,32 +34,32 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
             idx_val     = idx[testing:]
         # Training set
         training_data = {
-            "obs_traj":        train_data["obs_traj"][:],
-            "obs_traj_rel":    train_data["obs_traj_rel"][:],
-            "obs_traj_theta":  train_data["obs_traj_theta"][:],
-            "pred_traj":       train_data["pred_traj"][:],
-            "pred_traj_rel":   train_data["pred_traj_rel"][:],
-            "frames_ids":      train_data["frames_ids"][:],
-            "obs_optical_flow":train_data["obs_optical_flow"][:]
+            "obs_traj":         train_data["obs_traj"][:],
+            "obs_traj_rel_rot": train_data["obs_traj_rel_rot"][:],
+            "obs_traj_theta":   train_data["obs_traj_theta"][:],
+            "pred_traj":        train_data["pred_traj"][:],
+            "pred_traj_rel_rot":train_data["pred_traj_rel"][:],
+            "frames_ids":       train_data["frames_ids"][:],
+            "obs_optical_flow": train_data["obs_optical_flow"][:]
         }
         # Test set
         testing_data = {
-            "obs_traj":      test_data["obs_traj"][idx_testing],
-            "obs_traj_rel":  test_data["obs_traj_rel"][idx_testing],
-            "obs_traj_theta":test_data["obs_traj_theta"][idx_testing],
-            "pred_traj":     test_data["pred_traj"][idx_testing],
-            "pred_traj_rel": test_data["pred_traj_rel"][idx_testing],
-            "frames_ids":    test_data["frames_ids"][idx_testing],
+            "obs_traj":         test_data["obs_traj"][idx_testing],
+            "obs_traj_rel_rot": test_data["obs_traj_rel_rot"][idx_testing],
+            "obs_traj_theta":   test_data["obs_traj_theta"][idx_testing],
+            "pred_traj":        test_data["pred_traj"][idx_testing],
+            "pred_traj_rel_rot":test_data["pred_traj_rel_rot"][idx_testing],
+            "frames_ids":       test_data["frames_ids"][idx_testing],
             "obs_optical_flow": test_data["obs_optical_flow"][idx_testing]
         }
         # Validation set
         validation_data ={
-            "obs_traj":      test_data["obs_traj"][idx_val],
-            "obs_traj_rel":  test_data["obs_traj_rel"][idx_val],
-            "obs_traj_theta":test_data["obs_traj_theta"][idx_val],
-            "pred_traj":     test_data["pred_traj"][idx_val],
-            "pred_traj_rel": test_data["pred_traj_rel"][idx_val],
-            "frames_ids":    test_data["frames_ids"][idx_val],
+            "obs_traj":         test_data["obs_traj"][idx_val],
+            "obs_traj_rel_rot": test_data["obs_traj_rel_rot"][idx_val],
+            "obs_traj_theta":   test_data["obs_traj_theta"][idx_val],
+            "pred_traj":        test_data["pred_traj"][idx_val],
+            "pred_traj_rel_rot":test_data["pred_traj_rel_rot"][idx_val],
+            "frames_ids":       test_data["frames_ids"][idx_val],
             "obs_optical_flow": test_data["obs_optical_flow"][idx_val]
         }
         # Training dataset
