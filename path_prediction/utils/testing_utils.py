@@ -1,7 +1,7 @@
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
-import cv2, heapq
+import cv2, heapq, math
 from matplotlib import pyplot as plt
 from .traj_utils import relative_to_abs, vw_to_abs
 from .plot_utils import plot_gt_preds,plot_background,plot_neighbors,plot_attention
@@ -100,7 +100,7 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
     batch_inputs, batch_targets = get_batch(batch, config)
     # Perform prediction
     pred_traj  = model.predict(batch_inputs,batch_targets.shape[1])
-    # Cycle over the trajectories of the bach
+    # Cycle over the trajectories of the batch
     for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
         this_pred_out_abs_set = []
         nsamples = pred_traj.shape[1]
@@ -148,15 +148,21 @@ def evaluation_attention(model,batch,config,background=None,homography=None,flip
     plt.show()
 
 # For a multiple-output prediction, evaluate the minADE and minFDE
-def minadefde(obs_traj_gt, pred_traj_gt,pred_traj):
+def minadefde(obs_traj_gt, obs_traj_theta, pred_traj_gt,pred_traj):
     nsamples = pred_traj.shape[0]
     ademin = np.inf
     fdemin = np.inf
+    c, s = np.cos(obs_traj_theta[-1,0]-math.pi*0.5), np.sin(obs_traj_theta[-1,0]-math.pi*0.5)
+    mr   = np.array([[c,-s],[s,c]])
+
     for k in range(nsamples):
         # Conserve the x,y coordinates of the kth trajectory
         this_pred_traj     = pred_traj[k,:, :2]
         # Convert it to absolute (starting from the last observed position)
-        this_pred_traj_abs = relative_to_abs(this_pred_traj, obs_traj_gt[-1])
+        this_pred_traj_rot  = np.zeros_like(this_pred_traj)
+        this_pred_traj_rot[:,0] = c*this_pred_traj[:,0]-s*this_pred_traj[:,1]
+        this_pred_traj_rot[:,1] = s*this_pred_traj[:,0]+c*this_pred_traj[:,1]
+        this_pred_traj_abs  = relative_to_abs(this_pred_traj_rot, obs_traj_gt[-1])
         # Error for ade
         diff = pred_traj_gt - this_pred_traj_abs
         diff = diff**2
@@ -178,8 +184,8 @@ def evaluation_minadefde(model,test_data,config):
         batch_inputs, batch_targets = get_batch(batch, config)
         pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
         # For all the trajectories in the batch
-        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            made,mfde = minadefde(obs_traj_gt, pred_traj_gt,pred_out[i])
+        for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
+            made,mfde = minadefde(obs_traj_gt, obs_theta_gt, pred_traj_gt,pred_out[i])
             ades.append(made)
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
@@ -194,8 +200,8 @@ def exhibit_worstcases(model,test_data,config,nworst=10):
         pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
         d                           = []
         # For all the trajectories in the batch
-        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
-            made,__ = minadefde(obs_traj_gt, pred_traj_gt,pred_out[i])
+        for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
+            made,__ = minadefde(obs_traj_gt, obs_theta_gt, pred_traj_gt,pred_out[i])
             if len(worst)<nworst:
                 heapq.heappush(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
             else:
