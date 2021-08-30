@@ -28,18 +28,18 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         self.traj_enc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
             activation=tf.keras.activations.relu,use_bias=False,
             name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-        #self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-        #    activation=tf.keras.activations.relu,use_bias=False,
-        #    name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+        self.traj_enc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
+            activation=tf.keras.activations.relu,use_bias=False,
+            name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
 
         if self.add_social:
             # Linear embeddings from social state to hidden state
             self.traj_soc_h_to_dec_h = [layers.Dense(config.dec_hidden_size,
                 activation=tf.keras.activations.relu,use_bias=False,
                 name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-            #self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
-            #    activation=tf.keras.activations.relu,use_bias=False,
-            #    name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
+            self.traj_soc_c_to_dec_c = [layers.Dense(config.dec_hidden_size,
+                activation=tf.keras.activations.relu,use_bias=False,
+                name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
             # In the case of handling social interactions, add a third input
             self.input_layer_social_h = layers.Input(h_shape,name="encoded_social_h")
             self.input_layer_social_c = layers.Input(h_shape,name="encoded_social_c")
@@ -65,13 +65,13 @@ class TrajectoryDecoderInitializer(tf.keras.Model):
         for i in range(self.output_var_dirs):
             # Map the trajectory hidden states to variations of the initializer state
             decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
-            #decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
-            decoder_init_dc  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[1])
+            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
+            #decoder_init_dc  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[1])
             if self.add_social:
                 # Map the social features hidden states to variations of the initializer state
                 decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
-                #decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
-                decoder_init_dc = decoder_init_dc + self.traj_soc_h_to_dec_h[i](soc_encoder_states[1])
+                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
+                #decoder_init_dc = decoder_init_dc + self.traj_soc_h_to_dec_h[i](soc_encoder_states[1])
             # Define two opposite states based on these variations
             decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
             decoder_init_c   = traj_encoder_states[1]+decoder_init_dc

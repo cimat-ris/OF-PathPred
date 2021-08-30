@@ -196,7 +196,7 @@ class PredictorMultOf():
             # TODO: tune this value in a more principled way?
             # L2 weight decay
             loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.0015
+                        if 'bias' not in v.name ]) * 0.005
             #########################################################################################
 
         #########################################################################################
