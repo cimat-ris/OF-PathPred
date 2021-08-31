@@ -19,6 +19,7 @@ def main():
                         help='glob expression for data files')
     parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
+    parser.add_argument('--samples',type=int, default=10,help='Number of samples (default: 10)')
     args = parser.parse_args()
 
 
@@ -53,8 +54,6 @@ def main():
     training   = int(ndata*training_pc)
     test       = int(ndata*test_pc)
     validation = int(ndata-training-test)
-
-    # Indices for training
     idx_train = idx[0:training]
     # Indices for testing
     idx_test  = idx[training:training+test]
@@ -66,7 +65,9 @@ def main():
      "obs_traj":      data["obs_traj"][idx_train],
      "obs_traj_rel":  data["obs_traj_rel"][idx_train],
      "pred_traj":     data["pred_traj"][idx_train],
-     "pred_traj_rel": data["pred_traj_rel"][idx_train]
+     "pred_traj_rel": data["pred_traj_rel"][idx_train],
+     "obs_traj_rel_rot": data["obs_traj_rel_rot"][idx_train],
+     "pred_traj_rel_rot": data["pred_traj_rel_rot"][idx_train]
     }
 
     # Test set
@@ -93,18 +94,26 @@ def main():
     # Plot ramdomly a subset of the training data (spatial data only)
     nSamples = min(30,training)
     samples  = random.sample(range(1,training), nSamples)
-    plt.subplots(1,1,figsize=(10,10))
-    plt.subplot(1,1,1)
-    plt.axis('equal')
+    num = 0
     # Plot some of the training data
-    for (o,p) in zip(training_data["obs_traj"][samples],training_data["pred_traj"][samples]):
+    for (o,p,ro,rp) in zip(training_data["obs_traj"][samples],training_data["pred_traj"][samples],training_data["obs_traj_rel_rot"][samples],training_data["pred_traj_rel_rot"][samples]):
+        plt.subplots(1,2,figsize=(16,8))        
+        plt.subplot(1,2,1)
         # Observations
-        plt.plot(o[:,0],o[:,1],color='red')
+        plt.plot(o[:,0],o[:,1],'ro--')
         plt.plot([o[-1,0],p[0,0]],[o[-1,1],p[0,1]],color='blue')
+        plt.axis('equal')
         # Prediction targets
         plt.plot(p[:,0],p[:,1],color='blue')
         plt.title("Samples of trajectories from the dataset")
+        plt.subplot(1,2,2)
+        plt.plot(ro[:,0],ro[:,1],'ro--')
+        plt.axis('equal')
+        plt.title("Rotated velocities samples from the dataset")
         plt.show()
+        if num == args.samples:
+            break
+        num = num + 1
 
 
 if __name__ == '__main__':

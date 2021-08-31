@@ -109,19 +109,26 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
     traj_pred     = []
     neighbors     = []
     attention     = []
+
     batch_inputs, batch_targets = get_batch(batch, config)
     # Perform prediction
     pred_traj  = model.predict(batch_inputs,batch_targets.shape[1])
     # Cycle over the trajectories of the batch
-    for i, (obs_traj_gt, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"], batch["obs_neighbors"])):
+    for i, (obs_traj_gt, obs_traj_theta, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"],batch["obs_traj_theta"],batch["pred_traj"],batch["obs_neighbors"])):
         this_pred_out_abs_set = []
         nsamples = pred_traj.shape[1]
+        c, s     = np.cos(obs_traj_theta[-1,0]-math.pi*0.5), np.sin(obs_traj_theta[-1,0]-math.pi*0.5)
+        mr       = np.array([[c,-s],[s,c]])
+
         for k in range(nsamples):
             # Conserve the x,y coordinates
             if (pred_traj[i,k].shape[0]==config.pred_len):
                 this_pred_out     = pred_traj[i,k,:, :2]
                 # Convert it to absolute (starting from the last observed position)
-                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                this_pred_traj_rot  = np.zeros_like(this_pred_out)
+                this_pred_traj_rot[:,0] = c*this_pred_out[:,0]-s*this_pred_out[:,1]
+                this_pred_traj_rot[:,1] = s*this_pred_out[:,0]+c*this_pred_out[:,1]
+                this_pred_out_abs = relative_to_abs(this_pred_traj_rot, obs_traj_gt[-1])
                 this_pred_out_abs_set.append(this_pred_out_abs)
         this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
         # TODO: tensors instead of lists?
