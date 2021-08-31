@@ -238,8 +238,8 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,tab
                     sub_indexes[ii].append(scene.scene)
 
         # Format the data
-        batch_inputs, batch_targets = get_batch(batch, config)
-        pred_out,__                 = model.predict(batch_inputs,batch_targets.shape[1])
+        batch_inputs, batch_targets = get_batch(batch, config, rot='')
+        pred_out                 = model.predict(batch_inputs,batch_targets.shape[1])
 
         scenes_gt_batch = []
         scenes_sub_batch = []
@@ -389,7 +389,7 @@ def other_models(args,table):
                 #             eval(true_datasets[i], submit_datasets[i], args)
                 #            for i in range(len(true_datasets))}
 
-                results_list = Parallel(n_jobs=1)(delayed(eval)(true_datasets[i], submit_datasets[i], args) for i in range(len(true_datasets)))
+                results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args) for i in range(len(true_datasets)))
                 results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''): results_list[i]
                            for i in range(len(true_datasets))}
 

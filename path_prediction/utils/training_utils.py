@@ -147,7 +147,7 @@ def training_trajnetplusplus_loop(model,train_data,val_data,primary_path,config,
         num_batches_per_epoch= train_data.cardinality().numpy()
         for batch in tqdm(train_data,ascii = True):
             # Format the data
-            batch_inputs, batch_targets = get_batch(batch, config)
+            batch_inputs, batch_targets = get_batch(batch, config, rot='')
             # Run the forward pass of the layer.
             # Compute the loss value for this minibatch.
             batch_loss = model.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
@@ -173,7 +173,7 @@ def training_trajnetplusplus_loop(model,train_data,val_data,primary_path,config,
             num_batches_per_epoch= val_data.cardinality().numpy()
             for idx,batch in tqdm(enumerate(val_data),ascii = True):
                 # Format the data
-                batch_inputs, batch_targets = get_batch(batch, config)
+                batch_inputs, batch_targets = get_batch(batch, config, rot='')
                 batch_loss                  = model.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
                 total_loss+= batch_loss
             # End epoch

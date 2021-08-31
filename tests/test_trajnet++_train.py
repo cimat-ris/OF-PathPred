@@ -8,7 +8,7 @@ random.seed(datetime.now())
 import matplotlib.pyplot as plt
 
 # Important imports
-from path_prediction import models, utils, testing_utils
+from path_prediction import models, utils
 import pickle
 
 sys.path.append("../trajnetplusplusbaselines")
@@ -72,7 +72,7 @@ def main():
     test_dataset_names = ["biwi_eth"]
 
     # Load the default parameters
-    experiment_parameters = utils.training_utils.Experiment_Parameters(add_kp=False)
+    experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=False)
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     # Load the datasets
@@ -81,7 +81,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = models.model_multimodal_attention.ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
+    model_parameters = models.model_multimodal_attention.PredictorMultAtt.Parameters(add_social=args.social,rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1
@@ -108,7 +108,7 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    tj_enc_dec = models.model_multimodal_attention.TrajectoryEncoderDecoder(model_parameters)
+    tj_enc_dec = models.model_multimodal_attention.PredictorMultAtt(model_parameters)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/ofmodel-trajnet++'
@@ -139,14 +139,15 @@ def main():
         table = Table()
 
         # Calulate trajnetplusplus metrics
-        testing_utils.evaluation_trajnetplusplus_minadefde(tj_enc_dec, batched_test_data, test_primary_path, model_parameters, table=table)
+        utils.testing_utils.evaluation_trajnetplusplus_minadefde(tj_enc_dec, batched_test_data, test_primary_path, model_parameters, table=table)
 
         # For add result of model orca, kf, cv, sf
         if add_info_other_models:
-            testing_utils.other_models(args,table)
+            utils.testing_utils.other_models(args,table)
 
         ## Save table in a image
         table.print_table()
+        print("results saved in Results.png")
 
 
 if __name__ == '__main__':
