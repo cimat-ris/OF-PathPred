@@ -8,14 +8,18 @@ random.seed(datetime.now())
 import matplotlib.pyplot as plt
 
 # Important imports
-from path_prediction import models, utils
+from path_prediction import models, utils, testing_utils
 import pickle
+
+sys.path.append("../trajnetplusplusbaselines")
+from trajnetplusplusbaselines.evaluator.design_pd import Table
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--obs_length', default=8, type=int,help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,help='prediction length')
-    parser.add_argument('--path', default='datasets/trajnetplusplus',help='glob expression for data files')
+    #parser.add_argument('--path', default='datasets/trajnetplusplus',help='glob expression for data files')
+    parser.add_argument('--path', default='../trajnetplusplusdataset/output/',help='glob expression for data files')
     parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
@@ -28,6 +32,27 @@ def main():
                     type=int, default=35,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
+
+    # arg for evaluation trajnetplusplus
+    parser.add_argument('--output', nargs='+',
+                    help='relative path to saved model')
+    parser.add_argument('--sf', action='store_true',
+                        help='consider socialforce in evaluation')
+    parser.add_argument('--orca', action='store_true',
+                        help='consider orca in evaluation')
+    parser.add_argument('--kf', action='store_true',
+                        help='consider kalman in evaluation')
+    parser.add_argument('--cv', action='store_true',
+                        help='consider constant velocity in evaluation')
+    parser.add_argument('--normalize_scene', action='store_true',
+                        help='augment scenes')
+    parser.add_argument('--modes', default=1, type=int,
+                        help='number of modes to predict')
+    parser.add_argument('--labels', required=False, nargs='+',
+                        help='labels of models')
+    parser.add_argument('--disable-collision', action='store_true',
+                        help='disable collision metrics')
+
     args     = parser.parse_args()
     if args.log_file=='':
         logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
@@ -51,7 +76,7 @@ def main():
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     # Load the datasets
-    training_data,validation_data,testing_data = utils.datasets_utils.setup_trajnetplusplus_experiment('TRAJNETPLUSPLUS',args.path,train_dataset_names,test_dataset_names,experiment_parameters,use_pickled_data=args.pickle)
+    training_data,validation_data,testing_data, train_primary_path, test_primary_path = utils.datasets_utils.setup_trajnetplusplus_experiment('TRAJNETPLUSPLUS',args.path,train_dataset_names,test_dataset_names,experiment_parameters,use_pickled_data=args.pickle)
     logging.info("Total number of training trajectories: {}".format(training_data["obs_traj"].shape[0]))
 
     #############################################################
@@ -65,7 +90,7 @@ def main():
     model_parameters.enc_hidden_size= 128  # Hidden size of the RNN encoder
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size # Hidden size of the RNN decoder
     model_parameters.emb_size       = 256  # Embedding size
-    model_parameters.use_validation = False
+    model_parameters.use_validation = True
     # When running on CPU
     if len(physical_devices)==0:
         model_parameters.batch_size     = 64
@@ -95,7 +120,7 @@ def main():
     # Training
     if args.noretrain==False:
         logging.info("Training the model")
-        train_loss_results,val_loss_results,val_metrics_results,__ = utils.training_utils.training_loop(tj_enc_dec,batched_train_data,batched_val_data,model_parameters,checkpoint,checkpoint_prefix)
+        train_loss_results,val_loss_results,val_metrics_results,__ = utils.training_utils.training_trajnetplusplus_loop(tj_enc_dec,batched_train_data,batched_val_data,train_primary_path,model_parameters,checkpoint,checkpoint_prefix)
         utils.plot_utils.plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
     # Testing
@@ -103,7 +128,26 @@ def main():
     logging.info("Restoring last model")
     status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
-    # TODO: testing
+    # Quantitative testing: ADE/FDE
+    quantitative = True
+    add_info_other_models = True
+
+    if quantitative==True:
+        print("[INF] Quantitative testing")
+
+        # Initiate Result Table
+        table = Table()
+
+        # Calulate trajnetplusplus metrics
+        testing_utils.evaluation_trajnetplusplus_minadefde(tj_enc_dec, batched_test_data, test_primary_path, model_parameters, table=table)
+
+        # For add result of model orca, kf, cv, sf
+        if add_info_other_models:
+            testing_utils.other_models(args,table)
+
+        ## Save table in a image
+        table.print_table()
+
 
 if __name__ == '__main__':
     main()

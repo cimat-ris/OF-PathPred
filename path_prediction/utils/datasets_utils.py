@@ -104,8 +104,10 @@ def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test
         # Process data specified by the path to get the trajectories with
         logging.info('Extracting data from the datasets')
         # Note that for the training data, we do not keep the neighbots information (too heavy!)
-        train_data = prepare_data_trajnetplusplus(ds_path+"/train/train/real_data/",train_ds_names,experiment_parameters,keep_neighbors=False)
-        test_data  = prepare_data_trajnetplusplus(ds_path+"/test/test/real_data/",test_ds_names, experiment_parameters)
+        #train_data = prepare_data_trajnetplusplus(ds_path+"/train/train/real_data/",train_ds_names,experiment_parameters,keep_neighbors=False)
+        #test_data  = prepare_data_trajnetplusplus(ds_path+"/test/test/real_data/",test_ds_names, experiment_parameters)
+        train_data, train_primary_path = prepare_data_trajnetplusplus(ds_path+"/train/",train_ds_names,experiment_parameters,keep_neighbors=False)
+        test_data , test_primary_path = prepare_data_trajnetplusplus(ds_path+"/val/",test_ds_names, experiment_parameters)
 
         # Count how many data we have (sub-sequences of length 8, in pred_traj)
         n_test_data  = len(test_data[list(test_data.keys())[2]])
@@ -129,6 +131,7 @@ def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test
             "pred_traj_rel": train_data["pred_traj_rel"][idx_train]
         }
         training_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_train]
+
         # Validation set
         validation_data ={
             "obs_traj":      train_data["obs_traj"][idx_val],
@@ -138,16 +141,7 @@ def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test
             "pred_traj_rel": train_data["pred_traj_rel"][idx_val]
         }
         validation_data["obs_optical_flow"]=train_data["obs_optical_flow"][idx_val]
-        # Test set
-        testing_data = {
-            "obs_traj":      test_data["obs_traj"][:],
-            "obs_traj_rel":  test_data["obs_traj_rel"][:],
-            "obs_traj_theta":test_data["obs_traj_theta"][:],
-            "pred_traj":     test_data["pred_traj"][:],
-            "pred_traj_rel": test_data["pred_traj_rel"][:]
-        }
-        testing_data["obs_optical_flow"]=test_data["obs_optical_flow"][:]
-        testing_data["obs_neighbors"]=test_data["obs_neighbors"][:]
+        validation_data["index"]=train_data["index"][idx_val]
 
         # Training dataset
         pickle_out = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"wb")
@@ -176,4 +170,4 @@ def setup_trajnetplusplus_experiment(experiment_name,ds_path,train_ds_names,test
     logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
     logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
     logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
-    return training_data,validation_data,test_data
+    return training_data,validation_data,test_data, train_primary_path, test_primary_path

@@ -28,6 +28,7 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
     all_flows             = []
     all_visible_neighbors = []
     neighbors_n_max       = 0
+    primary_path = []
     # Optical flow
     of_sim = OpticalFlowSimulator()
     ## Iterate over file names
@@ -42,6 +43,8 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             ped_traj_abs = raw_traj_abs[:,0,:]
             # Keep the full trajectory of the pedestrian of interest (start at 0)
             all_ped_traj_abs.append(ped_traj_abs)
+            # Save info path scene scene_id
+            primary_path.append((scene_id, paths[0],reader.scenes_by_id[scene_id]))
             # Displacements along the trajectories (start at 1)
             ped_traj_rel = ped_traj_abs[1:,:] - ped_traj_abs[:-1,:]
             all_ped_traj_rel.append(ped_traj_rel)
@@ -103,11 +106,12 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
         "obs_optical_flow": all_flows,
         "obs_visible_neighbors": all_visible_neighbors,
         "pred_traj": pred_traj,
-        "pred_traj_rel": pred_traj_rel
+        "pred_traj_rel": pred_traj_rel,
+        "index": np.array(range(len(primary_path)))
     }
     if keep_neighbors:
         data["obs_neighbors"]        = neighbors_obs
-    return data
+    return data, primary_path
 
 def prepare_data_old(datasets_path, datasets_names, parameters):
     datasets = range(len(datasets_names))
