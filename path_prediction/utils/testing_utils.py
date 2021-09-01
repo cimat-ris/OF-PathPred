@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import cv2, heapq, math
 from matplotlib import pyplot as plt
-from .traj_utils import relative_to_abs, vw_to_abs
+from .traj_utils import relative_to_abs
 from .plot_utils import plot_gt_preds,plot_background,plot_neighbors,plot_attention
 from .batches_data import get_batch
 
@@ -117,9 +117,8 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
     for i, (obs_traj_gt, obs_traj_theta, pred_traj_gt, neighbors_gt) in enumerate(zip(batch["obs_traj"],batch["obs_traj_theta"],batch["pred_traj"],batch["obs_neighbors"])):
         this_pred_out_abs_set = []
         nsamples = pred_traj.shape[1]
-        c, s     = np.cos(obs_traj_theta[-1,0]-math.pi*0.5), np.sin(obs_traj_theta[-1,0]-math.pi*0.5)
-        mr       = np.array([[c,-s],[s,c]])
-
+        # TODO: use the reconstruct function
+        c, s     = np.cos(obs_traj_theta[-1,0]), np.sin(obs_traj_theta[-1,0])
         for k in range(nsamples):
             # Conserve the x,y coordinates
             if (pred_traj[i,k].shape[0]==config.pred_len):
@@ -167,28 +166,29 @@ def evaluation_attention(model,batch,config,background=None,homography=None,flip
     plt.show()
 
 
-def reconstruct(obs_traj_gt,obs_traj_theta,this_pred_traj):
-    # Inverse roation to
-    c, s = np.cos(obs_traj_theta[-1,0]-math.pi*0.5), np.sin(obs_traj_theta[-1,0]-math.pi*0.5)
-    mr   = np.array([[c,-s],[s,c]])
-    # Convert it to absolute (starting from the last observed position)
-    this_pred_traj_rot  = np.zeros_like(this_pred_traj)
-    this_pred_traj_rot[:,0] = c*this_pred_traj[:,0]-s*this_pred_traj[:,1]
-    this_pred_traj_rot[:,1] = s*this_pred_traj[:,0]+c*this_pred_traj[:,1]
-    return  relative_to_abs(this_pred_traj_rot, obs_traj_gt[-1])
+def reconstruct(start,theta,this_pred_traj,mode="rel_rot"):
+    if mode=="rel_rot":
+        # Inverse roation to
+        c, s = np.cos(theta), np.sin(theta)
+        # Convert it to absolute (starting from the last observed position)
+        this_pred_traj_rot  = np.zeros_like(this_pred_traj)
+        this_pred_traj_rot[:,:,0] = c*this_pred_traj[:,:,0]-s*this_pred_traj[:,:,1]
+        this_pred_traj_rot[:,:,1] = s*this_pred_traj[:,:,0]+c*this_pred_traj[:,:,1]
+    else:
+        if mode=="rel":
+            this_pred_traj_rot = this_pred_traj
+    return  relative_to_abs(this_pred_traj_rot, start, axis=1)
 
 # For a multiple-output prediction, evaluate the minADE and minFDE
-def minadefde(obs_traj_gt, obs_traj_theta, pred_traj_gt,pred_traj):
+def minadefde(start, theta, pred_traj_gt,pred_traj):
     nsamples = pred_traj.shape[0]
     ademin = np.inf
     fdemin = np.inf
-
+    # Reconstruct all samples
+    this_pred_traj_abs = reconstruct(start,theta,pred_traj[:,:, :2])
     for k in range(nsamples):
-        # Conserve the x,y coordinates of the kth trajectory
-        this_pred_traj     = pred_traj[k,:, :2]
-        this_pred_traj_abs = reconstruct(obs_traj_gt,obs_traj_theta,this_pred_traj)
         # Error for ade
-        diff = pred_traj_gt - this_pred_traj_abs
+        diff = pred_traj_gt - this_pred_traj_abs[k]
         diff = diff**2
         diff = np.sqrt(np.sum(diff, axis=1))
         # To keep the smallest ade/fde
@@ -209,7 +209,7 @@ def evaluation_minadefde(model,test_data,config):
         pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,mfde = minadefde(obs_traj_gt, obs_theta_gt, pred_traj_gt,pred_out[i])
+            made,mfde = minadefde(obs_traj_gt[-1], obs_theta_gt[-1,0], pred_traj_gt,pred_out[i])
             ades.append(made)
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
@@ -288,24 +288,6 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,tab
     return { "mADE": results['Evaluation'][0]['kf'], "mFDE": results['Evaluation'][1]['kf']}
 
 
-# For a given model, search for the worst cases of mADE
-def exhibit_worstcases(model,test_data,config,nworst=10):
-    # Search for worst cases
-    worst = []
-    for batch in tqdm(test_data,ascii = True):
-        # Format the data
-        batch_inputs, batch_targets = get_batch(batch, config)
-        pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
-        d                           = []
-        # For all the trajectories in the batch
-        for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,__ = minadefde(obs_traj_gt, obs_theta_gt, pred_traj_gt,pred_out[i])
-            if len(worst)<nworst:
-                heapq.heappush(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
-            else:
-                heapq.heapreplace(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
-    return worst
-
 # Perform a qualitative evaluation over a batch of n_trajectories
 def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
     # Search for worst cases
@@ -319,18 +301,18 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
             made,__ = minadefde(obs_traj_gt, obs_theta_gt, pred_traj_gt,pred_out[i])
             if len(worst)<nworst:
-                heapq.heappush(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
+                heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt,pred_traj_gt,pred_out[i]]))
             else:
-                heapq.heapreplace(worst,(made,[obs_traj_gt, pred_traj_gt,pred_out[i]]))
+                heapq.heapreplace(worst,(made,[obs_traj_gt,obs_theta_gt,pred_traj_gt,pred_out[i]]))
 
     # Plot ground truth and predictions
     plt.subplots(1,1,figsize=(10,10))
     ax = plt.subplot(1,1,1)
     if background is not None:
         plot_background(ax,background)
-    for made,[obs_traj_gt, pred_traj_gt,pred] in worst:
-        print(obs_traj_gt.shape)
-        plot_gt_preds(ax,[pred_traj_gt],[obs_traj_gt],[pred],homography,flip=flip,display_mode=display_mode,n_peds_max=n_peds_max)
+    for made,[obs_traj_gt, obs_theta_gt, pred_traj_gt,pred] in worst:
+        pred_traj_abs = reconstruct(obs_traj_gt[-1],obs_theta_gt[-1,0],pred)
+        plot_gt_preds(ax,[pred_traj_gt],[obs_traj_gt],[pred_traj_abs],homography,flip=flip,display_mode=display_mode,n_peds_max=n_peds_max,title='Worst cases')
     plt.show()
 
 def plot_comparisons_minadefde(madefde_results,dataset_name):
