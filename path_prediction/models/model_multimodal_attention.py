@@ -110,6 +110,9 @@ class PredictorMultAtt():
         def __init__(self, add_social=False, rnn_type='lstm'):
             super(PredictorMultAtt.Parameters, self).__init__(rnn_type)
             # -----------------
+            self.obs_length = 8
+            self.pred_length = 12
+            
             self.add_social     = add_social
             self.stack_rnn_size = 2
             self.output_var_dirs= 0

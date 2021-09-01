@@ -7,6 +7,18 @@ from .traj_utils import relative_to_abs, vw_to_abs
 from .plot_utils import plot_gt_preds,plot_background,plot_neighbors,plot_attention
 from .batches_data import get_batch
 
+# Since it is used as a submodule, the trajnetplusplustools directory should be there
+import sys
+sys.path.append("../trajnetplusplustools")
+from trajnetplusplustools import TrackRow
+
+sys.path.append("../trajnetplusplusbaselines")
+from trajnetplusplusbaselines.evaluator.trajnet_evaluator import TrajnetEvaluator, collision_test, eval
+import evaluator.write as write
+from joblib import Parallel, delayed
+import os
+import pickle
+
 mADEFDE = {
   "eth-univ" : {
     "S-GAN": (0.87,1.62),
@@ -202,6 +214,79 @@ def evaluation_minadefde(model,test_data,config):
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
 
+# Perform quantitative evaluation   for dataset trajnetplusplus
+def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,table=None):
+    l2dis = []
+    num_batches_per_epoch= test_data.cardinality().numpy()
+    for batch in tqdm(test_data,ascii = True):
+
+        #primary_path
+        val_primary_path = [ primary_path[row.numpy()] for row in batch["index"]]
+        scenes_id_gt, scenes_gt_all, scenes_by_id = zip(*val_primary_path)
+
+        ## indexes is dictionary deciding which scenes are in which type
+        indexes = {}
+        for i in range(1, 5):
+            indexes[i] = []
+        ## sub-indexes
+        sub_indexes = {}
+        for i in range(1, 5):
+            sub_indexes[i] = []
+        for scene in scenes_by_id:
+            tags = scene.tag
+            main_tag = tags[0:1]
+            sub_tags = tags[1]
+            for ii in range(1, 5):
+                if ii in main_tag:
+                    indexes[ii].append(scene.scene)
+                if ii in sub_tags:
+                    sub_indexes[ii].append(scene.scene)
+
+        # Format the data
+        batch_inputs, batch_targets = get_batch(batch, config, rot='')
+        pred_out                 = model.predict(batch_inputs,batch_targets.shape[1])
+
+        scenes_gt_batch = []
+        scenes_sub_batch = []
+        scenes_id_gt_batch = []
+        # For all the trajectories in the batch
+        for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
+            normin = 1000.0
+            diffmin= None
+            if hasattr(model,'output_samples'):
+                nsamples = model.output_samples
+            else:
+                nsamples = 1
+            for k in range(nsamples):
+                # Conserve the x,y coordinates of the kth trajectory
+                this_pred_out     = pred_out[i,k,:, :2] #[pred,2]
+                # Convert it to absolute (starting from the last observed position)
+                this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
+                # Check shape is OK
+                assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+
+                # Una trayectoria
+                scenes_gt = scenes_gt_all[i][config.obs_len:]
+                scenes_sub = [ TrackRow(path.frame, path.pedestrian, x , y, 0, scenes_id_gt[i] ) for path, (x,y) in zip(scenes_gt,this_pred_out_abs) ]
+
+                # Guardamos  en la lista del batch
+                scenes_gt_batch.append([scenes_gt])
+                scenes_sub_batch.append([scenes_sub])
+                scenes_id_gt_batch.append(scenes_id_gt[i])
+
+        # Evaluate
+        evaluator = TrajnetEvaluator([], scenes_gt_batch, scenes_id_gt_batch, scenes_sub_batch, indexes, sub_indexes, config)
+        evaluator.aggregate('kf', False)
+        results = {"Evaluation":evaluator.result(),}
+
+        if table != None:
+            # Creamos la tabla de resultados
+            table.add_collision_entry("Our_Model", "NA")
+            final_result, sub_final_result = table.add_entry('Our_Model', results)
+            return table
+
+    return { "mADE": results['Evaluation'][0]['kf'], "mFDE": results['Evaluation'][1]['kf']}
+
 
 # For a given model, search for the worst cases of mADE
 def exhibit_worstcases(model,test_data,config,nworst=10):
@@ -283,3 +368,72 @@ def plot_comparisons_minadefde(madefde_results,dataset_name):
     autolabel(rects2)
     fig.tight_layout()
     plt.show()
+
+def other_models(args,table):
+        ## Test_pred : Folders for saving model predictions
+        args.path = args.path + 'test_pred/'
+        args.output = args.output if args.output is not None else []
+        ## assert length of output models is not None
+        if (not args.sf) and (not args.orca) and (not args.kf) and (not args.cv):
+            assert len(args.output), 'No output file is provided'
+
+        # add predictions with other models
+        write.main(args)
+
+        ## Evaluates test_pred with test_private
+        names = []
+        for model in args.output:
+            model_name = model.split('/')[-1].replace('.pkl', '')
+            model_name = model_name + '_modes' + str(args.modes)
+            names.append(model_name)
+
+        ## labels
+        if args.labels:
+            labels = args.labels
+        else:
+            labels = names
+
+        for num, name in enumerate(names):
+            result_file = args.path.replace('pred', 'results') + name
+
+            ## If result was pre-calculated and saved, Load
+            if os.path.exists(result_file + '/results.pkl'):
+                with open(result_file + '/results.pkl', 'rb') as handle:
+                    [final_result, sub_final_result, col_result] = pickle.load(handle)
+                print(final_result, sub_final_result, col_result)
+
+                table.add_result(labels[num], final_result, sub_final_result)
+                table.add_collision_entry(labels[num], col_result)
+
+            # ## Else, Calculate results and save
+            else:
+                list_sub = sorted([f for f in os.listdir(args.path + name)
+                                   if not f.startswith('.')])
+
+                ## Simple Collision Test
+                col_result = collision_test(list_sub, name, args)
+                table.add_collision_entry(labels[num], col_result)
+
+                submit_datasets = [args.path + name + '/' + f for f in list_sub if 'collision_test.ndjson' not in f]
+                true_datasets = [args.path.replace('pred', 'private') + f for f in list_sub if 'collision_test.ndjson' not in f]
+
+                ## Evaluate submitted datasets with True Datasets [The main eval function]
+                # results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''):
+                #             eval(true_datasets[i], submit_datasets[i], args)
+                #            for i in range(len(true_datasets))}
+
+                results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args) for i in range(len(true_datasets)))
+                results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''): results_list[i]
+                           for i in range(len(true_datasets))}
+
+                print(results)
+                # print(results)
+                ## Generate results
+                final_result, sub_final_result = table.add_entry(labels[num], results)
+
+                ## Save results as pkl (to avoid computation again)
+                os.makedirs(result_file)
+                with open(result_file + '/results.pkl', 'wb') as handle:
+                    pickle.dump([final_result, sub_final_result, col_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        return(table)
