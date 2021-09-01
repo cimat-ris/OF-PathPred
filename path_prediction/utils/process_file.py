@@ -270,11 +270,6 @@ def prepare_data_old(datasets_path, datasets_names, parameters):
     seq_theta_all[:,1:,0] = np.arctan2(seq_pos_all[:, 1:, 1] - seq_pos_all[:,:-1, 1],seq_pos_all[:,1:, 0] - seq_pos_all[:,:-1, 0])
     seq_theta_all[:,0,  0]= seq_theta_all[:,1,  0]
 
-    # TODO: rotate the data
-    # Rotation matrix to map from **world** to **local** frame
-    #c, s            = math.cos(theta-math.pi*0.5), math.sin(theta-math.pi*0.5)
-    #mr              = np.array([[c,s],[-s,c]])
-
     seq_frames_all    = np.concatenate(seq_frames_all, axis=0)
     seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
     logging.info("Total number of sample sequences: ".format(len(seq_pos_all)))
@@ -377,7 +372,7 @@ def prepare_data(datasets_path, datasets_names, parameters):
             # The following two arrays have the same shape
             # "pos_seq_data" contains all the absolute positions of all the pedestrians in the sequence
             # and the information is encoded in an absolute frame (no transformation)
-            pos_seq_data = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
+            pos_seq_data       = np.zeros((num_peds_in_seq, seq_len, 2), dtype="float32")
             # Is the array with the sequence of Id_person of all people that there are in frame sequence
             frame_ids_seq_data = np.zeros((num_peds_in_seq, seq_len), dtype="int32")
 
@@ -399,13 +394,12 @@ def prepare_data(datasets_path, datasets_names, parameters):
                     continue
 
                 # Check whether the first 8 positions are not the same
-                # equal_consecutive = 0
-                # for n in range(obs_len-1):
-                #    if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
-                #        equal_consecutive +=1
-                #if(equal_consecutive==obs_len-1):
-                #    print("IMMOBILE")
-                #    continue
+                equal_consecutive = 0
+                for n in range(obs_len-1):
+                    if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
+                        equal_consecutive +=1
+                if(equal_consecutive==obs_len-1):
+                    continue
 
                 # To keep neighbors data for the person ped_id
                 neighbors_ped_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
@@ -458,21 +452,26 @@ def prepare_data(datasets_path, datasets_names, parameters):
         all_vis_obst.append(vis_obst)
     # Upper level (all datasets)
     # Concatenate all the content of the lists (pos/relative pos/frame ranges)
-    seq_pos_all   = np.concatenate(seq_pos_all, axis=0)
-    # All the displacements are estimated here.
-    seq_rel_all           = np.zeros_like(seq_pos_all)
-    seq_rel_all[:,1:,:]   = seq_pos_all[:,1:,:]-seq_pos_all[:,:-1,:]
+    seq_pos_all           = np.concatenate(seq_pos_all, axis=0)
+    seq_pos_centered_all  = seq_pos_all - seq_pos_all[:,obs_len-1:obs_len,0:2]
     # Note that padding is done at the first displacement with the second displacement
-    seq_rel_all[:,0,:]    = seq_rel_all[:,1,:]
     # All directions
     seq_theta_all         = np.zeros_like(seq_pos_all[:,:,0:1])
     seq_theta_all[:,1:,0] = np.arctan2(seq_pos_all[:, 1:, 1] - seq_pos_all[:,:-1, 1],seq_pos_all[:,1:, 0] - seq_pos_all[:,:-1, 0])
     seq_theta_all[:,0,  0]= seq_theta_all[:,1,  0]
+    # Cosine and sine of the orientation angle at the last observed point
     costheta              = np.cos(seq_theta_all[:,obs_len-1:obs_len,0:1]-math.pi*0.5)
     sintheta              = np.sin(seq_theta_all[:,obs_len-1:obs_len,0:1]-math.pi*0.5)
-    seq_rel_rot_all       = np.zeros_like(seq_rel_all)
-    seq_rel_rot_all[:,:,0:1]= costheta*seq_rel_all[:,:,0:1]+sintheta*seq_rel_all[:,:,1:2]
-    seq_rel_rot_all[:,:,1:2]=-sintheta*seq_rel_all[:,:,0:1]+costheta*seq_rel_all[:,:,1:2]
+    seq_pos_rot_all       = np.zeros_like(seq_pos_all)
+    seq_pos_rot_all[:,:,0:1]= costheta*(seq_pos_centered_all[:,:,0:1])+sintheta*(seq_pos_centered_all[:,:,1:2])
+    seq_pos_rot_all[:,:,1:2]=-sintheta*(seq_pos_centered_all[:,:,0:1])+costheta*(seq_pos_centered_all[:,:,1:2])
+    # All the displacements are estimated here.
+    seq_rel_rot_all         = np.zeros_like(seq_pos_rot_all)
+    seq_rel_rot_all[:,1:,:] = seq_pos_rot_all[:,1:,:]-seq_pos_rot_all[:,:-1,:]
+    seq_rel_rot_all[:,0,:]  = seq_rel_rot_all[:,1,:]
+    seq_rel_all             = np.zeros_like(seq_pos_all)
+    seq_rel_all[:,1:,:]     = seq_pos_all[:,1:,:]-seq_pos_all[:,:-1,:]
+    seq_rel_all[:,0,:]      = seq_rel_all[:,1,:]
     seq_frames_all    = np.concatenate(seq_frames_all, axis=0)
     seq_neighbors_all = np.concatenate(seq_neighbors_all, axis=0)
     logging.info("Total number of sample sequences: ".format(len(seq_pos_all)))

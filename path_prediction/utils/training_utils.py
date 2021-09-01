@@ -21,7 +21,7 @@ class Experiment_Parameters:
         self.obstacles    = obstacles
         self.delim        = ','
         self.validation_as_test = True
-        
+
 def relative_to_abs(rel_traj, start_pos):
     """Relative x,y to absolute x,y coordinates.
     Args:
@@ -40,14 +40,14 @@ def relative_to_abs(rel_traj, start_pos):
 def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix):
     train_loss_results   = []
     val_loss_results     = []
-    val_metrics_results  = {'mADE': [], 'mFDE': [], 'obs_classif_accuracy': []}
-    train_metrics_results= {'obs_classif_accuracy': []}
+    val_metrics_results  = {'mADE': [], 'mFDE': []}
     best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
-    train_metrics        = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
-    val_metrics          = {'obs_classif_sca':keras.metrics.SparseCategoricalAccuracy()}
+    train_metrics        = {}
+    val_metrics          = {}
 
     # Training the main system
     for epoch in range(config.num_epochs):
+        train_data           = train_data.shuffle(buffer_size=1024)
         logging.info('Epoch {}.'.format(epoch + 1))
         # Cycle over batches
         total_loss = 0
@@ -70,9 +70,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
             checkpoint.save(file_prefix = checkpoint_prefix)
 
         # Display information about the current state of the training loop
-        logging.info('Epoch {}. Training loss {:.4f}'.format(epoch + 1, total_loss ))
-        # print('[TRN] Training accuracy of classifier p(z|x)   {:.4f}'.format(float(train_metrics['obs_classif_sca'].result()),))
-        train_metrics['obs_classif_sca'].reset_states()
+        logging.info('Epoch {}. Per-batch training loss {:.4f}'.format(epoch + 1, total_loss ))
 
         if config.use_validation:
             # Compute validation loss
@@ -87,7 +85,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
-            logging.info('Epoch {}. Validation loss {:.4f}'.format(epoch + 1, total_loss ))
+            logging.info('Epoch {}. Per-batch validation loss {:.4f}'.format(epoch + 1, total_loss ))
             val_loss_results.append(total_loss)
             # Evaluate ADE, FDE metrics on validation data
             val_quantitative_metrics = evaluation_minadefde(model,val_data,config)

@@ -92,7 +92,7 @@ def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,displ
         if i>=n_peds_max:
             break
         preds     = traj_pred[i]
-        if (preds.shape[0]==0):
+        if preds.shape[0]==0:
             continue
         if homography is not None:
             gt    = image_to_world_xy(gt, homography,flip=flip)
