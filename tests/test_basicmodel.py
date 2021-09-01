@@ -59,10 +59,10 @@ def main():
     # Model parameters
     model_parameters = PredictorDetRNN.parameters()
     model_parameters.num_epochs     = args.epochs
-    model_parameters.initial_lr     = 0.03
-    model_parameters.emb_size       = 128
-    model_parameters.enc_hidden_size= 128
-
+    model_parameters.emb_size       = 64
+    model_parameters.enc_hidden_size= 64
+    model_parameters.dec_hidden_size= 64
+    model_parameters.dropout        = 0.6
     # Get the necessary data
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
     val_data   = tf.data.Dataset.from_tensor_slices(validation_data)
@@ -98,10 +98,10 @@ def main():
             total_cases = 0
             num_batches_per_epoch= batched_train_data.cardinality().numpy()
             for batch_idx, dicto in enumerate(batched_train_data):
-                data   = dicto['obs_traj_rel']
-                target = dicto['pred_traj_rel']
+                condition  = dicto['obs_traj_rel_rot']
+                target     = dicto['pred_traj_rel_rot']
                 with tf.GradientTape() as tape:
-                    losses      = model(data, target, training=True)
+                    losses      = model(condition, target, training=True)
                     total_error+= losses
                     total_cases+= num_batches_per_epoch
                 gradients = tape.gradient(losses, model.trainable_weights)
@@ -112,9 +112,9 @@ def main():
             total_error = 0
             total_cases = 0
             for batch_idx, dicto in enumerate(batched_val_data):
-                data_val   = dicto['obs_traj_rel']
-                target_val = dicto['pred_traj_rel']
-                losses = model(data_val, target_val)
+                condition  = dicto['obs_traj_rel_rot']
+                target     = dicto['pred_traj_rel_rot']
+                losses = model(condition, target)
                 total_error += losses
                 total_cases += num_batches_per_epoch
             logging.info("Validation loss: {:.6f}".format(total_error.numpy()/total_cases))
@@ -126,6 +126,8 @@ def main():
             # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 5 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
+            logging.info('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+            logging.info('Epoch {}. Validation mAFE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
 
         plot_training    = True
         if plot_training==True:
@@ -134,7 +136,7 @@ def main():
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
-    logging.info("Restoring last model")
+    logging.info("Restoring best model")
     status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
     # Quantitative testing: ADE/FDE
