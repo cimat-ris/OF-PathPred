@@ -47,7 +47,7 @@ def main():
     test_dataset_names = ["biwi_eth"]
 
     # Load the default parameters
-    experiment_parameters = utils.training_utils.Experiment_Parameters(add_kp=False)
+    experiment_parameters = utils.training_utils.Experiment_Parameters()
     experiment_parameters.obs_len  = args.obs_length
     experiment_parameters.pred_len = args.pred_length
     # Load the datasets
@@ -56,7 +56,7 @@ def main():
 
     #############################################################
     # Model parameters
-    model_parameters = models.model_multimodal_attention.ModelParameters(add_kp=experiment_parameters.add_kp,add_social=args.social,rnn_type=args.rnn)
+    model_parameters = models.model_multimodal_attention.ModelParameters(rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1

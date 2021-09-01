@@ -34,7 +34,7 @@ def main():
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=35,help='Number of epochs (default: 35)')
+                    type=int, default=10,help='Number of epochs (default: 10)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
@@ -73,12 +73,8 @@ def main():
         else:
             logging.error("No such model")
     model_parameters.num_epochs     = args.epochs
-    # 9 samples generated
-    model_parameters.output_var_dirs= 5
-    model_parameters.initial_lr     = 0.01
-    model_parameters.enc_hidden_size= 128  # Hidden size of the RNN encoder
-    model_parameters.dec_hidden_size= model_parameters.enc_hidden_size # Hidden size of the RNN decoder
-    model_parameters.emb_size       = 256  # Embedding size
+    # Number of samples generated
+    model_parameters.output_var_dirs= 0
 
     # When running on CPU
     if len(physical_devices)==0:
@@ -134,7 +130,9 @@ def main():
         for i in range(5):
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
             utils.testing_utils.evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
+        logging.info("Worst cases")
         worst = utils.testing_utils.exhibit_worstcases(tj_enc_dec,batched_test_data,model_parameters)
+        utils.testing_utils.evaluation_worstcases(tj_enc_dec,batched_test_data,model_parameters,background=None,homography=None)
         print(worst)
 
 if __name__ == '__main__':
