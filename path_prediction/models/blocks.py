@@ -108,8 +108,6 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
         self.input_layer_traj = layers.Input(obs_shape,name="observed_trajectory")
         # Encoding: Positions
         self.traj_enc         = TrajectoryEncoder(config)
-        # Classifier
-        # self.obs_classif      = ObservedTrajectoryClassifier(config)
 
         # We use the social features only when the two flags (add_social and add_attention are on)
         if (self.add_social):

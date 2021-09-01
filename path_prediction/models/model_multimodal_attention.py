@@ -116,16 +116,23 @@ class PredictorMultAtt():
             # Optical flow
             self.flow_size      = 64
             self.rnn_type       = rnn_type
+            self.dropout_rate   = 0.45  # Dropout rate during training
+            self.initial_lr     = 0.001
+            self.enc_hidden_size= 128  # Hidden size of the RNN encoder
+            self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
+            self.emb_size       = 256  # Embedding size
+            self.batch_size     = 256
+            self.weight_decay   = 0.002
 
     # Constructor
     def __init__(self,config):
-        logging.info("Initialization")
+        logging.info("Model initialization")
         # Flags for considering social interations
         self.add_social     = config.add_social
         self.stack_rnn_size = config.stack_rnn_size
         self.output_samples = 2*config.output_var_dirs+1
         self.output_var_dirs= config.output_var_dirs
-
+        self.weight_decay    = config.weight_decay
         #########################################################################################
         # The components of our model are instantiated here
         # Encoder: Positions and context
@@ -147,9 +154,9 @@ class PredictorMultAtt():
                 staircase=True)
 
         # Instantiate an optimizer to train the models.
-        # self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
-        self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
-
+        # self.optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+        # self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
+        self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=0.005)
         # Instantiate the loss operator
         self.loss_fn       = losses.LogCosh()
         self.loss_fn_local = losses.LogCosh(losses.Reduction.NONE)
@@ -225,8 +232,8 @@ class PredictorMultAtt():
             loss_value  += tf.reduce_sum(losses_at_min)/losses_over_samples.shape[0]
             # TODO: tune this value in a more principled way?
             # L2 weight decay
-            #loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-            #            if 'bias' not in v.name ]) * 0.001
+            penalized_variables = [v for v in variables if 'bias' not in v.name ]
+            loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in penalized_variables]) * self.weight_decay
             #########################################################################################
 
         #########################################################################################
