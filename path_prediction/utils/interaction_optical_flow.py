@@ -192,6 +192,8 @@ class OpticalFlowSimulator(object):
 
         # Scan the neighbors
         for neighbor_position,neighbor_velocity in zip(neighbors_positions,neighbors_velocities):
+            if np.isnan(neighbor_position).any() or np.isnan(neighbor_velocity).any():
+                continue
             bearing = norm_angle(math.atan2(neighbor_position[1]-current_position[1],neighbor_position[0]-current_position[0])-theta)
             # Check if it is visible (bearing should be between -pi/2 and pi/2)
             if self.parameters.log_polar_mapping==False:
