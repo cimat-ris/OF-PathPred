@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=25,help='Number of epochs (default: 35)')
+                    type=int, default=15,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     args = parser.parse_args()
@@ -61,8 +61,8 @@ def main():
     model_parameters.num_epochs     = args.epochs
     model_parameters.emb_size       = 64
     model_parameters.enc_hidden_size= 64
-    model_parameters.dec_hidden_size= 64
-    model_parameters.dropout        = 0.6
+    model_parameters.dec_hidden_size= model_parameters.enc_hidden_size
+    model_parameters.dropout        = 0.5
     # Get the necessary data
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
     val_data   = tf.data.Dataset.from_tensor_slices(validation_data)
@@ -75,7 +75,7 @@ def main():
 
     # Model
     model     = PredictorDetRNN(model_parameters)
-    optimizer = optimizers.Adam(learning_rate=1e-4)
+    optimizer = optimizers.Adam(learning_rate=5e-5)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'

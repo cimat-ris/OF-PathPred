@@ -28,10 +28,10 @@ class PredictorDetRNN(keras.Model):
             self.use_validation = True
             # Network architecture
             self.P              =   2 # Dimensions of the position vectors
-            self.enc_hidden_size= 128                  # Hidden size of the RNN encoder
+            self.enc_hidden_size= 64                  # Hidden size of the RNN encoder
             self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
-            self.emb_size       = 128  # Embedding size
-            self.dropout_rate   = 0.3  # Dropout rate during training
+            self.emb_size       = 64  # Embedding size
+            self.dropout_rate   = 0.5  # Dropout rate during training
             self.activation_func= tf.nn.tanh
             self.optimizer      = 'adam'
             self.initial_lr     = 0.01
