@@ -23,12 +23,14 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
+    parser.add_argument('--cpu', dest='cpu', action='store_true',help='Use CPU')
+    parser.set_defaults(cpu=False)
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=15,help='Number of epochs (default: 35)')
+                    type=int, default=20,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     args = parser.parse_args()
@@ -40,9 +42,10 @@ def main():
 
     logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
-    if len(physical_devices)>0:
+    if len(physical_devices)>0 and args.cpu==False:
         logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
     else:
+        tf.config.set_visible_devices([], 'GPU')
         logging.info('Using CPU')
 
     # Load the default parameters
@@ -75,7 +78,7 @@ def main():
 
     # Model
     model     = PredictorDetRNN(model_parameters)
-    optimizer = optimizers.Adam(learning_rate=5e-5)
+    optimizer = optimizers.Adam(learning_rate=1.5e-5)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'
