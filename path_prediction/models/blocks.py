@@ -168,4 +168,4 @@ class TrajectoryAndContextEncoder(tf.keras.Model):
             return [traj_last_states[1],soc_last_states], context
         else:
             #return [traj_last_states[1]], context, obs_classif_logits
-            return [traj_last_states[1]], context
+            return [traj_last_states[-1]], context
