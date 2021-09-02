@@ -34,11 +34,13 @@ def main():
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=10,help='Number of epochs (default: 10)')
+                    type=int, default=25,help='Number of epochs (default: 25)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
+    parser.add_argument('--cpu', dest='cpu', action='store_true',help='Use CPU')
+    parser.set_defaults(cpu=False)    
     args = parser.parse_args()
     if args.log_file=='':
         logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
@@ -48,10 +50,12 @@ def main():
     # Info about TF and GPU
     logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
-    if len(physical_devices)>0:
+    if len(physical_devices)>0 and args.cpu==False:
         logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
     else:
-        logging.info("Using CPU")
+        tf.config.set_visible_devices([], 'GPU')
+        logging.info('Using CPU')
+
 
     # Load the default parameters
     experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=args.obstacles)
@@ -74,7 +78,7 @@ def main():
             logging.error("No such model")
     model_parameters.num_epochs     = args.epochs
     # Number of samples generated
-    model_parameters.output_var_dirs= 0
+    model_parameters.output_var_dirs= 3
 
     # When running on CPU
     if len(physical_devices)==0:
@@ -122,7 +126,7 @@ def main():
         logging.info("Quantitative testing")
         results = utils.testing_utils.evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
         utils.testing_utils.plot_comparisons_minadefde(results,dataset_names[idTest])
-        logging.info(results)
+        logging.i64nfo(results)
 
     # Qualitative testing
     if args.qualitative==True:
@@ -131,9 +135,7 @@ def main():
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
             utils.testing_utils.evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
         logging.info("Worst cases")
-        worst = utils.testing_utils.exhibit_worstcases(tj_enc_dec,batched_test_data,model_parameters)
         utils.testing_utils.evaluation_worstcases(tj_enc_dec,batched_test_data,model_parameters,background=None,homography=None)
-        print(worst)
 
 if __name__ == '__main__':
     main()
