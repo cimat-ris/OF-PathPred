@@ -398,12 +398,12 @@ def prepare_data(datasets_path, datasets_names, parameters):
                     continue
 
                 # Check whether the first 8 positions are not the same
-                equal_consecutive = 0
-                for n in range(obs_len-1):
-                    if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
-                        equal_consecutive +=1
-                if(equal_consecutive==obs_len-1):
-                    continue
+                # equal_consecutive = 0
+                # for n in range(obs_len-1):
+                #    if((ped_seq_data[n,2]==ped_seq_data[n+1,2]) and (ped_seq_data[n,3]==ped_seq_data[n+1,3])):
+                #        equal_consecutive +=1
+                # if(equal_consecutive==obs_len-1):
+                #    continue
 
                 # To keep neighbors data for the person ped_id
                 neighbors_ped_seq = np.zeros((seq_len, person_max, 3),dtype="float32")
