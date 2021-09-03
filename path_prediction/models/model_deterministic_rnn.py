@@ -23,7 +23,7 @@ class PredictorDetRNN(keras.Model):
             # Rnn type
             self.rnn_type       = rnn_type
             # For training
-            self.num_epochs     = 35
+            self.num_epochs     = 15
             self.batch_size     = 256
             self.use_validation = True
             # Network architecture

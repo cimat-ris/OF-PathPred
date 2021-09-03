@@ -40,7 +40,7 @@ def main():
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
     parser.add_argument('--cpu', dest='cpu', action='store_true',help='Use CPU')
-    parser.set_defaults(cpu=False)    
+    parser.set_defaults(cpu=False)
     args = parser.parse_args()
     if args.log_file=='':
         logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
@@ -92,7 +92,7 @@ def main():
     test_data  = tf.data.Dataset.from_tensor_slices(test_data)
 
     # Form batches
-    batched_train_data = train_data.batch(model_parameters.batch_size)
+    batched_train_data = train_data.shuffle(buffer_size=20000, reshuffle_each_iteration=True).batch(model_parameters.batch_size)
     batched_val_data   = val_data.batch(model_parameters.batch_size)
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 

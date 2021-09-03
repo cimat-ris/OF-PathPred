@@ -16,12 +16,10 @@ def get_batch(batch_data, config, rot='_rot'):
     P      = config.P
     if hasattr(config, 'flow_size'):
         OF     = config.flow_size
-    T_in   = config.obs_len
-    T_pred = config.pred_len
 
     returned_inputs = []
-    traj_obs_gt  = np.zeros([N, T_in, P], dtype='float32')
-    traj_pred_gt = np.zeros([N, T_pred, P], dtype='float32')
+    traj_obs_gt  = np.zeros([N, config.obs_len, P], dtype='float32')
+    traj_pred_gt = np.zeros([N, config.pred_len, P], dtype='float32')
     # --- xy input
     for i, (obs_data, pred_data) in enumerate(zip(batch_data['obs_traj_rel'+rot],
                                                   batch_data['pred_traj_rel'+rot])):

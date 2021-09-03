@@ -92,14 +92,15 @@ class PredictorMultOf():
             self.stack_rnn_size = 2
             self.output_var_dirs= 0
             self.rnn_type       = rnn_type
-            self.dropout_rate   = 0.5  # Dropout rate during training
-            self.initial_lr     = 0.001
-            self.enc_hidden_size= 128  # Hidden size of the RNN encoder
+            self.dropout_rate   = 0.35  # Dropout rate during training
+            self.initial_lr     = 0.0005
+            self.enc_hidden_size= 256  # Hidden size of the RNN encoder
             self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
-            self.emb_size       = 256  # Embedding size
+            self.emb_size       = 64  # Embedding size
             # Optical flow
             self.add_social     = False
             self.flow_size      = 64
+            self.epochs         = 30
 
     # Constructor
     def __init__(self,config):
@@ -123,15 +124,14 @@ class PredictorMultOf():
         #########################################################################################
 
         # Optimization scheduling
-        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-                config.initial_lr,
-                decay_steps=100000,
-                decay_rate=0.96,
-                staircase=True)
-
+        # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        #        config.initial_lr,
+        #        decay_steps=100000,
+        #        decay_rate=0.96,
+        #        staircase=True)
         # Instantiate an optimizer to train the models.
-        self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
-
+        #self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1.5e-5)
         # Instantiate the loss operator
         self.loss_fn       = losses.LogCosh()
         self.loss_fn_local = losses.LogCosh(losses.Reduction.NONE)
