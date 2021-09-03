@@ -299,7 +299,7 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
         d                           = []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,__ = minadefde(obs_traj_gt, obs_theta_gt, pred_traj_gt,pred_out[i])
+            made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_traj_gt,pred_out[i])
             if len(worst)<nworst:
                 heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt,pred_traj_gt,pred_out[i]]))
             else:
