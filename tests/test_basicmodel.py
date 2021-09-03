@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Imports
-import sys, os, argparse, logging, random
+import sys, os, argparse, logging, random, logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import math,numpy as np
 import tensorflow as tf
@@ -62,10 +62,10 @@ def main():
     # Model parameters
     model_parameters = PredictorDetRNN.parameters()
     model_parameters.num_epochs     = args.epochs
-    model_parameters.emb_size       = 64
-    model_parameters.enc_hidden_size= 64
+    model_parameters.emb_size       = 128
+    model_parameters.enc_hidden_size= 256
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size
-    model_parameters.dropout        = 0.5
+    model_parameters.dropout        = 0.3
     # Get the necessary data
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
     val_data   = tf.data.Dataset.from_tensor_slices(validation_data)
@@ -78,7 +78,7 @@ def main():
 
     # Model
     model     = PredictorDetRNN(model_parameters)
-    optimizer = optimizers.Adam(learning_rate=1.5e-5)
+    optimizer = optimizers.Adam(learning_rate=3.0e-5)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'
@@ -140,7 +140,7 @@ def main():
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
     logging.info("Restoring best model")
-    status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
+    status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
 
     # Quantitative testing: ADE/FDE
     quantitative = True
@@ -155,7 +155,10 @@ def main():
         logging.info("Qualitative testing")
         for i in range(5):
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
+            utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1)
+        logging.info("Worst cases")
+        utils.testing_utils.evaluation_worstcases(model,batched_test_data,model_parameters,background=None,homography=None)
+
 
 if __name__ == '__main__':
     main()
