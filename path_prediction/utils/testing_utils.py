@@ -16,8 +16,7 @@ sys.path.append("../trajnetplusplusbaselines")
 from trajnetplusplusbaselines.evaluator.trajnet_evaluator import TrajnetEvaluator, collision_test, eval
 import evaluator.write as write
 from joblib import Parallel, delayed
-import os
-import pickle
+import os, logging, pickle
 
 mADEFDE = {
   "eth-univ" : {
@@ -138,8 +137,18 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
         neighbors.append(neighbors_gt)
     return traj_obs,traj_gt,traj_pred,neighbors
 
-# Perform a qualitative evaluation over a batch of n_trajectories
-def evaluation_qualitative(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
+"""
+Perform a qualitative evaluation over a batch of n_trajectories
+:param model: The model to evaluate.
+:param batch: Batch of data to evaluate.
+:param background: Background image (in case the data are reprojected).
+:param homography: Homography (in case the data are reprojected).
+:param flip: Flip flag to flip the image coordinates  (in case the data are reprojected).
+:param n_peds_max: Maximum number of neighbors to display.
+:param display_mode:
+:return: Nothing.
+"""
+def evaluation_qualitative(model,batch,config,background=None,homography=None,flip=False,n_peds_max=1000):
     traj_obs,traj_gt,traj_pred,neighbors = predict_from_batch(model,batch,config)
     # Plot ground truth and predictions
     plt.subplots(1,1,figsize=(10,10))
@@ -147,18 +156,18 @@ def evaluation_qualitative(model,batch,config,background=None,homography=None,fl
     if background is not None:
         plot_background(ax,background)
     plot_neighbors(ax,neighbors,homography,flip=flip)
-    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,display_mode=display_mode,n_peds_max=n_peds_max)
+    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,n_peds_max=n_peds_max)
     plt.show()
 
 # Visualization of the attention weigths
-def evaluation_attention(model,batch,config,background=None,homography=None,flip=False,display_mode=None):
+def evaluation_attention(model,batch,config,background=None,homography=None,flip=False):
     traj_obs,traj_gt,traj_pred,neighbors,attention = predict_from_batch(model,batch,config)
     # Plot ground truth and predictions
     plt.subplots(2,2,figsize=(10,14))
     ax = plt.subplot(2,1,2)
     if background is not None:
         plot_background(ax,background)
-    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,display_mode=display_mode,n_peds_max=1)
+    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,n_peds_max=1)
     ax1 = plt.subplot(2,2,1)
     plot_attention(ax1,traj_obs,traj_pred,attention,homography,flip=flip,step=0)
     ax2 = plt.subplot(2,2,2)
@@ -217,8 +226,6 @@ Perform quantitative evaluation for a whole batched dataset
 :param test_data: Batched dataset to evaluate.
 :return: Dictionary of metrics: "mADE", "mFDE"
 """
-
-# Perform quantitative evaluation
 def evaluation_minadefde(model,test_data,config):
     ades = []
     fdes = []
@@ -309,7 +316,7 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,tab
 
 
 # Perform a qualitative evaluation over a batch of n_trajectories
-def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homography=None,flip=False,n_peds_max=1000,display_mode=None):
+def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homography=None,flip=False,n_peds_max=1000):
     # Search for worst cases
     worst = []
     for batch in tqdm(test_data,ascii = True):
@@ -322,19 +329,20 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
             made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_out[i], pred_traj_gt)
             if len(worst)<nworst:
-                heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt,pred_traj_gt,pred_out[i]]))
+                heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt[-1],pred_traj_gt,pred_out[i]]))
             else:
-                heapq.heapreplace(worst,(made,[obs_traj_gt,obs_theta_gt,pred_traj_gt,pred_out[i]]))
+                heapq.heapreplace(worst,(made,[obs_traj_gt,obs_theta_gt[-1],pred_traj_gt,pred_out[i]]))
 
     # Plot ground truth and predictions
     plt.subplots(1,1,figsize=(10,10))
-    ax = plt.subplot(1,1,1)
-    if background is not None:
-        plot_background(ax,background)
-    for made,[obs_traj_gt, obs_theta_gt, pred_traj_gt,pred] in worst:
-        pred_traj_abs = reconstruct(obs_traj_gt[-1],obs_theta_gt[-1,0],pred)
-        plot_gt_preds(ax,[pred_traj_gt],[obs_traj_gt],[pred_traj_abs],homography,flip=flip,display_mode=display_mode,n_peds_max=n_peds_max,title='Worst cases')
-    plt.show()
+    for made,[obs_traj_gt, theta, pred_traj_gt,pred] in worst:
+        logging.info("mADE : {:.4f}".format(made))
+        ax = plt.subplot(1,1,1)
+        if background is not None:
+            plot_background(ax,background)
+        pred_traj_abs = reconstruct(obs_traj_gt[-1],theta,pred)
+        plot_gt_preds(ax,[pred_traj_gt],[obs_traj_gt],[pred_traj_abs],homography,flip=flip,n_peds_max=n_peds_max,title='Worst cases')
+        plt.show()
 
 def plot_comparisons_minadefde(madefde_results,dataset_name):
     labels = list(mADEFDE[dataset_name].keys())
