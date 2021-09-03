@@ -315,7 +315,19 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,tab
     return { "mADE": results['Evaluation'][0]['kf'], "mFDE": results['Evaluation'][1]['kf']}
 
 
-# Perform a qualitative evaluation over a batch of n_trajectories
+"""
+Determines and plots the worst cases (in ADE) on a dataset
+:param model: The model to evaluate.
+:param test_data: Dataset to evaluate.
+:param config: Model parameters.
+:param nworst: Number of worst cases to consider.
+:param background: Background image (in case the data are reprojected).
+:param homography: Homography (in case the data are reprojected).
+:param flip: Flip flag to flip the image coordinates  (in case the data are reprojected).
+:param n_peds_max: Maximum number of neighbors to display.
+:param display_mode:
+:return: Nothing.
+"""
 def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homography=None,flip=False,n_peds_max=1000):
     # Search for worst cases
     worst = []
@@ -328,10 +340,9 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
             made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_out[i], pred_traj_gt)
-            if len(worst)<nworst:
-                heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt[-1],pred_traj_gt,pred_out[i]]))
-            else:
-                heapq.heapreplace(worst,(made,[obs_traj_gt,obs_theta_gt[-1],pred_traj_gt,pred_out[i]]))
+            heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt[-1],pred_traj_gt,pred_out[i]]))
+            if len(worst)>nworst:
+                heapq.heappop(worst)
 
     # Plot ground truth and predictions
     plt.subplots(1,1,figsize=(10,10))
