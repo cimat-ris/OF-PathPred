@@ -5,6 +5,7 @@ import math, logging, os
 from tqdm import tqdm
 from .batches_data import get_batch
 from .testing_utils import evaluation_minadefde, evaluation_trajnetplusplus_minadefde
+from tensorflow.python.profiler import profiler_v2 as profiler
 
 # Parameters
 class Experiment_Parameters:
@@ -44,22 +45,21 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
     best                 = {'mADE':999999, 'mFDE':0, 'batchId':-1}
     train_metrics        = {}
     val_metrics          = {}
+    #profiler.warmup()
+    #profiler.start(logdir='logs')
 
     # Training the main system
     for epoch in range(config.num_epochs):
-        train_data           = train_data.shuffle(buffer_size=1024)
-        logging.info('Epoch {}.'.format(epoch + 1))
+        num_batches_per_epoch= train_data.cardinality().numpy()        
         # Cycle over batches
         total_loss = 0
-        #num_batches_per_epoch = train_data.get_num_batches()
-        #for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
-        num_batches_per_epoch= train_data.cardinality().numpy()
+        logging.info('Epoch {}.'.format(epoch + 1))
         for batch in tqdm(train_data,ascii = True):
-            # Format the data
-            batch_inputs, batch_targets = get_batch(batch, config)
-            # Run the forward pass of the layer.
             # Compute the loss value for this minibatch.
-            batch_loss = model.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
+            if config.add_social:
+                batch_loss = model.batch_step([batch['obs_traj_rel_rot'],batch['obs_optical_flow']], batch['pred_traj_rel_rot'], train_metrics, training=True)
+            else:
+                batch_loss = model.batch_step([batch['obs_traj_rel_rot']], batch['pred_traj_rel_rot'], train_metrics, training=True)
             total_loss+= batch_loss
         # End epoch
         total_loss = total_loss / num_batches_per_epoch
@@ -80,8 +80,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
             num_batches_per_epoch= val_data.cardinality().numpy()
             for idx,batch in tqdm(enumerate(val_data),ascii = True):
                 # Format the data
-                batch_inputs, batch_targets = get_batch(batch, config)
-                batch_loss                  = model.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
+                batch_loss                  = model.batch_step([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'], val_metrics, training=False)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
@@ -99,6 +98,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
                 checkpoint.write(checkpoint_prefix+'-best')
             logging.info('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
             logging.info('Epoch {}. Validation mAFE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
+    #profiler.stop()
 
     # Training the classifier
     for epoch in range(0):
