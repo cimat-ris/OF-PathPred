@@ -165,7 +165,13 @@ def evaluation_attention(model,batch,config,background=None,homography=None,flip
     plot_attention(ax2,traj_obs,traj_pred,attention,homography,flip=flip,step=11)
     plt.show()
 
-
+"""
+For a multiple-output prediction, evaluate the minADE and minFDE
+:param start: Starting position (last observation).
+:param theta: Orientation at the last observation.
+:param pred_traj: Tensor of velocities predictions.
+:return: Trajectory reconstructed in absolute coordinates
+"""
 def reconstruct(start,theta,this_pred_traj,mode="rel_rot"):
     if mode=="rel_rot":
         # Inverse roation to
@@ -179,13 +185,20 @@ def reconstruct(start,theta,this_pred_traj,mode="rel_rot"):
             this_pred_traj_rot = this_pred_traj
     return  relative_to_abs(this_pred_traj_rot, start, axis=1)
 
-# For a multiple-output prediction, evaluate the minADE and minFDE
-def minadefde(start, theta, pred_traj_gt,pred_traj):
+"""
+For a multiple-output prediction, evaluate the minADE and minFDE
+:param start: Starting position (last observation).
+:param theta: Orientation at the last observation.
+:param pred_traj_gt: Ground truth future trajectory.
+:param pred_traj: Tensor of velocities predictions.
+:return: minADE, minDFE
+"""
+def minadefde(start, theta, pred_traj, pred_traj_gt, mode="rel_rot"):
     nsamples = pred_traj.shape[0]
-    ademin = np.inf
-    fdemin = np.inf
+    ademin   = np.inf
+    fdemin   = np.inf
     # Reconstruct all samples
-    this_pred_traj_abs = reconstruct(start,theta,pred_traj[:,:, :2])
+    this_pred_traj_abs = reconstruct(start,theta,pred_traj[:,:, :2], mode)
     for k in range(nsamples):
         # Error for ade
         diff = pred_traj_gt - this_pred_traj_abs[k]
@@ -198,18 +211,25 @@ def minadefde(start, theta, pred_traj_gt,pred_traj):
             fdemin  = diff[-1]
     return ademin,fdemin
 
+"""
+Perform quantitative evaluation for a whole batched dataset
+:param model: The model to evaluate.
+:param test_data: Batched dataset to evaluate.
+:return: Dictionary of metrics: "mADE", "mFDE"
+"""
+
 # Perform quantitative evaluation
 def evaluation_minadefde(model,test_data,config):
     ades = []
     fdes = []
-    num_batches_per_epoch= test_data.cardinality().numpy()
     for batch in tqdm(test_data,ascii = True):
-        # Format the data
-        batch_inputs, batch_targets = get_batch(batch, config)
-        pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
+        if hasattr(config, 'add_social') and config.add_social:
+            pred_out  = model.predict([batch['obs_traj_rel_rot'],batch['obs_optical_flow']],batch['pred_traj_rel_rot'].shape[1])
+        else:
+            pred_out  = model.predict([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'].shape[1])
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,mfde = minadefde(obs_traj_gt[-1], obs_theta_gt[-1,0], pred_traj_gt,pred_out[i])
+            made,mfde = minadefde(obs_traj_gt[-1], obs_theta_gt[-1,0], pred_out[i], pred_traj_gt)
             ades.append(made)
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
@@ -294,12 +314,13 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
     worst = []
     for batch in tqdm(test_data,ascii = True):
         # Format the data
-        batch_inputs, batch_targets = get_batch(batch, config)
-        pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
-        d                           = []
+        if hasattr(config, 'add_social') and config.add_social:
+            pred_out  = model.predict([batch['obs_traj_rel_rot'],batch['obs_optical_flow']],batch['pred_traj_rel_rot'].shape[1])
+        else:
+            pred_out  = model.predict([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'].shape[1])
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_traj_gt,pred_out[i])
+            made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_out[i], pred_traj_gt)
             if len(worst)<nworst:
                 heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt,pred_traj_gt,pred_out[i]]))
             else:
