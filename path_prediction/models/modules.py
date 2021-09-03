@@ -1,13 +1,10 @@
-import tensorflow as tf
-import functools
-import operator
-import os
+import functools, os
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-from tensorflow.keras.layers import Dense
+from keras import backend as K
 
 """
 Trajectory encoder through embedding+RNN.
@@ -15,11 +12,10 @@ Trajectory encoder through embedding+RNN.
 class TrajectoryEncoder(tf.Module):
     def __init__(self, config):
         self.stack_rnn_size  = config.stack_rnn_size
-        self.is_mc_dropout   = config.is_mc_dropout
         # xy encoder: [N,T1,h_dim]
         super(TrajectoryEncoder, self).__init__(name="trajectory_encoder")
         # Linear embedding of the observed positions (for each x,y)
-        self.traj_xy_emb_enc = tf.keras.layers.Dense(config.emb_size,
+        self.traj_xy_emb_enc = layers.Dense(config.emb_size,
             activation=config.activation_func,
             use_bias=True,
             name='position_embedding')
@@ -29,14 +25,15 @@ class TrajectoryEncoder(tf.Module):
         # - last pair of states (h,c) for the first layer
         # - last pair of states (h,c) for the second layer
         # - ... and so on
-        self.lstm_cells= [tf.keras.layers.LSTMCell(config.enc_hidden_size,
+        self.lstm_cells= [layers.LSTMCell(config.enc_hidden_size,
                 name   = 'trajectory_encoder_cell',
                 dropout= config.dropout_rate,
                 recurrent_dropout=config.dropout_rate) for _ in range(self.stack_rnn_size)]
-        self.lstm_cell = tf.keras.layers.StackedRNNCells(self.lstm_cells)
+        self.lstm_cell = layers.StackedRNNCells(self.lstm_cells)
         # Recurrent neural network using the previous cell
         # Initial state is zero; We return the full sequence of h's and the pair of last states
-        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+        self.lstm      = layers.RNN(self.lstm_cell,
+                name   = 'trajectory_encoder_rnn',
                 return_sequences= True,
                 return_state    = True)
 
@@ -45,7 +42,7 @@ class TrajectoryEncoder(tf.Module):
         x = self.traj_xy_emb_enc(traj_inputs)
         # Applies the position sequence through the LSTM
         # The training parameter is important for dropout
-        return self.lstm(x,training=(training or self.is_mc_dropout))
+        return self.lstm(x,training=training)
 
 """
 Social encoding through embedding+RNN.
@@ -53,18 +50,18 @@ Social encoding through embedding+RNN.
 class SocialEncoder(tf.Module):
     def __init__(self, config):
         super(SocialEncoder, self).__init__(name="social_encoder")
-        self.is_mc_dropout   = config.is_mc_dropout
         # Linear embedding of the social part
-        self.traj_social_emb_enc = tf.keras.layers.Dense(config.emb_size,
+        self.traj_social_emb_enc = layers.Dense(config.emb_size,
             activation=config.activation_func,
             name='social_feature_embedding')
         # LSTM cell, including dropout
-        self.lstm_cell = tf.keras.layers.LSTMCell(config.enc_hidden_size,
+        self.lstm_cell = layers.LSTMCell(config.enc_hidden_size,
             name   = 'social_encoder_cell',
             dropout= config.dropout_rate,
             recurrent_dropout= config.dropout_rate)
         # Recurrent neural network using the previous cell
-        self.lstm      = tf.keras.layers.RNN(self.lstm_cell,
+        self.lstm      = layers.RNN(self.lstm_cell,
+            name   = 'social_encoder_rnn',
             return_sequences= True,
             return_state    = True)
 
@@ -72,7 +69,8 @@ class SocialEncoder(tf.Module):
         # Linear embedding of the observed trajectories
         x = self.traj_social_emb_enc(social_inputs)
         # Applies the position sequence through the LSTM
-        return self.lstm(x,training=(training or self.is_mc_dropout))
+        x = self.lstm(x,training=training)
+        return x
 
 """
 Focal attention layer.
@@ -82,8 +80,8 @@ Focal attention layer.
 class FocalAttention(tf.Module):
     def __init__(self,config,M):
         super(FocalAttention, self).__init__(name="focal_attention")
-        self.flatten  = tf.keras.layers.Flatten()
-        self.reshape  = tf.keras.layers.Reshape((M, config.obs_len))
+        self.flatten  = layers.Flatten()
+        self.reshape  = layers.Reshape((M, config.obs_len))
 
     def __call__(self,query, context):
         # query  : [N,D1]
@@ -109,70 +107,16 @@ class FocalAttention(tf.Module):
 
 
 """
-Trajectory decoder initializer.
-Allows to generate multiple ouputs. By learning to fit variations on the initial states of the decoder.
-"""
-class TrajectoryDecoderInitializer(tf.Module):
-    def __init__(self, config):
-        super(TrajectoryDecoderInitializer, self).__init__(name="trajectory_decoder_initializer")
-        self.add_social     = config.add_social
-        self.output_var_dirs= config.output_var_dirs
-        # Dropout layer
-        self.dropout        = tf.keras.layers.Dropout(config.dropout_rate)
-        # Linear embeddings from trajectory to hidden state
-        self.traj_enc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,
-            name='traj_enc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-        self.traj_enc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
-            activation=tf.keras.activations.relu,
-            name='traj_enc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
-        if self.add_social:
-            # Linear embeddings from social state to hidden state
-            self.traj_soc_h_to_dec_h = [tf.keras.layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,
-                name='traj_soc_h_to_dec_h_%s'%i)  for i in range(self.output_var_dirs)]
-            self.traj_soc_c_to_dec_c = [tf.keras.layers.Dense(config.dec_hidden_size,
-                activation=tf.keras.activations.relu,
-                name='traj_soc_c_to_dec_c_%s'%i)  for i in range(self.output_var_dirs)]
-
-    # Call to the decoder initializer
-    def __call__(self, encoders_states, training=None):
-        # The list of decoder states in decoder_init_states
-        decoder_init_states = []
-        traj_encoder_states  = encoders_states[0]
-        # Append this pair of hidden states to the list of hypothesis (mean value)
-        decoder_init_states.append(traj_encoder_states)
-        if self.add_social:
-            soc_encoder_states = encoders_states[1]
-        for i in range(self.output_var_dirs):
-            # Map the trajectory hidden states to variations of the initializer state
-            decoder_init_dh  = self.traj_enc_h_to_dec_h[i](traj_encoder_states[0])
-            decoder_init_dc  = self.traj_enc_c_to_dec_c[i](traj_encoder_states[1])
-            if self.add_social:
-                # Map the social features hidden states to variations of the initializer state
-                decoder_init_dh = decoder_init_dh + self.traj_soc_h_to_dec_h[i](soc_encoder_states[0])
-                decoder_init_dc = decoder_init_dc + self.traj_soc_c_to_dec_c[i](soc_encoder_states[1])
-            # Define two opposite states based on these variations
-            decoder_init_h   = traj_encoder_states[0]+decoder_init_dh
-            decoder_init_c   = traj_encoder_states[1]+decoder_init_dc
-            decoder_init_states.append([decoder_init_h,decoder_init_c])
-            decoder_init_h   = traj_encoder_states[0]-decoder_init_dh
-            decoder_init_c   = traj_encoder_states[1]-decoder_init_dc
-            decoder_init_states.append([decoder_init_h,decoder_init_c])
-        return decoder_init_states
-
-"""
 Observed trajectory classifier: during training, takes the observed trajectory and predict the class
 """
 class ObservedTrajectoryClassifier(tf.Module):
     def __init__(self, config):
         super(ObservedTrajectoryClassifier, self).__init__(name="observed_trajectory_classification")
-        self.is_mc_dropout  = config.is_mc_dropout
         self.output_var_dirs= config.output_var_dirs
         self.output_samples = 2*config.output_var_dirs+1
         input_observed_shape= (config.enc_hidden_size)
         self.input_observed = keras.Input(shape=input_observed_shape, name="observed_trajectory_h")
-        self.dense_layer_observed = tf.keras.layers.Dense(64, activation="relu", name="observed_dense")
+        self.dense_layer_observed = layers.Dense(64, activation="relu", name="observed_dense")
         self.classification_layer = layers.Dense(self.output_samples, activation="softmax", name="classication")
 
     # Call to the classifier p(z|x,y)

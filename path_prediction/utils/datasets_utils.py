@@ -1,7 +1,6 @@
 import os, pickle, logging
 import numpy as np
-from path_prediction.process_file import prepare_data
-from path_prediction.process_file import prepare_data_trajnetplusplus
+from .process_file import prepare_data, prepare_data_trajnetplusplus
 
 def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_parameters,use_pickled_data=False,pickle_dir='pickle/',validation_proportion=0.1):
     # Dataset to be tested
@@ -18,45 +17,50 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
         # Count how many data we have (sub-sequences of length 8, in pred_traj)
         n_test_data  = len(test_data[list(test_data.keys())[2]])
         n_train_data = len(train_data[list(train_data.keys())[2]])
-        idx          = np.random.permutation(n_train_data)
-        # TODO: validation should be done from a similar distribution as test set!
-        validation_pc= validation_proportion
-        validation   = int(n_train_data*validation_pc)
-        training     = int(n_train_data-validation)
+        idx          = np.random.permutation(n_test_data)
 
-        # Indices for training
-        idx_train = idx[0:training]
-        #  Indices for validation
-        idx_val   = idx[training:]
+        if experiment_parameters.validation_as_test:
+            # Indices for testing
+            idx_testing = idx
+            #  Indices for validation
+            idx_val     = idx
+        else:
+            validation_pc= validation_proportion
+            validation   = int(n_test_data*validation_pc)
+            testing      = int(n_test_data-validation)
+            # Indices for testing
+            idx_testing = idx[0:testing]
+            #  Indices for validation
+            idx_val     = idx[testing:]
         # Training set
         training_data = {
-            "obs_traj":        train_data["obs_traj"][idx_train],
-            "obs_traj_rel":    train_data["obs_traj_rel"][idx_train],
-            "obs_traj_theta":  train_data["obs_traj_theta"][idx_train],
-            "pred_traj":       train_data["pred_traj"][idx_train],
-            "pred_traj_rel":   train_data["pred_traj_rel"][idx_train],
-            "frames_ids":      train_data["frames_ids"][idx_train],
-            "obs_optical_flow":train_data["obs_optical_flow"][idx_train]
+            "obs_traj":         train_data["obs_traj"][:],
+            "obs_traj_rel_rot": train_data["obs_traj_rel_rot"][:],
+            "obs_traj_theta":   train_data["obs_traj_theta"][:],
+            "pred_traj":        train_data["pred_traj"][:],
+            "pred_traj_rel_rot":train_data["pred_traj_rel_rot"][:],
+            "frames_ids":       train_data["frames_ids"][:],
+            "obs_optical_flow": train_data["obs_optical_flow"][:]
         }
         # Test set
         testing_data = {
-            "obs_traj":      test_data["obs_traj"][:],
-            "obs_traj_rel":  test_data["obs_traj_rel"][:],
-            "obs_traj_theta":test_data["obs_traj_theta"][:],
-            "pred_traj":     test_data["pred_traj"][:],
-            "pred_traj_rel": test_data["pred_traj_rel"][:],
-            "frames_ids":    test_data["frames_ids"][:],
-            "obs_optical_flow": test_data["obs_optical_flow"][:]
+            "obs_traj":         test_data["obs_traj"][idx_testing],
+            "obs_traj_rel_rot": test_data["obs_traj_rel_rot"][idx_testing],
+            "obs_traj_theta":   test_data["obs_traj_theta"][idx_testing],
+            "pred_traj":        test_data["pred_traj"][idx_testing],
+            "pred_traj_rel_rot":test_data["pred_traj_rel_rot"][idx_testing],
+            "frames_ids":       test_data["frames_ids"][idx_testing],
+            "obs_optical_flow": test_data["obs_optical_flow"][idx_testing]
         }
         # Validation set
         validation_data ={
-            "obs_traj":      train_data["obs_traj"][idx_val],
-            "obs_traj_rel":  train_data["obs_traj_rel"][idx_val],
-            "obs_traj_theta":train_data["obs_traj_theta"][idx_val],
-            "pred_traj":     train_data["pred_traj"][idx_val],
-            "pred_traj_rel": train_data["pred_traj_rel"][idx_val],
-            "frames_ids":    train_data["frames_ids"][idx_val],
-            "obs_optical_flow": train_data["obs_optical_flow"][idx_val]
+            "obs_traj":         test_data["obs_traj"][idx_val],
+            "obs_traj_rel_rot": test_data["obs_traj_rel_rot"][idx_val],
+            "obs_traj_theta":   test_data["obs_traj_theta"][idx_val],
+            "pred_traj":        test_data["pred_traj"][idx_val],
+            "pred_traj_rel_rot":test_data["pred_traj_rel_rot"][idx_val],
+            "frames_ids":       test_data["frames_ids"][idx_val],
+            "obs_optical_flow": test_data["obs_optical_flow"][idx_val]
         }
         # Training dataset
         pickle_out = open(pickle_dir+'/training_data_'+experiment_name+'.pickle',"wb")
@@ -82,9 +86,9 @@ def setup_loo_experiment(experiment_name,ds_path,ds_names,leave_id,experiment_pa
         pickle_in = open(pickle_dir+'/validation_data_'+experiment_name+'.pickle',"rb")
         validation_data = pickle.load(pickle_in)
 
-    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]])))
-    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]])))
-    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]])))
+    logging.info("Training data: "+ str(len(training_data[list(training_data.keys())[0]]))+" trajectories")
+    logging.info("Test data: "+ str(len(test_data[list(test_data.keys())[0]]))+" trajectories")
+    logging.info("Validation data: "+ str(len(validation_data[list(validation_data.keys())[0]]))+" trajectories")
 
     # Load the homography corresponding to this dataset
     homography_file = os.path.join(ds_path+testing_datasets_names[0]+'/H.txt')

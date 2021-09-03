@@ -2,23 +2,15 @@
 # Imports
 import sys, os, argparse, logging, random
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import math,numpy as np
 import tensorflow as tf
 # Important imports
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras import models
-from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.model import BasicRNNModel, BasicRNNModelParameters
-from path_prediction.plot_utils import plot_training_data,plot_training_results
-import path_prediction.batches_data
-from path_prediction.testing_utils import evaluation_minadefde,evaluation_qualitative,evaluation_attention,plot_comparisons_minadefde, get_testing_batch
-from path_prediction.training_utils import Experiment_Parameters
-from path_prediction.testing_utils import evaluation_minadefde
-
+from tensorflow.keras import layers, models, optimizers
+from path_prediction import models, utils
+from path_prediction.models.model_deterministic_rnn import PredictorDetRNN
 
 def main():
     # Parsing arguments
@@ -31,12 +23,14 @@ def main():
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
+    parser.add_argument('--cpu', dest='cpu', action='store_true',help='Use CPU')
+    parser.set_defaults(cpu=False)
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=25,help='Number of epochs (default: 35)')
+                    type=int, default=20,help='Number of epochs (default: 35)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     args = parser.parse_args()
@@ -48,34 +42,30 @@ def main():
 
     logging.info('Tensorflow version: {}'.format(tf.__version__))
     physical_devices = tf.config.list_physical_devices('GPU')
-    if len(physical_devices)>0:
+    if len(physical_devices)>0 and args.cpu==False:
         logging.info('Using GPU Device: {}'.format(tf.test.gpu_device_name()))
     else:
+        tf.config.set_visible_devices([], 'GPU')
         logging.info('Using CPU')
 
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
+    experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=False)
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 
     # Load the dataset and perform the split
     idTest = args.dataset_id
-    training_data,validation_data,test_data,test_homography = setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
-
-    # Plot ramdomly a subset of the training data (spatial data only)
-    show_training_samples = False
-    if show_training_samples:
-        plot_training_data(training_data,experiment_parameters)
+    training_data,validation_data,test_data,test_homography = utils.datasets_utils.setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
     #############################################################
     # Model parameters
-    model_parameters = BasicRNNModelParameters()
+    model_parameters = PredictorDetRNN.parameters()
     model_parameters.num_epochs     = args.epochs
-    model_parameters.initial_lr     = 0.03
-    model_parameters.emb_size       = 128
-    model_parameters.enc_hidden_size= 128
-
+    model_parameters.emb_size       = 64
+    model_parameters.enc_hidden_size= 64
+    model_parameters.dec_hidden_size= model_parameters.enc_hidden_size
+    model_parameters.dropout        = 0.5
     # Get the necessary data
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
     val_data   = tf.data.Dataset.from_tensor_slices(validation_data)
@@ -87,8 +77,8 @@ def main():
     batched_test_data  = test_data.batch(model_parameters.batch_size)
 
     # Model
-    model     = BasicRNNModel(model_parameters)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    model     = PredictorDetRNN(model_parameters)
+    optimizer = optimizers.Adam(learning_rate=1.5e-5)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'
@@ -111,62 +101,61 @@ def main():
             total_cases = 0
             num_batches_per_epoch= batched_train_data.cardinality().numpy()
             for batch_idx, dicto in enumerate(batched_train_data):
-                data   = dicto['obs_traj_rel']
-                target = dicto['pred_traj_rel']
+                condition  = dicto['obs_traj_rel_rot']
+                target     = dicto['pred_traj_rel_rot']
                 with tf.GradientTape() as tape:
-                    losses      = model(data, target, training=True)
+                    losses      = model(condition, target, training=True)
                     total_error+= losses
                     total_cases+= num_batches_per_epoch
                 gradients = tape.gradient(losses, model.trainable_weights)
                 optimizer.apply_gradients(zip(gradients, model.trainable_weights))
-            logging.info("Training loss: {}".format(total_error.numpy()/total_cases))
+            logging.info("Training loss: {:.6f}".format(total_error.numpy()/total_cases))
             train_loss_results.append(total_error/total_cases)
             # Validation
             total_error = 0
             total_cases = 0
             for batch_idx, dicto in enumerate(batched_val_data):
-                data_val   = dicto['obs_traj_rel']
-                target_val = dicto['pred_traj_rel']
-                losses = model(data_val, target_val)
+                condition  = dicto['obs_traj_rel_rot']
+                target     = dicto['pred_traj_rel_rot']
+                losses = model(condition, target)
                 total_error += losses
                 total_cases += num_batches_per_epoch
-            logging.info("Validation loss: {}".format(total_error.numpy()/total_cases))
+            logging.info("Validation loss: {:.6f}".format(total_error.numpy()/total_cases))
             val_loss_results.append(total_error/total_cases)
             # Evaluate ADE, FDE metrics on validation data
-            val_quantitative_metrics = evaluation_minadefde(model,batched_val_data,model_parameters)
+            val_quantitative_metrics = utils.testing_utils.evaluation_minadefde(model,batched_val_data,model_parameters)
             val_metrics_results['mADE'].append(val_quantitative_metrics['mADE'])
             val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
             # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 5 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
+            logging.info('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
+            logging.info('Epoch {}. Validation mAFE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
 
         plot_training    = True
         if plot_training==True:
-            plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
-
+            utils.plot_utils.plot_training_results(train_loss_results,val_loss_results,val_metrics_results)
 
 
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
-    logging.info("Restoring last model")
+    logging.info("Restoring best model")
     status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
     # Quantitative testing: ADE/FDE
     quantitative = True
     if quantitative==True:
         logging.info("Quantitative testing")
-        results = evaluation_minadefde(model,batched_test_data,model_parameters)
-        plot_comparisons_minadefde(results,dataset_names[idTest])
+        results = utils.testing_utils.evaluation_minadefde(model,batched_test_data,model_parameters)
+        utils.testing_utils.plot_comparisons_minadefde(results,dataset_names[idTest])
         logging.info(results)
-    print(test_homography)
     # Qualitative testing
     qualitative = True
     if qualitative==True:
         logging.info("Qualitative testing")
         for i in range(5):
-            logging.info(dataset_dir+dataset_names[idTest])
-            batch, test_bckgd = get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
+            batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
+            utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
 
 if __name__ == '__main__':
     main()

@@ -3,18 +3,14 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
 import tensorflow as tf
-from datetime import datetime
-random.seed(datetime.now())
+random.seed()
 import matplotlib.pyplot as plt
-from tensorflow.python.client import device_lib
-device_lib.list_local_devices()
 import numpy as np
 import seaborn as sns
-from path_prediction.testing_utils  import get_testing_batch
-from path_prediction.datasets_utils import setup_loo_experiment
-from path_prediction.training_utils import Experiment_Parameters
-from path_prediction.model import TrajectoryEncoderDecoder
-from path_prediction.obstacles import image_to_world_xy
+from path_prediction.utils.testing_utils  import get_testing_batch
+from path_prediction.utils.datasets_utils import setup_loo_experiment
+from path_prediction.utils.training_utils import Experiment_Parameters
+from path_prediction.utils.obstacles import image_to_world_xy
 
 
 def main():
@@ -39,7 +35,7 @@ def main():
     else:
         logging.info('Using CPU')
     # Load the default parameters
-    experiment_parameters = Experiment_Parameters(add_kp=False,obstacles=False)
+    experiment_parameters = Experiment_Parameters(obstacles=False)
     dataset_dir   = "datasets/"
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
 

@@ -5,8 +5,8 @@ import math
 import cv2
 import tensorflow as tf
 from datetime import datetime
-from path_prediction.obstacles import image_to_world_xy
-from path_prediction.traj_utils import relative_to_abs, vw_to_abs
+from .obstacles import image_to_world_xy
+from .traj_utils import relative_to_abs
 
 random.seed(datetime.now())
 
@@ -73,8 +73,8 @@ def plot_neighbors(ax,neighbors_gt,homography=None,flip=False):
             ax.plot(neighbors[:,0],neighbors[:,1],color='purple',marker='o',markersize=12,linestyle='None')
 
 # Visualization of the predictions vs. the ground truth
-def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,display_mode=None,n_peds_max=1000):
-    ax.set_title('Trajectory samples')
+def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,display_mode=None,n_peds_max=1000,title='Trajectory samples'):
+    ax.set_title(title)
     ax.axis('equal')
     # Get the number of samples per prediction
     nModeSamples= traj_pred[0].shape[0]
@@ -92,7 +92,7 @@ def plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography=None,flip=False,displ
         if i>=n_peds_max:
             break
         preds     = traj_pred[i]
-        if (preds.shape[0]==0):
+        if preds.shape[0]==0:
             continue
         if homography is not None:
             gt    = image_to_world_xy(gt, homography,flip=flip)

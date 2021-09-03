@@ -10,21 +10,19 @@ def grouper(lst, num):
     out = list(out)
     return out
 
-def get_batch(batch_data, config):
+def get_batch(batch_data, config, rot='_rot'):
     """Given a batch of data, determine the input and ground truth."""
-    N      = len(batch_data['obs_traj_rel'])
+    N      = len(batch_data['obs_traj_rel'+rot])
     P      = config.P
     if hasattr(config, 'flow_size'):
         OF     = config.flow_size
-    T_in   = config.obs_len
-    T_pred = config.pred_len
 
     returned_inputs = []
-    traj_obs_gt  = np.zeros([N, T_in, P], dtype='float32')
-    traj_pred_gt = np.zeros([N, T_pred, P], dtype='float32')
+    traj_obs_gt  = np.zeros([N, config.obs_len, P], dtype='float32')
+    traj_pred_gt = np.zeros([N, config.pred_len, P], dtype='float32')
     # --- xy input
-    for i, (obs_data, pred_data) in enumerate(zip(batch_data['obs_traj_rel'],
-                                                  batch_data['pred_traj_rel'])):
+    for i, (obs_data, pred_data) in enumerate(zip(batch_data['obs_traj_rel'+rot],
+                                                  batch_data['pred_traj_rel'+rot])):
         for j, xy in enumerate(obs_data):
             traj_obs_gt[i, j, :] = xy
         for j, xy in enumerate(pred_data):
@@ -40,11 +38,4 @@ def get_batch(batch_data, config):
                 obs_flow[i,j,:] = flow_step
         returned_inputs.append(obs_flow)
     # -----------------------------------------------------------
-    # Person pose input
-    if hasattr(config, 'add_kp') and config.add_kp:
-        obs_kp = np.zeros((N, T_in, KP, 2), dtype='float32')
-        # each bacth
-        for i, obs_kp_rel in enumerate(batch_data['obs_kp_rel']):
-            for j, obs_kp_step in enumerate(obs_kp_rel):
-                obs_kp[i, j, :, :] = obs_kp_step
     return returned_inputs,traj_pred_gt
