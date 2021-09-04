@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=20,help='Number of epochs (default: 35)')
+                    type=int, default=20,help='Number of epochs (default: 20)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     args = parser.parse_args()
@@ -53,17 +53,17 @@ def main():
 
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
-
+    dataset_flips = [True,False,False,False,False]
     # Load the dataset and perform the split
     idTest = args.dataset_id
     training_data,validation_data,test_data,test_homography = utils.datasets_utils.setup_loo_experiment('ETH_UCY',dataset_dir,dataset_names,idTest,experiment_parameters,use_pickled_data=args.pickle)
 
     #############################################################
     # Model parameters
-    model_parameters = PredictorDetRNN.parameters()
+    model_parameters = PredictorDetRNN.parameters(rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
-    model_parameters.emb_size       = 128
-    model_parameters.enc_hidden_size= 256
+    model_parameters.emb_size       = 64
+    model_parameters.enc_hidden_size=256
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size
     model_parameters.dropout        = 0.3
     # Get the necessary data
@@ -78,14 +78,13 @@ def main():
 
     # Model
     model     = PredictorDetRNN(model_parameters)
-    optimizer = optimizers.Adam(learning_rate=3.0e-5)
+    optimizer = optimizers.Adam(learning_rate=1.5e-6)
 
     # Checkpoints
     checkpoint_dir   = './training_checkpoints/basicmodel'
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
     checkpoint       = tf.train.Checkpoint(optimizer=optimizer,
                                         weights=model)
-
     # Training the Model
     train_loss_results = []
     val_loss_results   = []
@@ -96,7 +95,7 @@ def main():
         for epoch in range(model_parameters.num_epochs ):
             # Training
             logging.info("----- ")
-            logging.info("Epoch: {}".format(epoch))
+            logging.info("Epoch: {}".format(epoch+1))
             total_error = 0
             total_cases = 0
             num_batches_per_epoch= batched_train_data.cardinality().numpy()
@@ -130,7 +129,7 @@ def main():
             if (epoch + 1) % 5 == 0:
                 checkpoint.save(file_prefix = checkpoint_prefix)
             logging.info('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
-            logging.info('Epoch {}. Validation mAFE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
+            logging.info('Epoch {}. Validation mFDE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
 
         plot_training    = True
         if plot_training==True:
@@ -155,9 +154,9 @@ def main():
         logging.info("Qualitative testing")
         for i in range(5):
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1)
+            utils.testing_utils.evaluation_qualitative(model,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=dataset_flips[args.dataset_id],n_peds_max=1)
         logging.info("Worst cases")
-        utils.testing_utils.evaluation_worstcases(model,batched_test_data,model_parameters,background=None,homography=None)
+        utils.testing_utils.evaluation_worstcases(model,batched_test_data,model_parameters,background=test_bckgd,homography=test_homography, flip=dataset_flips[args.dataset_id])
 
 
 if __name__ == '__main__':
