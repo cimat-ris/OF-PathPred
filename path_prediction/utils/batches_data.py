@@ -31,7 +31,7 @@ def get_batch(batch_data, config, rot='_rot'):
     # ------------------------------------------------------
     # Social component (through optical flow)
     if hasattr(config, 'add_social') and config.add_social:
-        obs_flow = np.zeros((N, T_in, OF),dtype ='float32')
+        obs_flow = np.zeros((N,config.obs_len, OF),dtype ='float32')
         # each batch
         for i, flow_seq in enumerate(batch_data['obs_optical_flow']):
             for j , flow_step in enumerate(flow_seq):
