@@ -34,7 +34,7 @@ def main():
     parser.add_argument('--noretrain', dest='noretrain', action='store_true',help='When set, does not retrain the model, and only restores the last checkpoint')
     parser.set_defaults(noretrain=False)
     parser.add_argument('--epochs', '--e',
-                    type=int, default=25,help='Number of epochs (default: 25)')
+                    type=int, default=30,help='Number of epochs (default: 25)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
     parser.add_argument('--coords_mode', default='rel_rot', choices=['rel', 'rel_rot'],
@@ -61,9 +61,10 @@ def main():
 
     # Load the default parameters
     experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=args.obstacles)
-    experiment_parameters.log_polar_mapping = True
+    experiment_parameters.log_polar_mapping = False
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
+    dataset_flips = [True,False,False,False,False]
 
     # Load the dataset and perform the split
     idTest = args.dataset_id
@@ -78,7 +79,8 @@ def main():
             model_parameters = PredictorMultAtt.Parameters(add_social=args.social,rnn_type=args.rnn)
         else:
             logging.error("No such model")
-    model_parameters.num_epochs     = args.epochs
+    model_parameters.num_epochs    = args.epochs
+    model_parameters.add_social    = args.social
     # Number of samples generated
     model_parameters.output_var_dirs= 3
     model_parameters.coords_mode    = args.coords_mode
@@ -129,16 +131,16 @@ def main():
         logging.info("Quantitative testing")
         results = utils.testing_utils.evaluation_minadefde(tj_enc_dec,batched_test_data,model_parameters)
         utils.testing_utils.plot_comparisons_minadefde(results,dataset_names[idTest])
-        logging.i64nfo(results)
+        logging.info(results)
 
     # Qualitative testing
     if args.qualitative==True:
         logging.info("Qualitative testing")
         for i in range(5):
             batch, test_bckgd = utils.testing_utils.get_testing_batch(test_data,dataset_dir+dataset_names[idTest])
-            utils.testing_utils.evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=True,n_peds_max=1,display_mode=None)
+            utils.testing_utils.evaluation_qualitative(tj_enc_dec,batch,model_parameters,background=test_bckgd,homography=test_homography, flip=dataset_flips[args.dataset_id],n_peds_max=1)
         logging.info("Worst cases")
-        utils.testing_utils.evaluation_worstcases(tj_enc_dec,batched_test_data,model_parameters,background=None,homography=None)
+        utils.testing_utils.evaluation_worstcases(tj_enc_dec,batched_test_data,model_parameters,background=None,homography=None, flip=dataset_flips[args.dataset_id])
 
 if __name__ == '__main__':
     main()
