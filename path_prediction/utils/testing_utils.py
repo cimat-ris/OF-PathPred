@@ -82,6 +82,12 @@ mADEFDE = {
 }
 
 
+"""
+Extract one batch from a dataset to perform testing
+:param testing_data: The model to evaluate.
+:param testing_data_path: Batch of data to evaluate.
+:return: the trajectories data and their corresponding video frame.
+"""
 def get_testing_batch(testing_data,testing_data_path):
     # A trajectory id
     testing_data_arr = list(testing_data.as_numpy_iterator())
@@ -101,8 +107,15 @@ def get_testing_batch(testing_data,testing_data_path):
     for element in filtered_data.as_numpy_iterator():
         return element, test_bckgd
 
-#
-def predict_from_batch(model,batch,config,background=None,homography=None,flip=False,display_mode=None):
+
+"""
+Apply prediction on a batch
+:param model: The model to evaluate.
+:param batch: Batch of data to apply the prediction on.
+:param config: Model parameters.
+:return: Nothing.
+"""
+def predict_from_batch(model,batch,config):
     traj_obs      = []
     traj_gt       = []
     traj_pred     = []
@@ -122,11 +135,16 @@ def predict_from_batch(model,batch,config,background=None,homography=None,flip=F
             # Conserve the x,y coordinates
             if (pred_traj[i,k].shape[0]==config.pred_len):
                 this_pred_out     = pred_traj[i,k,:, :2]
-                # Convert it to absolute (starting from the last observed position)
-                this_pred_traj_rot  = np.zeros_like(this_pred_out)
-                this_pred_traj_rot[:,0] = c*this_pred_out[:,0]-s*this_pred_out[:,1]
-                this_pred_traj_rot[:,1] = s*this_pred_out[:,0]+c*this_pred_out[:,1]
-                this_pred_out_abs = relative_to_abs(this_pred_traj_rot, obs_traj_gt[-1])
+                # Coordinates: two cases
+                if config.coords_mode=="rel_rot":
+                    # Convert it to absolute (starting from the last observed position)
+                    this_pred_traj_rot  = np.zeros_like(this_pred_out)
+                    this_pred_traj_rot[:,0] = c*this_pred_out[:,0]-s*this_pred_out[:,1]
+                    this_pred_traj_rot[:,1] = s*this_pred_out[:,0]+c*this_pred_out[:,1]
+                    this_pred_out_abs = relative_to_abs(this_pred_traj_rot, obs_traj_gt[-1])
+                else:
+                    if config.coords_mode=="rel":
+                        this_pred_out_abs = relative_to_abs(this_pred_out, obs_traj_gt[-1])
                 this_pred_out_abs_set.append(this_pred_out_abs)
         this_pred_out_abs_set = tf.stack(this_pred_out_abs_set,axis=0)
         # TODO: tensors instead of lists?
@@ -157,21 +175,6 @@ def evaluation_qualitative(model,batch,config,background=None,homography=None,fl
         plot_background(ax,background)
     plot_neighbors(ax,neighbors,homography,flip=flip)
     plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,n_peds_max=n_peds_max)
-    plt.show()
-
-# Visualization of the attention weigths
-def evaluation_attention(model,batch,config,background=None,homography=None,flip=False):
-    traj_obs,traj_gt,traj_pred,neighbors,attention = predict_from_batch(model,batch,config)
-    # Plot ground truth and predictions
-    plt.subplots(2,2,figsize=(10,14))
-    ax = plt.subplot(2,1,2)
-    if background is not None:
-        plot_background(ax,background)
-    plot_gt_preds(ax,traj_gt,traj_obs,traj_pred,homography,flip=flip,n_peds_max=1)
-    ax1 = plt.subplot(2,2,1)
-    plot_attention(ax1,traj_obs,traj_pred,attention,homography,flip=flip,step=0)
-    ax2 = plt.subplot(2,2,2)
-    plot_attention(ax2,traj_obs,traj_pred,attention,homography,flip=flip,step=11)
     plt.show()
 
 """
@@ -231,12 +234,12 @@ def evaluation_minadefde(model,test_data,config):
     fdes = []
     for batch in tqdm(test_data,ascii = True):
         if hasattr(config, 'add_social') and config.add_social:
-            pred_out  = model.predict([batch['obs_traj_rel_rot'],batch['obs_optical_flow']],batch['pred_traj_rel_rot'].shape[1])
+            pred_out  = model.predict([batch['obs_traj_'+config.coords_mode],batch['obs_optical_flow']],batch['pred_traj_'+config.coords_mode].shape[1])
         else:
-            pred_out  = model.predict([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'].shape[1])
+            pred_out  = model.predict([batch['obs_traj_'+config.coords_mode]],batch['pred_traj_'+config.coords_mode].shape[1])
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,mfde = minadefde(obs_traj_gt[-1], obs_theta_gt[-1,0], pred_out[i], pred_traj_gt)
+            made,mfde = minadefde(obs_traj_gt[-1], obs_theta_gt[-1,0], pred_out[i], pred_traj_gt, mode=config.coords_mode)
             ades.append(made)
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
@@ -334,12 +337,12 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
     for batch in tqdm(test_data,ascii = True):
         # Format the data
         if hasattr(config, 'add_social') and config.add_social:
-            pred_out  = model.predict([batch['obs_traj_rel_rot'],batch['obs_optical_flow']],batch['pred_traj_rel_rot'].shape[1])
+            pred_out  = model.predict([batch['obs_traj_'+config.coords_mode],batch['obs_optical_flow']],batch['pred_traj_'+config.coords_mode].shape[1])
         else:
-            pred_out  = model.predict([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'].shape[1])
+            pred_out  = model.predict([batch['obs_traj_'+config.coords_mode]],batch['pred_traj_'+config.coords_mode].shape[1])
         # For all the trajectories in the batch
         for i, (obs_traj_gt, obs_theta_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["obs_traj_theta"], batch["pred_traj"])):
-            made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_out[i], pred_traj_gt)
+            made,__ = minadefde(obs_traj_gt[-1], obs_theta_gt[-1], pred_out[i], pred_traj_gt,mode=config.coords_mode)
             # To have unique values in the heap
             made += 0.0001*np.random.random_sample()
             heapq.heappush(worst,(made,[obs_traj_gt,obs_theta_gt[-1],pred_traj_gt,pred_out[i]]))
@@ -353,7 +356,7 @@ def evaluation_worstcases(model,test_data,config,nworst=10,background=None,homog
         ax = plt.subplot(1,1,1)
         if background is not None:
             plot_background(ax,background)
-        pred_traj_abs = reconstruct(obs_traj_gt[-1],theta,pred)
+        pred_traj_abs = reconstruct(obs_traj_gt[-1],theta,pred,config.coords_mode)
         plot_gt_preds(ax,[pred_traj_gt],[obs_traj_gt],[pred_traj_abs],homography,flip=flip,n_peds_max=n_peds_max,title='Worst cases')
         plt.show()
 
