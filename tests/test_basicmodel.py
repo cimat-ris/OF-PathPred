@@ -33,6 +33,8 @@ def main():
                     type=int, default=20,help='Number of epochs (default: 20)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
+    parser.add_argument('--coords_mode', default='rel_rot', choices=['rel', 'rel_rot'],
+                    help='coordinates to be used as input (default: "rel_rot")')
     args = parser.parse_args()
 
     if args.log_file=='':
@@ -47,10 +49,8 @@ def main():
     else:
         tf.config.set_visible_devices([], 'GPU')
         logging.info('Using CPU')
-
     # Load the default parameters
     experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=False)
-
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
     dataset_flips = [True,False,False,False,False]
@@ -63,9 +63,11 @@ def main():
     model_parameters = PredictorDetRNN.parameters(rnn_type=args.rnn)
     model_parameters.num_epochs     = args.epochs
     model_parameters.emb_size       = 64
-    model_parameters.enc_hidden_size=256
+    model_parameters.enc_hidden_size= 256
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size
     model_parameters.dropout        = 0.3
+    model_parameters.coords_mode    = args.coords_mode
+    logging.info('Using coordinate mode '+args.coords_mode)
     # Get the necessary data
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
     val_data   = tf.data.Dataset.from_tensor_slices(validation_data)
@@ -100,8 +102,8 @@ def main():
             total_cases = 0
             num_batches_per_epoch= batched_train_data.cardinality().numpy()
             for batch_idx, dicto in enumerate(batched_train_data):
-                condition  = dicto['obs_traj_rel_rot']
-                target     = dicto['pred_traj_rel_rot']
+                condition  = dicto['obs_traj_'+args.coords_mode]
+                target     = dicto['pred_traj_'+args.coords_mode]
                 with tf.GradientTape() as tape:
                     losses      = model(condition, target, training=True)
                     total_error+= losses
@@ -114,8 +116,8 @@ def main():
             total_error = 0
             total_cases = 0
             for batch_idx, dicto in enumerate(batched_val_data):
-                condition  = dicto['obs_traj_rel_rot']
-                target     = dicto['pred_traj_rel_rot']
+                condition  = dicto['obs_traj_'+args.coords_mode]
+                target     = dicto['pred_traj_'+args.coords_mode]
                 losses = model(condition, target)
                 total_error += losses
                 total_cases += num_batches_per_epoch
@@ -127,6 +129,7 @@ def main():
             val_metrics_results['mFDE'].append(val_quantitative_metrics['mFDE'])
             # Saving (checkpoint) the model every 2 epochs
             if (epoch + 1) % 5 == 0:
+                logging.info('Saving current model')
                 checkpoint.save(file_prefix = checkpoint_prefix)
             logging.info('Epoch {}. Validation mADE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mADE']))
             logging.info('Epoch {}. Validation mFDE {:.4f}'.format(epoch + 1, val_quantitative_metrics['mFDE']))
