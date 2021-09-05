@@ -227,6 +227,7 @@ def minadefde(start, theta, pred_traj, pred_traj_gt, mode="rel_rot"):
 Perform quantitative evaluation for a whole batched dataset
 :param model: The model to evaluate.
 :param test_data: Batched dataset to evaluate.
+:param config: Model parameters.
 :return: Dictionary of metrics: "mADE", "mFDE"
 """
 def evaluation_minadefde(model,test_data,config):
@@ -244,7 +245,13 @@ def evaluation_minadefde(model,test_data,config):
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
 
-# Perform quantitative evaluation   for dataset trajnetplusplus
+"""
+Perform quantitative evaluation for a whole batched dataset in trajnetplusplus
+:param model: The model to evaluate.
+:param test_data: Batched dataset to evaluate.
+:param config: Model parameters.
+:return: Dictionary of metrics: "mADE", "mFDE"
+"""
 def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,table=None):
     l2dis = []
     num_batches_per_epoch= test_data.cardinality().numpy()
