@@ -50,16 +50,16 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
 
     # Training the main system
     for epoch in range(config.num_epochs):
-        num_batches_per_epoch= train_data.cardinality().numpy()        
+        num_batches_per_epoch= train_data.cardinality().numpy()
         # Cycle over batches
         total_loss = 0
         logging.info('Epoch {}.'.format(epoch + 1))
         for batch in tqdm(train_data,ascii = True):
             # Compute the loss value for this minibatch.
             if config.add_social:
-                batch_loss = model.batch_step([batch['obs_traj_rel_rot'],batch['obs_optical_flow']], batch['pred_traj_rel_rot'], train_metrics, training=True)
+                batch_loss = model.batch_step([batch['obs_traj_'+config.coords_mode],batch['obs_optical_flow']], batch['pred_traj_'+config.coords_mode], train_metrics, training=True)
             else:
-                batch_loss = model.batch_step([batch['obs_traj_rel_rot']], batch['pred_traj_rel_rot'], train_metrics, training=True)
+                batch_loss = model.batch_step([batch['obs_traj_'+config.coords_mode]], batch['pred_traj_'+config.coords_mode], train_metrics, training=True)
             total_loss+= batch_loss
         # End epoch
         total_loss = total_loss / num_batches_per_epoch
@@ -80,7 +80,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
             num_batches_per_epoch= val_data.cardinality().numpy()
             for idx,batch in tqdm(enumerate(val_data),ascii = True):
                 # Format the data
-                batch_loss                  = model.batch_step([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'], val_metrics, training=False)
+                batch_loss                  = model.batch_step([batch['obs_traj_'+config.coords_mode]],batch['pred_traj_'+config.coords_mode], val_metrics, training=False)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
