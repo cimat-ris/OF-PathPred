@@ -37,6 +37,8 @@ def main():
                     type=int, default=25,help='Number of epochs (default: 25)')
     parser.add_argument('--rnn', default='lstm', choices=['gru', 'lstm'],
                     help='recurrent networks to be used (default: "lstm")')
+    parser.add_argument('--coords_mode', default='rel_rot', choices=['rel', 'rel_rot'],
+                    help='coordinates to be used as input (default: "rel_rot")')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
     parser.set_defaults(pickle=False)
     parser.add_argument('--cpu', dest='cpu', action='store_true',help='Use CPU')
@@ -79,7 +81,8 @@ def main():
     model_parameters.num_epochs     = args.epochs
     # Number of samples generated
     model_parameters.output_var_dirs= 3
-
+    model_parameters.coords_mode    = args.coords_mode
+    logging.info('Using coordinate mode '+args.coords_mode)
     # When running on CPU
     if len(physical_devices)==0:
         model_parameters.batch_size     = 64
