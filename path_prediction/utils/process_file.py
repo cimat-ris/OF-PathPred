@@ -22,8 +22,8 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
         Contains the different processed data as numpy nd arrays
     """
     all_ped_traj_abs      = []
-    all_ped_traj_rel      = []
-    all_ped_traj_theta    = []
+    # all_ped_traj_rel      = []
+    # all_ped_traj_theta    = []
     all_neigbors_traj_abs = []
     all_flows             = []
     all_visible_neighbors = []
@@ -45,12 +45,6 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             all_ped_traj_abs.append(ped_traj_abs)
             # Save info path scene scene_id
             primary_path.append((scene_id, paths[0],reader.scenes_by_id[scene_id]))
-            # Displacements along the trajectories (start at 1)
-            ped_traj_rel = ped_traj_abs[1:,:] - ped_traj_abs[:-1,:]
-            all_ped_traj_rel.append(ped_traj_rel)
-            # Orientations
-            ped_traj_theta = np.expand_dims(np.arctan2(ped_traj_abs[1:,1]-ped_traj_abs[:-1,1],ped_traj_abs[1:,0]-ped_traj_abs[:-1,0]),axis=1)
-            all_ped_traj_theta.append(ped_traj_theta)
             # Neighbors
             neigbors_traj_abs = raw_traj_abs[1:1+parameters.obs_len,1:,:]
             neigbors_traj_abs = np.concatenate([np.ones([neigbors_traj_abs.shape[0],neigbors_traj_abs.shape[1],1]),neigbors_traj_abs],axis=2)
@@ -65,16 +59,12 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             all_visible_neighbors.append(vis_neigh)
 
     all_ped_traj_abs     = np.array(all_ped_traj_abs,dtype='float16')
-    all_ped_traj_rel     = np.array(all_ped_traj_rel,dtype='float16')
-    all_ped_traj_theta   = np.array(all_ped_traj_theta,dtype='float16')
     all_flows            = np.array(all_flows)
     all_visible_neighbors= np.array(all_visible_neighbors,dtype='float16')
 
     # Data sanity check
     logging.debug("Checking data consistency")
     logging.debug("Nan in all_ped_traj_abs {} ".format(np.isnan(all_ped_traj_abs).any()))
-    logging.debug("Nan in all_ped_traj_rel {} ".format(np.isnan(all_ped_traj_rel).any()))
-    logging.debug("Nan in all_ped_traj_theta {} ".format(np.isnan(all_ped_traj_theta).any()))
     logging.debug("Nan in all_flows {} ".format(np.isnan(all_flows).any()))
     logging.debug("Inf in all_flows {} ".format(np.isinf(all_flows).any()))
     logging.debug("Nan in all_visible_neighbors {} ".format(np.isnan(all_visible_neighbors).any()))
@@ -88,29 +78,38 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             all_neigbors_traj_abs[i]=tmp
         all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs,dtype='float16')
     logging.info("Total trajectories: {}".format(all_ped_traj_abs.shape[0]))
-    # We get the obs traj and pred_traj
-    # [total, obs_len, 2]
-    # [total, pred_len, 2]
-    obs_traj      = all_ped_traj_abs[:,1:1+parameters.obs_len,:]
-    obs_traj_theta= all_ped_traj_theta[:,1:1+parameters.obs_len,:]
-    pred_traj     = all_ped_traj_abs[:,1+parameters.obs_len:,:]
-    obs_traj_rel  = all_ped_traj_rel[:,:parameters.obs_len,:]
-    pred_traj_rel = all_ped_traj_rel[:,parameters.obs_len:,:]
-    if keep_neighbors:
-        neighbors_obs = all_neigbors_traj_abs[:,:parameters.obs_len,:]
+
+
+    # By broadcasting, center these data
+    seq_pos_centered_all  = all_ped_traj_abs - all_ped_traj_abs[:,parameters.obs_len:parameters.obs_len+1,0:2]
+    # Displacements
+    seq_rel_all           = np.zeros_like(all_ped_traj_abs)
+    seq_rel_all[:,1:,:]   = all_ped_traj_abs[:,1:,:]-all_ped_traj_abs[:,:-1,:]
+    # All directions
+    seq_theta_all         = np.zeros_like(all_ped_traj_abs[:,:,0:1])
+    seq_theta_all[:,:,0]  = np.arctan2(seq_rel_all[:,:,1],seq_rel_all[:,:,0])
+    # Cosine and sine of the orientation angle at the last observed point
+    costheta              = np.cos(seq_theta_all[:,parameters.obs_len:parameters.obs_len+1,0:1])
+    sintheta              = np.sin(seq_theta_all[:,parameters.obs_len:parameters.obs_len+1,0:1])
+    seq_pos_rot_all       = np.zeros_like(all_ped_traj_abs)
+    seq_pos_rot_all[:,:,0:1]= costheta*(seq_pos_centered_all[:,:,0:1])+sintheta*(seq_pos_centered_all[:,:,1:2])
+    seq_pos_rot_all[:,:,1:2]=-sintheta*(seq_pos_centered_all[:,:,0:1])+costheta*(seq_pos_centered_all[:,:,1:2])
+    # All the displacements are estimated here.
+    seq_rel_rot_all         = np.zeros_like(seq_pos_rot_all)
+    seq_rel_rot_all[:,1:,:] = seq_pos_rot_all[:,1:,:]-seq_pos_rot_all[:,:-1,:]
     # Save all these data as a dictionary
     data = {
-        "obs_traj": obs_traj,
-        "obs_traj_rel": obs_traj_rel,
-        "obs_traj_theta":obs_traj_theta,
-        "obs_optical_flow": all_flows,
-        "obs_visible_neighbors": all_visible_neighbors,
-        "pred_traj": pred_traj,
-        "pred_traj_rel": pred_traj_rel,
+        "obs_traj": all_ped_traj_abs[:,1:1+parameters.obs_len,:],
+        "obs_traj_rel": seq_rel_all[:,1:1+parameters.obs_len,:],
+        "obs_traj_theta":seq_theta_all[:,1:1+parameters.obs_len,:],
+        "obs_optical_flow": all_flows[:,1:1+parameters.obs_len,:],
+        "obs_visible_neighbors": all_visible_neighbors[:,1:1+parameters.obs_len,:],
+        "pred_traj": all_ped_traj_abs[:,1+parameters.obs_len:,:],
+        "pred_traj_rel": seq_rel_all[:,1+parameters.obs_len:,:],
         "index": np.array(range(len(primary_path)))
     }
     if keep_neighbors:
-        data["obs_neighbors"]        = neighbors_obs
+        data["obs_neighbors"]        = all_neigbors_traj_abs[:,1:parameters.obs_len+1,:]
     return data, primary_path
 
 
