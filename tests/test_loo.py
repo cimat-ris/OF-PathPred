@@ -27,6 +27,8 @@ def main():
                     help='model (default: 0)')
     parser.add_argument('--social', dest='social', action='store_true',help='Models social interactions')
     parser.set_defaults(social=False)
+    parser.add_argument('--log_polar', dest='log_polar', action='store_true',help='Use log polar mapping for synthesized optical flow')
+    parser.set_defaults(log_polar=False)
     parser.add_argument('--qualitative', dest='qualitative', action='store_true',help='Performs a qualitative evaluation')
     parser.set_defaults(qualitative=False)
     parser.add_argument('--quantitative', dest='quantitative', action='store_true',help='Performs a quantitative evaluation')
@@ -59,7 +61,7 @@ def main():
 
     # Load the default parameters
     experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=args.obstacles)
-    experiment_parameters.log_polar_mapping = False
+    experiment_parameters.log_polar_mapping = args.log_polar
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']
     dataset_flips = [True,False,False,False,False]
