@@ -29,12 +29,12 @@ class DecoderAtt(tf.keras.Model):
                                                 recurrent_initializer='glorot_uniform',
                                                 dropout=config.dropout_rate,
                                                 recurrent_dropout=config.dropout_rate,
-                                                name='trajectory_decoder_cell_with_GRU')
+                                                name='trajectory_decoder_GRU_cell')
         else:
             # LSTM cell
             self.dec_cell_traj = layers.LSTMCell(config.dec_hidden_size,
                                                 recurrent_initializer='glorot_uniform',
-                                                name='trajectory_decoder_cell',
+                                                name='trajectory_decoder_LSTM_cell',
                                                 dropout=config.dropout_rate,
                                                 recurrent_dropout=config.dropout_rate)
         # RNN layer
@@ -110,9 +110,9 @@ class PredictorMultAtt():
         def __init__(self, add_social=False, rnn_type='lstm'):
             super(PredictorMultAtt.Parameters, self).__init__(rnn_type)
             # -----------------
-            self.obs_length = 8
+            self.obs_length  = 8
             self.pred_length = 12
-            
+
             self.add_social     = add_social
             self.stack_rnn_size = 2
             self.output_var_dirs= 0

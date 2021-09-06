@@ -92,15 +92,15 @@ class PredictorMultOf():
             self.stack_rnn_size = 2
             self.output_var_dirs= 0
             self.rnn_type       = rnn_type
-            self.dropout_rate   = 0.35  # Dropout rate during training
-            self.initial_lr     = 0.0005
+            self.dropout_rate   = 0.2  # Dropout rate during training
+            self.initial_lr     = 0.0001
             self.enc_hidden_size= 256  # Hidden size of the RNN encoder
             self.dec_hidden_size= self.enc_hidden_size # Hidden size of the RNN decoder
             self.emb_size       = 64  # Embedding size
             # Optical flow
             self.add_social     = False
             self.flow_size      = 64
-            self.epochs         = 30
+            self.epochs         = 35
 
     # Constructor
     def __init__(self,config):
@@ -131,7 +131,7 @@ class PredictorMultOf():
         #        staircase=True)
         # Instantiate an optimizer to train the models.
         #self.optimizer = tf.keras.optimizers.Adadelta(learning_rate=lr_schedule)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1.5e-5)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5)
         # Instantiate the loss operator
         self.loss_fn       = losses.LogCosh()
         self.loss_fn_local = losses.LogCosh(losses.Reduction.NONE)
@@ -192,14 +192,15 @@ class PredictorMultOf():
             #loss_value  += 0.005* tf.reduce_sum(losses.kullback_leibler_divergence(softmax_samples,obs_classif_logits))/losses_over_samples.shape[0]
             #########################################################################################
             # Losses are accumulated here
-            loss_value = 0.005*self.enctodec.ortho_loss()
+            if self.output_var_dirs>0:
+                loss_value = 0.002*self.enctodec.ortho_loss()
             # Get the vector of losses at the minimal value for each sample of the batch
             losses_at_min= tf.gather_nd(losses_over_samples,tf.stack([range(losses_over_samples.shape[0]),closest_samples],axis=1))
             # Sum over the batches, divided by the batch size
             loss_value  += tf.reduce_sum(losses_at_min)/losses_over_samples.shape[0]
             # L2 weight decay
             loss_value  += tf.add_n([ tf.nn.l2_loss(v) for v in variables
-                        if 'bias' not in v.name ]) * 0.002
+                        if 'bias' not in v.name ]) * 0.001
             #########################################################################################
 
         #########################################################################################
