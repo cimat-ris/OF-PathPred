@@ -50,7 +50,7 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
 
     # Training the main system
     for epoch in range(config.num_epochs):
-        num_batches_per_epoch= train_data.cardinality().numpy()        
+        num_batches_per_epoch= train_data.cardinality().numpy()
         # Cycle over batches
         total_loss = 0
         logging.info('Epoch {}.'.format(epoch + 1))
@@ -79,8 +79,10 @@ def training_loop(model,train_data,val_data,config,checkpoint,checkpoint_prefix)
             # for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
             num_batches_per_epoch= val_data.cardinality().numpy()
             for idx,batch in tqdm(enumerate(val_data),ascii = True):
-                # Format the data
-                batch_loss                  = model.batch_step([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'], val_metrics, training=False)
+                if config.add_social:
+                    batch_loss                  = model.batch_step([batch['obs_traj_rel_rot'],batch['obs_optical_flow']],batch['pred_traj_rel_rot'], val_metrics, training=False)
+                else:
+                    batch_loss                  = model.batch_step([batch['obs_traj_rel_rot']],batch['pred_traj_rel_rot'], val_metrics, training=False)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
