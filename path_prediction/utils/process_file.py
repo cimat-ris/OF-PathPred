@@ -22,8 +22,6 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
         Contains the different processed data as numpy nd arrays
     """
     all_ped_traj_abs      = []
-    # all_ped_traj_rel      = []
-    # all_ped_traj_theta    = []
     all_neigbors_traj_abs = []
     all_flows             = []
     all_visible_neighbors = []
@@ -41,6 +39,8 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             # Get the trajectories
             raw_traj_abs = Reader.paths_to_xy(paths)
             ped_traj_abs = raw_traj_abs[:,0,:]
+            if ped_traj_abs.shape[0]<1+parameters.obs_len+parameters.pred_len:
+                continue
             # Keep the full trajectory of the pedestrian of interest (start at 0)
             all_ped_traj_abs.append(ped_traj_abs)
             # Save info path scene scene_id
