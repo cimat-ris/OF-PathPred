@@ -1,6 +1,25 @@
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 import math
+
+def format_func(value, tick_number):
+    # find number of multiples of pi/8
+    N = int(np.round(4 * value / np.pi))
+    if N == 0:
+        return "0"
+    elif N == 1:
+        return r"$\pi/4$"
+    elif N == 2:
+        return r"$\pi/2$"
+    elif N == 3:
+        return r"$3\pi/4$"
+    elif N == -1:
+        return r"$-\pi/4$"
+    elif N == -2:
+        return r"$-\pi/2$"
+    elif N == -3:
+        return r"$-3\pi/4$"
 
 def norm_angle(angle):
     if angle<-math.pi/2.0:
@@ -136,17 +155,17 @@ class OpticalFlowSimulator(object):
             thetas = np.linspace(self.parameters.theta0-math.pi*0.5,self.parameters.thetaf-math.pi*0.5,65)[:-1]
             plt.bar(thetas,optical_flow[seq_pos],width=0.05,color='blue')
             plt.plot(thetas,np.zeros_like(thetas))
-            plt.xlim((-math.pi*0.5,math.pi*0.5))
-            if self.parameters.log_polar_mapping:
-                plt.xscale('symlog', linthresh=1.0)
+            plt.xlim((-1.6,1.6))
             plt.ylim((-1,1))
+            plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(format_func))
+            plt.gca().xaxis.set_major_locator(plt.MultipleLocator(np.pi / 4))
         plt.suptitle(title)
         plt.savefig('./of-sample.pdf')
         plt.show()
 
     """
     Receives:
-            current_position: current position of the person of interest
+    :paramcurrent_position: current position of the person of interest
             neighbor_position: position (x2) of the neighbor
             current_direction: current direction of the person of interest
             neighbors_velocity: velocity (x2) of all the neighbor

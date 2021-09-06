@@ -26,6 +26,8 @@ def main():
     parser.add_argument('--dataset_id', '--id',
                     type=int, default=0,help='dataset id (default: 0)')
     parser.add_argument('--samples',type=int, default=5,help='dataset id (default: 0)')
+    parser.add_argument('--log_polar', dest='log_polar', action='store_true',help='Use log polar mapping for synthesized optical flow')
+    parser.set_defaults(log_polar=False)
     args = parser.parse_args()
     if args.log_file=='':
         logging.basicConfig(format='%(levelname)s: %(message)s',level=args.log_level)
@@ -42,7 +44,7 @@ def main():
     # Load the default parameters
     experiment_parameters =     Experiment_Parameters(obstacles=args.obstacles)
     experiment_parameters.person_max = 10
-    experiment_parameters.log_polar_mapping = True
+    experiment_parameters.log_polar_mapping = args.log_polar
     # Dataset to be tested
     dataset_dir   = args.path
     dataset_names = ['eth-hotel','eth-univ','ucy-zara01','ucy-zara02','ucy-univ']

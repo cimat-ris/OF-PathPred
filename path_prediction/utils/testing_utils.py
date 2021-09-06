@@ -227,6 +227,7 @@ def minadefde(start, theta, pred_traj, pred_traj_gt, mode="rel_rot"):
 Perform quantitative evaluation for a whole batched dataset
 :param model: The model to evaluate.
 :param test_data: Batched dataset to evaluate.
+:param config: Model parameters.
 :return: Dictionary of metrics: "mADE", "mFDE"
 """
 def evaluation_minadefde(model,test_data,config):
@@ -244,7 +245,13 @@ def evaluation_minadefde(model,test_data,config):
             fdes.append(mfde)
     return {"mADE": np.mean(ades), "mFDE": np.mean(fdes)}
 
-# Perform quantitative evaluation   for dataset trajnetplusplus
+"""
+Perform quantitative evaluation for a whole batched dataset in trajnetplusplus
+:param model: The model to evaluate.
+:param test_data: Batched dataset to evaluate.
+:param config: Model parameters.
+:return: Dictionary of metrics: "mADE", "mFDE"
+"""
 def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,table=None):
     l2dis = []
     num_batches_per_epoch= test_data.cardinality().numpy()
@@ -271,14 +278,14 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,tab
                     indexes[ii].append(scene.scene)
                 if ii in sub_tags:
                     sub_indexes[ii].append(scene.scene)
-
-        # Format the data
+        # Here we perform the prediction
         batch_inputs, batch_targets = get_batch(batch, config, rot='')
-        pred_out                 = model.predict(batch_inputs,batch_targets.shape[1])
+        pred_out                    = model.predict(batch_inputs,batch_targets.shape[1])
 
-        scenes_gt_batch = []
-        scenes_sub_batch = []
-        scenes_id_gt_batch = []
+        # Here we reconstruct the trajectories
+        scenes_gt_batch   = []
+        scenes_sub_batch  = []
+        scenes_id_gt_batch= []
         # For all the trajectories in the batch
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             normin = 1000.0
@@ -295,8 +302,8 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,primary_path,config,tab
                 # Check shape is OK
                 assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
 
-                # Una trayectoria
-                scenes_gt = scenes_gt_all[i][config.obs_len:]
+                # Ground truth
+                scenes_gt = scenes_gt_all[i][config.obs_len+1:]
                 scenes_sub = [ TrackRow(path.frame, path.pedestrian, x , y, 0, scenes_id_gt[i] ) for path, (x,y) in zip(scenes_gt,this_pred_out_abs) ]
 
                 # Guardamos  en la lista del batch
@@ -398,7 +405,7 @@ def plot_comparisons_minadefde(madefde_results,dataset_name):
 
 def other_models(args,table):
         ## Test_pred : Folders for saving model predictions
-        args.path = args.path + 'test_pred/'
+        args.path = args.path + '/test_pred/'
         args.output = args.output if args.output is not None else []
         ## assert length of output models is not None
         if (not args.sf) and (not args.orca) and (not args.kf) and (not args.cv):

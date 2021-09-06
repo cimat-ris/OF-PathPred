@@ -18,8 +18,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--obs_length', default=8, type=int,help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,help='prediction length')
-    #parser.add_argument('--path', default='datasets/trajnetplusplus',help='glob expression for data files')
-    parser.add_argument('--path', default='../trajnetplusplusdataset/output/',help='glob expression for data files')
+    parser.add_argument('--path', default='datasets/trajnetplusplus',help='glob expression for data files')
+    #parser.add_argument('--path', default='../trajnetplusplusdataset/output/',help='glob expression for data files')
     parser.add_argument('--log_level',type=int, default=20,help='Log level (default: 20)')
     parser.add_argument('--log_file',default='',help='Log file (default: standard output)')
     parser.add_argument('--pickle', dest='pickle', action='store_true',help='uses previously pickled data')
@@ -68,8 +68,9 @@ def main():
 
 
     #train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003","crowds_zara01","crowds_zara03","lcas","wildtrack","cff_06","cff_07","cff_08"]
-    train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003"]
-    test_dataset_names = ["biwi_eth"]
+    #train_dataset_names = ["biwi_hotel","crowds_students001","crowds_students003"]
+    train_dataset_names = ["biwi_hotel"]
+    test_dataset_names  = ["biwi_hotel"]
 
     # Load the default parameters
     experiment_parameters = utils.training_utils.Experiment_Parameters(obstacles=False)
@@ -85,7 +86,6 @@ def main():
     model_parameters.num_epochs     = args.epochs
     # 9 samples generated
     model_parameters.output_var_dirs= 1
-    model_parameters.is_mc_dropout  = False
     model_parameters.initial_lr     = 0.03
     model_parameters.enc_hidden_size= 128  # Hidden size of the RNN encoder
     model_parameters.dec_hidden_size= model_parameters.enc_hidden_size # Hidden size of the RNN decoder
