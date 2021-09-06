@@ -143,6 +143,7 @@ def main():
 
         # For add result of model orca, kf, cv, sf
         if add_info_other_models:
+            args.obs_length = 9
             utils.testing_utils.other_models(args,table)
 
         ## Save table in a image
