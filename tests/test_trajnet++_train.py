@@ -88,16 +88,11 @@ def main():
     # 9 samples generated
     model_parameters.add_social     = args.social
     model_parameters.coords_mode    = args.coords_mode
-    model_parameters.output_var_dirs= 3
+    model_parameters.output_var_dirs= 0
     model_parameters.initial_lr     = 0.03
     model_parameters.pred_length    = 12
     model_parameters.obs_length     = 9
     model_parameters.use_validation = True
-    # When running on CPU
-    if len(physical_devices)==0:
-        model_parameters.batch_size     = 64
-        model_parameters.output_var_dirs= 1
-        model_parameters.stack_rnn_size = 1
 
     # Get the necessary data as tensorflow datasets
     train_data = tf.data.Dataset.from_tensor_slices(training_data)
@@ -113,11 +108,11 @@ def main():
     tj_enc_dec = models.model_multimodal_of.PredictorMultOf(model_parameters)
 
     # Checkpoints
-    checkpoint_dir   = './training_checkpoints/ofmodel-trajnet++'
+    checkpoint_dir   = 'training_checkpoints/ofmodel-trajnet++'
     checkpoint_prefix= os.path.join(checkpoint_dir, "ckpt")
-    checkpoint       = tf.train.Checkpoint(optimizer=tj_enc_dec.optimizer,
-                                        encoder=tj_enc_dec.enc,
-                                        decoder=tj_enc_dec.dec)
+    checkpoint       = tf.train.Checkpoint(encoder=tj_enc_dec.enc,
+                                            enctodec = tj_enc_dec.enctodec,
+                                            decoder=tj_enc_dec.dec)
 
     # Training
     if args.noretrain==False:
@@ -128,7 +123,7 @@ def main():
     # Testing
     # Restoring the latest checkpoint in checkpoint_dir
     logging.info("Restoring last model")
-    status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir)).expect_partial()
+    status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
     # Quantitative testing: ADE/FDE
     quantitative = True

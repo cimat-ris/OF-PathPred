@@ -260,7 +260,6 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,test_primary_path,confi
     scenes_sub_batch  = []
     scenes_id_gt_batch= []
     for batch in tqdm(test_data,ascii = True):
-        print(batch["index"].shape)
         # Primary_path
         test_primary_path_local = [ test_primary_path[row.numpy()] for row in batch["index"]]
         scenes_id_gt, scenes_gt_all, scenes_by_id = zip(*test_primary_path_local)
@@ -291,20 +290,16 @@ def evaluation_trajnetplusplus_minadefde(model,test_data,test_primary_path,confi
         for i, (obs_traj_gt, pred_traj_gt) in enumerate(zip(batch["obs_traj"], batch["pred_traj"])):
             normin = 1000.0
             diffmin= None
-            if hasattr(model,'output_samples'):
-                nsamples = model.output_samples
-            else:
-                nsamples = 1
-            #for k in range(nsamples):
-            # Conserve the x,y coordinates of the kth trajectory
-            this_pred_out     = pred_out[i,0,:, :2] #[pred,2]
-            # Convert it to absolute (starting from the last observed position)
-            this_pred_out_abs = reconstruct(obs_traj_gt[-1],0.0,this_pred_out,config.coords_mode)
-            # Check shape is OK
-            assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
-            # Ground truth
-            scenes_gt = scenes_gt_all[i][config.obs_len+1:]
-            print((np.sum(np.square(pred_traj_gt-this_pred_out_abs),axis=1)))
+            for k in range(pred_out[i].shape[0]):
+                # Conserve the x,y coordinates of the kth trajectory
+                this_pred_out     = pred_out[i,k,:, :2] #[pred,2]
+                # Convert it to absolute (starting from the last observed position)
+                this_pred_out_abs = reconstruct(obs_traj_gt[-1],0.0,this_pred_out,"rel")
+                # Check shape is OK
+                assert this_pred_out_abs.shape == this_pred_out.shape, (this_pred_out_abs.shape, this_pred_out.shape)
+                # Ground truth
+                scenes_gt = scenes_gt_all[i][config.obs_len+1:]
+                print(np.mean(np.sqrt(np.sum(np.square(pred_traj_gt-this_pred_out_abs),axis=1))))
             #print(scenes_gt)
             #print(pred_traj_gt)
             scenes_sub = [ TrackRow(path.frame, path.pedestrian, x , y, 0, scenes_id_gt[i] ) for path, (x,y) in zip(scenes_gt,this_pred_out_abs)]

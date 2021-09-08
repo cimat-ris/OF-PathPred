@@ -146,12 +146,11 @@ def training_trajnetplusplus_loop(model,train_data,val_data,config,checkpoint,ch
         #for idx,batch in tqdm(train_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch, shuffle=True), total = num_batches_per_epoch, ascii = True):
         num_batches_per_epoch= train_data.cardinality().numpy()
         for batch in tqdm(train_data,ascii = True):
-            # Format the data
-            # TODO: avoid the copies
-            batch_inputs, batch_targets = get_batch(batch, config, rot='')
-            # Run the forward pass of the layer.
             # Compute the loss value for this minibatch.
-            batch_loss = model.batch_step(batch_inputs, batch_targets, train_metrics, training=True)
+            if config.add_social:
+                batch_loss = model.batch_step([batch['obs_traj_'+config.coords_mode],batch['obs_optical_flow']], batch['pred_traj_'+config.coords_mode], train_metrics, training=True)
+            else:
+                batch_loss = model.batch_step([batch['obs_traj_'+config.coords_mode]], batch['pred_traj_'+config.coords_mode], train_metrics, training=True)
             total_loss+= batch_loss
         # End epoch
         total_loss = total_loss / num_batches_per_epoch
@@ -173,9 +172,10 @@ def training_trajnetplusplus_loop(model,train_data,val_data,config,checkpoint,ch
             # for idx, batch in tqdm(val_data.get_batches(config.batch_size, num_steps = num_batches_per_epoch), total = num_batches_per_epoch, ascii = True):
             num_batches_per_epoch= val_data.cardinality().numpy()
             for idx,batch in tqdm(enumerate(val_data),ascii = True):
-                # Format the data
-                batch_inputs, batch_targets = get_batch(batch, config, rot='')
-                batch_loss                  = model.batch_step(batch_inputs,batch_targets, val_metrics, training=False)
+                if config.add_social:
+                    batch_loss                  = model.batch_step([batch['obs_traj_rel'],batch['obs_optical_flow']],batch['pred_traj_rel'], val_metrics, training=False)
+                else:
+                    batch_loss                  = model.batch_step([batch['obs_traj_rel']],batch['pred_traj_rel'], val_metrics, training=False)
                 total_loss+= batch_loss
             # End epoch
             total_loss = total_loss / num_batches_per_epoch
