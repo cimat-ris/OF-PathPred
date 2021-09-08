@@ -58,9 +58,9 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             all_flows.append(flow)
             all_visible_neighbors.append(vis_neigh)
 
-    all_ped_traj_abs     = np.array(all_ped_traj_abs,dtype='float16')
-    all_flows            = np.array(all_flows)
-    all_visible_neighbors= np.array(all_visible_neighbors,dtype='float16')
+    all_ped_traj_abs     = np.array(all_ped_traj_abs, dtype="float32")
+    all_flows            = np.array(all_flows, dtype="float32")
+    all_visible_neighbors= np.array(all_visible_neighbors)
 
     # Data sanity check
     logging.debug("Checking data consistency")
@@ -76,7 +76,7 @@ def prepare_data_trajnetplusplus(datasets_path, datasets_names,parameters,keep_n
             tmp=np.NaN*np.ones([all_neigbors_traj_abs[i].shape[0],neighbors_n_max,3])
             tmp[:,:all_neigbors_traj_abs[i].shape[1],:]=all_neigbors_traj_abs[i]
             all_neigbors_traj_abs[i]=tmp
-        all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs,dtype='float16')
+        all_neigbors_traj_abs=  np.array(all_neigbors_traj_abs)
     logging.info("Total trajectories: {}".format(all_ped_traj_abs.shape[0]))
 
 
